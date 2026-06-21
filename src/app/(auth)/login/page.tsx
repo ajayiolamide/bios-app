@@ -50,7 +50,7 @@ export default function LoginPage() {
       <CardHeader className="space-y-3 text-center">
         <div className="flex justify-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-metrik-white.svg" alt="Metrik" className="h-7 w-auto" />
+          <img src="/logo-metrik-white.svg" alt="Metrik" className="h-9 w-auto" />
         </div>
         <CardTitle className="text-2xl text-white">Welcome back</CardTitle>
         <CardDescription className="text-slate-400">

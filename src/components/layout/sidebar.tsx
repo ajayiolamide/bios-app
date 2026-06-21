@@ -66,9 +66,9 @@ export function Sidebar() {
   return (
     <aside className="flex h-screen w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
       {/* Logo */}
-      <div className="flex h-14 items-center px-4 border-b border-sidebar-border flex-shrink-0">
+      <div className="flex h-16 items-center px-4 border-b border-sidebar-border flex-shrink-0">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo-metrik-white.svg" alt="Metrik" className="h-5 w-auto" />
+        <img src="/logo-metrik-white.svg" alt="Metrik" className="h-8 w-auto" />
       </div>
 
       {/* Org switcher */}
