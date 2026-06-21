@@ -107,6 +107,27 @@ export async function updateProductGoalLabel(
   return {};
 }
 
+/** Rename the organization itself — the name shown in the org switcher,
+ *  sidebar, and everywhere else `currentOrg.name` is read. Distinct from
+ *  updateProductGoalLabel above, which renames a vocabulary term, not the
+ *  company/workspace. */
+export async function renameOrganization(
+  orgId: string,
+  name: string
+): Promise<{ error?: string }> {
+  const trimmed = name.trim();
+  if (!trimmed || trimmed.length < 2) return { error: "Name must be at least 2 characters." };
+  if (trimmed.length > 60) return { error: "Name must be 60 characters or fewer." };
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("organizations")
+    .update({ name: trimmed })
+    .eq("id", orgId);
+  if (error) return { error: error.message };
+  return {};
+}
+
 /** Fetch all orgs the current user belongs to — bypasses RLS via admin client. */
 export async function getUserOrganizations(): Promise<Organization[]> {
   const supabase = await createServerClient();

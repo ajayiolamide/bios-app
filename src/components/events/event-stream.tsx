@@ -102,6 +102,12 @@ interface Props {
 export function EventStream({ orgId, refreshKey }: Props) {
   const [events, setEvents] = useState<Event[]>([]);
   const [total, setTotal] = useState(0);
+  // searchInput updates instantly as you type, so the text box never feels
+  // like it's dropping keystrokes. search only catches up 300ms after you
+  // stop typing — that's the value that actually triggers a server fetch.
+  // Previously every single keystroke fired its own request immediately,
+  // so fast typing queued up a fetch per letter and the box felt laggy/stuck.
+  const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -155,6 +161,13 @@ export function EventStream({ orgId, refreshKey }: Props) {
     fetchEvents(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId, search, source, refreshKey]);
+
+  // Debounce: only push searchInput into the actual `search` filter (which
+  // triggers the fetch above) once typing has paused for 300ms.
+  useEffect(() => {
+    const t = setTimeout(() => setSearch(searchInput), 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   // ── Selection helpers
   const allPageSelected = events.length > 0 && events.every((e) => selected.has(e.id));
@@ -254,8 +267,8 @@ export function EventStream({ orgId, refreshKey }: Props) {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Filter by event name…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
               className="pl-9"
             />
           </div>

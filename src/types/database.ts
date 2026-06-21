@@ -181,6 +181,30 @@ export interface Database {
           updated_at?: string;
         };
       };
+      saved_insights: {
+        Row: {
+          id: string;
+          organization_id: string;
+          created_by: string | null;
+          source: string;
+          content: string;
+          context: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          created_by?: string | null;
+          source: string;
+          content: string;
+          context?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          content?: string;
+          context?: string | null;
+        };
+      };
       ai_conversations: {
         Row: {
           id: string;

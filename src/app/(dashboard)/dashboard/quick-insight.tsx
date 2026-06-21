@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { BrainCircuit, Loader2, Sparkles, RefreshCw, History, ChevronDown } from "lucide-react";
 import { getQuickInsight, getLatestBusinessBrief, getBusinessBriefHistory, type BusinessBrief } from "./actions";
+import { SaveInsightButton } from "@/components/saved-insights/save-insight-button";
 
 type BriefLine = { emoji: string; label: string; detail: string };
 
@@ -160,9 +161,12 @@ export function QuickInsight({ orgId, hasData }: { orgId: string; hasData: boole
       {insight && !loading && !showHistory && (
         <div className="space-y-3">
           <BriefBody content={insight} />
-          <p className="text-[11px] text-gray-300 text-right">
-            {createdAt ? formatBriefDate(createdAt) : "Generated just now"} · AI may make mistakes
-          </p>
+          <div className="flex items-center justify-between">
+            <SaveInsightButton orgId={orgId} source="business_brief" content={insight} context={createdAt ? formatBriefDate(createdAt) : undefined} />
+            <p className="text-[11px] text-gray-300">
+              {createdAt ? formatBriefDate(createdAt) : "Generated just now"} · AI may make mistakes
+            </p>
+          </div>
         </div>
       )}
 

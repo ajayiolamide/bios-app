@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Trash2, Edit2, Check, X, Upload, ImageIcon, Link2, Loader2, CheckCircle2, AlertCircle, Tag, Palette, Plug, LayoutTemplate } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Plus, Trash2, Edit2, Check, X, Upload, ImageIcon, Link2, Loader2, CheckCircle2, AlertCircle, Tag, Palette, Plug, LayoutTemplate, Building2, AlertTriangle } from "lucide-react";
 import { useOrg } from "@/contexts/org-context";
 import {
   getBrandSettings, saveBrandSettings,
@@ -19,7 +20,7 @@ import {
   saveAmplitudeSettings,
   testAmplitudeConnection,
 } from "@/app/actions/amplitude";
-import { updateProductGoalLabel } from "@/app/actions/organizations";
+import { updateProductGoalLabel, renameOrganization, removeOrganization } from "@/app/actions/organizations";
 import { createClient } from "@/lib/supabase/client";
 import type { BrandSettings, ReportTemplate } from "@/types/database";
 
@@ -45,6 +46,7 @@ function Section({ title, description, icon: Icon, children }: {
 }
 
 const SETTINGS_TABS = [
+  { id: "organization", label: "Organization", icon: Building2 },
   { id: "terminology", label: "Terminology", icon: Tag },
   { id: "brand", label: "Brand", icon: Palette },
   { id: "integrations", label: "Integrations", icon: Plug },
@@ -159,9 +161,19 @@ function TemplateRow({ t, onSaved, onDeleted }: {
 }
 
 export default function SettingsPage() {
-  const { currentOrg, setCurrentOrg } = useOrg();
+  const { currentOrg, setCurrentOrg, removeOrg } = useOrg();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<SettingsTab>("terminology");
   const [templates, setTemplates] = useState<ReportTemplate[]>([]);
+
+  // Organization — renaming the workspace itself (shown in the org switcher
+  // and sidebar everywhere), plus the danger-zone delete flow.
+  const [orgName, setOrgName] = useState("");
+  const [orgNameSaving, setOrgNameSaving] = useState(false);
+  const [orgNameSaved, setOrgNameSaved] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // Terminology — what this org calls the sub-goal layer under a Business
   // Goal. Seeded straight from currentOrg (no extra fetch needed) and pushed
@@ -250,6 +262,41 @@ export default function SettingsPage() {
   useEffect(() => {
     if (currentOrg) setProductGoalLabel(currentOrg.product_goal_label?.trim() || "Product Goal");
   }, [currentOrg]);
+
+  useEffect(() => {
+    if (currentOrg) setOrgName(currentOrg.name ?? "");
+  }, [currentOrg]);
+
+  async function saveOrgName(e: React.FormEvent) {
+    e.preventDefault();
+    if (!currentOrg) return;
+    const trimmed = orgName.trim();
+    if (!trimmed) return;
+    setOrgNameSaving(true);
+    const result = await renameOrganization(currentOrg.id, trimmed);
+    setOrgNameSaving(false);
+    if (!result.error) {
+      setCurrentOrg({ ...currentOrg, name: trimmed });
+      setOrgNameSaved(true);
+      setTimeout(() => setOrgNameSaved(false), 2000);
+    }
+  }
+
+  async function handleDeleteOrg() {
+    if (!currentOrg || deleteConfirmText !== currentOrg.name) return;
+    setDeleting(true);
+    setDeleteError(null);
+    const { error } = await removeOrganization(currentOrg.id);
+    if (error) {
+      setDeleting(false);
+      setDeleteError(error);
+      return;
+    }
+    const next = removeOrg(currentOrg.id);
+    setDeleting(false);
+    if (!next) router.push("/create-workspace");
+    else router.refresh();
+  }
 
   async function saveProductGoalLabel(e: React.FormEvent) {
     e.preventDefault();
@@ -421,6 +468,73 @@ export default function SettingsPage() {
 
         {/* Active section content */}
         <div className="flex-1 min-w-0 space-y-6">
+
+      {activeTab === "organization" && (
+      <>
+      <Section title="Organization" icon={Building2} description="The workspace name shown in the switcher, sidebar, and everywhere else in the app.">
+        <form onSubmit={saveOrgName} className="space-y-3 max-w-sm">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">Company name</label>
+            <input
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="e.g. Mycover"
+              value={orgName}
+              onChange={(e) => setOrgName(e.target.value)}
+              maxLength={60}
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="submit"
+              disabled={orgNameSaving || !orgName.trim()}
+              className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3.5 py-1.5 rounded-md transition-colors disabled:opacity-50"
+            >
+              {orgNameSaving ? "Saving…" : "Save"}
+            </button>
+            {orgNameSaved && (
+              <span className="flex items-center gap-1 text-xs text-emerald-600">
+                <CheckCircle2 className="h-3.5 w-3.5" /> Saved
+              </span>
+            )}
+          </div>
+        </form>
+      </Section>
+
+      <div className="rounded-xl border border-red-200 bg-red-50/40 p-6 space-y-4">
+        <div className="flex items-start gap-2.5">
+          <div className="h-8 w-8 rounded-lg bg-red-100 flex items-center justify-center shrink-0 mt-0.5">
+            <AlertTriangle className="h-4 w-4 text-red-500" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-base text-red-900">Danger zone</h2>
+            <p className="text-sm text-red-700/80 mt-0.5">
+              Permanently delete this organization — all goals, features, events, reports, and connected integrations go with it. This can&apos;t be undone.
+            </p>
+          </div>
+        </div>
+        <div className="border-t border-red-200 pt-4 space-y-2.5 max-w-sm">
+          <label className="text-sm font-medium text-red-900">
+            Type <span className="font-mono bg-red-100 px-1 rounded">{currentOrg?.name}</span> to confirm
+          </label>
+          <input
+            value={deleteConfirmText}
+            onChange={(e) => { setDeleteConfirmText(e.target.value); setDeleteError(null); }}
+            placeholder={currentOrg?.name ?? ""}
+            className="w-full rounded-md border border-red-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-300"
+          />
+          {deleteError && <p className="text-xs text-red-600">{deleteError}</p>}
+          <button
+            onClick={handleDeleteOrg}
+            disabled={deleting || deleteConfirmText !== currentOrg?.name}
+            className="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-3.5 py-1.5 rounded-md transition-colors disabled:opacity-40"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            {deleting ? "Deleting…" : "Delete this organization"}
+          </button>
+        </div>
+      </div>
+      </>
+      )}
 
       {activeTab === "terminology" && (
       <Section title="Terminology" icon={Tag} description="Rename what the app calls the sub-goal layer under a Business Goal.">

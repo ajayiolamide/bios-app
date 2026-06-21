@@ -10,10 +10,11 @@ import {
 } from "@/app/actions/cohorts";
 import { getDistinctEventNames, getEventNamesWithSource, type EventNameWithSource } from "@/app/actions/events";
 import { getMixpanelSettings, syncMixpanelEventNames, syncMixpanelRawEvents } from "@/app/actions/mixpanel";
+import { SaveInsightButton } from "@/components/saved-insights/save-insight-button";
 import {
   Users, TrendingUp, Zap, RefreshCw, ChevronDown, Sparkles,
   Filter, MessageSquare, Database, Loader2, X, Search,
-  Bookmark, BookmarkCheck, Trash2, ChevronRight, Plus,
+  Bookmark, BookmarkCheck, Trash2, ChevronRight, Plus, Pencil,
 } from "lucide-react";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -84,14 +85,20 @@ function persistSaved(orgId: string, cohorts: SavedCohort[]) {
 
 function CohortBuilderModal({
   orgId,
+  initialFilter,
   onApply,
   onClose,
 }: {
   orgId: string;
+  // When set, the modal opens pre-filled with this filter's values instead of
+  // blank — used to let someone fix a cohort's event mapping (e.g. "this
+  // points at the wrong event name") without rebuilding the whole thing from
+  // scratch.
+  initialFilter?: CohortFilter | null;
   onApply: (filter: CohortFilter) => void;
   onClose: () => void;
 }) {
-  const [mode, setMode] = useState<"prompt" | "raw">("prompt");
+  const [mode, setMode] = useState<"prompt" | "raw">(initialFilter ? "raw" : "prompt");
   const [promptText, setPromptText] = useState("");
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState("");
@@ -100,8 +107,8 @@ function CohortBuilderModal({
   const [events, setEvents] = useState<EventNameWithSource[]>([]);
   const [eventsLoading, setEventsLoading] = useState(true);
 
-  const [rawEvent, setRawEvent] = useState("");
-  const [rawMin, setRawMin]   = useState(1);
+  const [rawEvent, setRawEvent] = useState(initialFilter?.eventName ?? "");
+  const [rawMin, setRawMin]   = useState(initialFilter?.minOccurrences ?? 1);
   const [rawSearch, setRawSearch] = useState("");
   const [showList, setShowList] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
@@ -109,9 +116,9 @@ function CohortBuilderModal({
   // Two-step condition — "did rawEvent, THEN secondEvent, within N days, for
   // the same user." Without this a raw-mode cohort can only ever express a
   // single event with a minimum count.
-  const [twoStep, setTwoStep] = useState(false);
-  const [secondEvent, setSecondEvent] = useState("");
-  const [withinDays, setWithinDays] = useState(7);
+  const [twoStep, setTwoStep] = useState(!!initialFilter?.secondEventName);
+  const [secondEvent, setSecondEvent] = useState(initialFilter?.secondEventName ?? "");
+  const [withinDays, setWithinDays] = useState(initialFilter?.withinDays ?? 7);
 
   // Load events on mount — sync Mixpanel first so event names appear
   useEffect(() => {
@@ -196,7 +203,7 @@ function CohortBuilderModal({
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 flex-shrink-0">
-          <h2 className="text-base font-semibold text-gray-900">Build cohort</h2>
+          <h2 className="text-base font-semibold text-gray-900">{initialFilter ? "Edit cohort" : "Build cohort"}</h2>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
             <X size={16} />
           </button>
@@ -412,7 +419,7 @@ function CohortBuilderModal({
               disabled={twoStep && (!rawEvent || !secondEvent)}
               className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-700 disabled:opacity-40 transition-colors"
             >
-              <Filter size={13} /> Apply cohort
+              <Filter size={13} /> {initialFilter ? "Save changes" : "Apply cohort"}
             </button>
           )}
         </div>
@@ -724,7 +731,7 @@ function RetentionGrid({ data }: { data: CohortData }) {
 
 // ─── AI Insight ───────────────────────────────────────────────────────────────
 
-function InsightPanel({ data, weeks, eventName, totalUsers }: { data: CohortData; weeks: number; eventName: string; totalUsers: number }) {
+function InsightPanel({ data, weeks, eventName, totalUsers, orgId }: { data: CohortData; weeks: number; eventName: string; totalUsers: number; orgId: string }) {
   const [insight, setInsight] = useState("");
   const [loading, setLoading] = useState(false);
   const ran = useRef(false);
@@ -759,10 +766,20 @@ function InsightPanel({ data, weeks, eventName, totalUsers }: { data: CohortData
           </div>
           <span className="text-sm font-semibold text-gray-800">AI Insight</span>
         </div>
-        <button onClick={generate} disabled={loading} className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-indigo-600 disabled:opacity-40 transition-colors">
-          {loading ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
-          {loading ? "Analyzing…" : "Refresh"}
-        </button>
+        <div className="flex items-center gap-3">
+          {!loading && points.length > 0 && (
+            <SaveInsightButton
+              orgId={orgId}
+              source="cohort"
+              content={points.map((p, i) => `${i + 1}. ${p}`).join("\n")}
+              context={`Cohort retention — ${eventName || "all events"}, ${weeks} weeks`}
+            />
+          )}
+          <button onClick={generate} disabled={loading} className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-indigo-600 disabled:opacity-40 transition-colors">
+            {loading ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+            {loading ? "Analyzing…" : "Refresh"}
+          </button>
+        </div>
       </div>
       {loading ? (
         <div className="space-y-3">{[...Array(3)].map((_, i) => <div key={i} className="h-4 bg-gray-100 animate-pulse rounded" style={{ width: `${85 - i * 12}%` }} />)}</div>
@@ -983,6 +1000,9 @@ export default function CohortsPage() {
   const [eventName, setEventName] = useState("");
   const [loading, setLoading]     = useState(true);
   const [showBuilder, setShowBuilder] = useState(false);
+  // Set while editing an existing filter (vs. building a brand-new one) so
+  // the modal opens pre-filled instead of blank.
+  const [editingFilter, setEditingFilter] = useState<CohortFilter | null>(null);
   const [activeFilter, setActiveFilter] = useState<CohortFilter | null>(null);
   const [activeCohortId, setActiveCohortId] = useState<string | null>(null);
   const [pendingSave, setPendingSave] = useState(false);
@@ -1067,11 +1087,29 @@ export default function CohortsPage() {
     setShowBuilder(false);
     await ensureEventsSynced(filter);
     setActiveFilter(filter);
-    setActiveCohortId(null);
     setEventName(filter.eventName ?? "");
     setTab("retention");
-    setPendingSave(true);
+
+    // If this was an edit of an already-saved cohort, patch its stored filter
+    // in place instead of treating it as a brand-new unsaved one — otherwise
+    // "fix the event this cohort points at" would silently lose the save.
+    if (editingFilter && activeCohortId && currentOrg) {
+      const updated = savedCohorts.map(c => c.id === activeCohortId ? { ...c, filter } : c);
+      setSavedCohorts(updated);
+      persistSaved(currentOrg.id, updated);
+      setEditingFilter(null);
+    } else {
+      setActiveCohortId(null);
+      setEditingFilter(null);
+      setPendingSave(true);
+    }
     setTimeout(() => retentionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
+  }
+
+  function openEditFilter() {
+    if (!activeFilter) return;
+    setEditingFilter(activeFilter);
+    setShowBuilder(true);
   }
 
   function saveCohort(name: string) {
@@ -1104,6 +1142,7 @@ export default function CohortsPage() {
   function clearFilter() {
     setActiveFilter(null);
     setActiveCohortId(null);
+    setEditingFilter(null);
     setEventName("");
     setPendingSave(false);
   }
@@ -1181,7 +1220,10 @@ export default function CohortsPage() {
         <div className="flex items-center gap-2 bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-medium rounded-xl px-3 py-2">
           <Filter size={11} className="flex-shrink-0" />
           <span className="flex-1">{activeFilter.description}</span>
-          <button onClick={clearFilter} className="hover:text-indigo-900 flex-shrink-0"><X size={12} /></button>
+          <button onClick={openEditFilter} className="hover:text-indigo-900 flex-shrink-0" title="Edit this cohort's event(s)">
+            <Pencil size={12} />
+          </button>
+          <button onClick={clearFilter} className="hover:text-indigo-900 flex-shrink-0" title="Clear filter"><X size={12} /></button>
         </div>
       )}
 
@@ -1237,15 +1279,16 @@ export default function CohortsPage() {
 
       {/* ── AI Insight ───────────────────────────────────────────────────────── */}
       {tab === "retention" && !loading && (
-        <InsightPanel data={cohortData} weeks={weeks} eventName={activeFilter?.eventName ?? eventName} totalUsers={dataInfo?.totalUsers ?? 0} />
+        <InsightPanel data={cohortData} weeks={weeks} eventName={activeFilter?.eventName ?? eventName} totalUsers={dataInfo?.totalUsers ?? 0} orgId={currentOrg?.id ?? ""} />
       )}
 
       {/* ── Modals ───────────────────────────────────────────────────────────── */}
       {showBuilder && (
         <CohortBuilderModal
           orgId={currentOrg.id}
+          initialFilter={editingFilter}
           onApply={applyFilter}
-          onClose={() => setShowBuilder(false)}
+          onClose={() => { setShowBuilder(false); setEditingFilter(null); }}
         />
       )}
 

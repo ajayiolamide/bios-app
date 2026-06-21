@@ -23,8 +23,9 @@ import {
   Link, Edit3, Table, LayoutTemplate, History, Zap, ExternalLink, AlertCircle,
   Filter, X, ChevronDown, ChevronLeft, ChevronRight, Eye, Sparkles,
   Coins, MessageSquare, Share2, RotateCcw, Settings2, SlidersHorizontal,
-  Target, FlaskConical, ListOrdered, BookOpen,
+  Target, FlaskConical, ListOrdered, BookOpen, Bookmark,
 } from "lucide-react";
+import { getSavedInsights, type SavedInsight } from "@/app/actions/saved-insights";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -2719,6 +2720,11 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
   const [totalTokens, setTotalTokens] = useState(0);
   const [extraNotes, setExtraNotes] = useState<Record<string, string>>({});
   const [expandedNotes, setExpandedNotes] = useState<Record<string, boolean>>({});
+  // Saved AI insights — pinned earlier from Cohorts / AI Analyst / Business
+  // Brief — selectable per-template and folded into the AI's briefing notes.
+  const [savedInsights, setSavedInsights] = useState<SavedInsight[]>([]);
+  const [selectedInsightIds, setSelectedInsightIds] = useState<Record<string, string[]>>({});
+  const [expandedInsights, setExpandedInsights] = useState<Record<string, boolean>>({});
   // Guided deck: per-template, per-slide guide
   const [slideGuides, setSlideGuides] = useState<Record<string, SlideGuide[]>>({});
   const [expandedGuides, setExpandedGuides] = useState<Record<string, boolean>>({});
@@ -2727,6 +2733,7 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
 
   useEffect(() => {
     getReportTemplates(orgId).then(t => { setTemplates(t); if (t.length > 0) setSelectedTemplateId(t[0].id); });
+    getSavedInsights(orgId).then(setSavedInsights);
     // Get brand colors
     import("@/app/actions/settings").then(({ getBrandSettings }) =>
       getBrandSettings(orgId).then(b => {
@@ -2773,12 +2780,24 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
       const templateGuides = (slideGuides[template.id] ?? []).filter(
         g => g.focus || (g.mustInclude && g.mustInclude.length > 0) || (g.chartType && g.chartType !== "auto")
       );
+
+      // Fold any selected saved insights into the same free-text channel the
+      // AI briefing notes already use — no need for planReport to know about
+      // a separate "insights" concept.
+      const pickedIds = selectedInsightIds[template.id] ?? [];
+      const pickedInsights = savedInsights.filter(i => pickedIds.includes(i.id));
+      const insightsBlock = pickedInsights.length > 0
+        ? "Specifically include these previously-saved insights:\n" +
+          pickedInsights.map(i => `- ${i.content}${i.context ? ` (${i.context})` : ""}`).join("\n")
+        : "";
+      const combinedNotes = [extraNotes[template.id], insightsBlock].filter(Boolean).join("\n\n");
+
       const res = await planReport(
         orgId,
         template.id,
         filteredRows,
         period,
-        extraNotes[template.id],
+        combinedNotes || undefined,
         anyBiosSection ? biosSections : undefined,
         configs.length > 0 ? configs : undefined,
         templateGuides.length > 0 ? templateGuides : undefined
@@ -3064,6 +3083,61 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
                       </div>
                     )}
                   </div>
+
+                  {/* Saved insights picker — pin an insight anywhere in the app
+                      (Cohorts, AI Analyst, Business Brief), then pick it here
+                      to fold it into this report. */}
+                  {savedInsights.length > 0 && (
+                    <div className="-mx-4 border-t border-gray-100">
+                      <button
+                        onClick={() => setExpandedInsights(prev => ({ ...prev, [t.id]: !prev[t.id] }))}
+                        className="w-full flex items-center justify-between px-4 py-3 hover:bg-amber-50/60 transition-colors group">
+                        <div className="flex items-center gap-3">
+                          <div className="w-7 h-7 rounded-lg bg-amber-100 group-hover:bg-amber-200 flex items-center justify-center flex-shrink-0 transition-colors">
+                            <Bookmark size={13} className="text-amber-600" />
+                          </div>
+                          <div className="text-left">
+                            <p className="text-xs font-semibold text-gray-700">Saved Insights</p>
+                            <p className="text-[11px] text-gray-400 leading-tight">Pick from insights you've saved across the app</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {(selectedInsightIds[t.id]?.length ?? 0) > 0
+                            ? <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">{selectedInsightIds[t.id]!.length} selected</span>
+                            : <span className="text-[10px] text-gray-400">Optional</span>}
+                          <ChevronDown size={13} className={`text-gray-400 transition-transform ${expandedInsights[t.id] ? "rotate-180" : ""}`} />
+                        </div>
+                      </button>
+                      {expandedInsights[t.id] && (
+                        <div className="px-4 pb-4 border-t border-gray-100 mt-3 space-y-1.5 max-h-64 overflow-y-auto">
+                          {savedInsights.map(ins => {
+                            const checked = (selectedInsightIds[t.id] ?? []).includes(ins.id);
+                            const sourceLabel = ins.source === "ai_analyst" ? "AI Analyst" : ins.source === "business_brief" ? "Business Brief" : ins.source === "cohort" ? "Cohort" : ins.source;
+                            return (
+                              <label key={ins.id} className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors ${checked ? "border-amber-300 bg-amber-50/60" : "border-gray-100 hover:bg-gray-50"}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => setSelectedInsightIds(prev => {
+                                    const current = prev[t.id] ?? [];
+                                    return { ...prev, [t.id]: checked ? current.filter(id => id !== ins.id) : [...current, ins.id] };
+                                  })}
+                                  className="mt-0.5 accent-amber-600"
+                                />
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full flex-shrink-0">{sourceLabel}</span>
+                                    {ins.context && <span className="text-[10px] text-gray-400 truncate">{ins.context}</span>}
+                                  </div>
+                                  <p className="text-xs text-gray-700 leading-relaxed mt-1 line-clamp-3">{ins.content}</p>
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Guided slide planner */}
                   {(() => {

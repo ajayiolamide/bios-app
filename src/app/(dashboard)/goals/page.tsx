@@ -1874,7 +1874,7 @@ export default function BusinessGoalsPage() {
             The narrower goals product owns to move the Business Goal(s) above — broken into KPIs (key results), then tracked against the features built to move them.
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-start gap-2 flex-shrink-0">
           {/* Mixpanel sync block */}
           {mpConnected ? (
             <div className="flex flex-col items-end gap-1">

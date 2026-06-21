@@ -12,6 +12,7 @@ import {
   type Message,
   type ConversationSummary,
 } from "@/app/actions/analyst";
+import { SaveInsightButton } from "@/components/saved-insights/save-insight-button";
 
 const SUGGESTIONS = [
   "Summarise all my data and tell me what stands out",
@@ -440,7 +441,14 @@ export default function AIAnalystPage() {
                   {m.role === "assistant" && m.content === "" ? (
                     <ThinkingBubble />
                   ) : m.role === "assistant" ? (
-                    <MarkdownText text={m.content} />
+                    <>
+                      <MarkdownText text={m.content} />
+                      {!(streaming && i === messages.length - 1) && (
+                        <div className="mt-2 pt-2 border-t border-gray-100 flex justify-end">
+                          <SaveInsightButton orgId={currentOrg.id} source="ai_analyst" content={m.content} />
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <span className="text-sm leading-relaxed">{m.content}</span>
                   )}
