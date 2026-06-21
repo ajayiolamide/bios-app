@@ -317,6 +317,38 @@ export async function addGuardrailToFeature(
   return {};
 }
 
+// ─── Edit a saved suggestion's tracking frequency ─────────────────────────────
+// The frequency shown on each Metric/KPI/Guardrail card (daily/weekly/monthly)
+// is just the AI's first guess at how often the underlying event fires — the
+// person who actually owns the feature may know better. This persists a
+// correction back into the same suggestions jsonb array the rest of the
+// suggestion (event name, target, etc.) already lives in.
+
+export async function updateFeatureSuggestionFrequency(
+  featureMetricId: string,
+  index: number,
+  frequency: FeatureSuggestion["frequency"]
+): Promise<{ error?: string }> {
+  const admin = createAdminClient();
+  const { data: feature, error: fetchErr } = await admin
+    .from("feature_metrics")
+    .select("suggestions")
+    .eq("id", featureMetricId)
+    .single();
+  if (fetchErr || !feature) return { error: fetchErr?.message ?? "Feature not found" };
+
+  const suggestions = [...((feature.suggestions ?? []) as FeatureSuggestion[])];
+  if (!suggestions[index]) return { error: "Suggestion not found" };
+  suggestions[index] = { ...suggestions[index], frequency };
+
+  const { error: updateErr } = await admin
+    .from("feature_metrics")
+    .update({ suggestions, updated_at: new Date().toISOString() })
+    .eq("id", featureMetricId);
+  if (updateErr) return { error: updateErr.message };
+  return {};
+}
+
 // ─── Archive / delete ─────────────────────────────────────────────────────────
 
 export async function archiveFeatureMetric(id: string): Promise<void> {

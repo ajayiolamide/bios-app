@@ -1343,7 +1343,7 @@ function objectiveProgress(objectiveId: string, goals: BusinessGoal[], goalProgr
 }
 
 function ObjectiveCard({
-  objective, goals, goalProgress, selected, onSelect, onStatusChange, onDelete,
+  objective, goals, goalProgress, selected, onSelect, onStatusChange, onDelete, label, labelPlural,
 }: {
   objective: CompanyObjective;
   goals: BusinessGoal[];
@@ -1352,6 +1352,8 @@ function ObjectiveCard({
   onSelect: () => void;
   onStatusChange: (status: CompanyObjective["status"]) => void;
   onDelete: () => void;
+  label: string;
+  labelPlural: string;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const { goalCount, measurableGoalCount, progressRatio } = objectiveProgress(objective.id, goals, goalProgress);
@@ -1362,63 +1364,68 @@ function ObjectiveCard({
   return (
     <div
       className={cn(
-        "group relative rounded-2xl overflow-hidden transition-all bg-indigo-600",
-        selected ? "ring-2 ring-offset-2 ring-indigo-400" : "hover:shadow-md hover:shadow-indigo-900/15"
+        "group relative rounded-2xl overflow-hidden transition-all bg-gradient-to-br from-slate-900 via-[#161B33] to-slate-900 border border-white/[0.06] shadow-lg shadow-slate-950/30",
+        selected ? "ring-2 ring-offset-2 ring-amber-400/60" : "hover:shadow-xl hover:shadow-slate-950/40"
       )}
     >
       <button onClick={onSelect} className="relative w-full text-left p-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-[10px] font-semibold tracking-widest uppercase text-indigo-200">Business Goal</span>
+        <div className="flex items-center justify-between mb-2.5">
+          <span className="flex items-center gap-1.5 text-[10px] font-semibold tracking-widest uppercase text-amber-300/80">
+            <Trophy size={10} className="text-amber-300/80" /> Business Goal
+          </span>
           <span
             role="button"
             onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
-            className="flex items-center gap-0.5 text-[11px] text-indigo-100 hover:text-white transition-colors"
+            className="flex items-center gap-0.5 text-[11px] text-slate-400 hover:text-slate-200 transition-colors"
           >
             {STATUS_OPTIONS.find((s) => s.value === objective.status)?.label}
             <ChevronDown size={10} />
           </span>
         </div>
 
-        <p className={`text-[15px] font-semibold leading-snug mb-1 ${isMissed ? "line-through text-white/40" : "text-white"}`}>
+        <p className={`text-base font-semibold leading-snug mb-1 tracking-tight ${isMissed ? "line-through text-white/40" : "text-white"}`}>
           {objective.title}
         </p>
 
         {objective.description && (
-          <p className="text-xs text-indigo-100/70 leading-relaxed mb-1">{objective.description}</p>
+          <p className="text-xs text-slate-400 leading-relaxed mb-1">{objective.description}</p>
         )}
 
-        <p className="text-xs text-indigo-100/80 mb-2.5">
+        <p className="text-xs text-slate-400 mb-3">
           {[objective.target, objective.timeframe].filter(Boolean).join(" · ") || "No target set"}
         </p>
 
         {pct === null ? (
-          <p className="text-[11px] text-indigo-100/70">
+          <p className="text-[11px] text-slate-500">
             {goalCount === 0
-              ? "No Product Goals linked yet."
-              : `${goalCount} Product Goal${goalCount !== 1 ? "s" : ""} linked — none measurable yet.`}
+              ? `No ${labelPlural} linked yet.`
+              : `${goalCount} ${goalCount !== 1 ? labelPlural : label} linked — none measurable yet.`}
           </p>
         ) : (
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[11px] text-indigo-100/80">Rolled up from Product Goals</span>
-              <span className={`text-[11px] font-semibold ${overshot ? "text-emerald-300" : "text-white"}`}>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[11px] text-slate-400">Rolled up from {labelPlural}</span>
+              <span className={`text-[11px] font-semibold ${overshot ? "text-emerald-400" : "text-amber-200"}`}>
                 {pct.toLocaleString()}%{overshot ? " — exceeded" : ""}
               </span>
             </div>
-            <div className="h-1.5 rounded-full bg-white/15 overflow-hidden">
-              <div className={`h-full rounded-full ${overshot ? "bg-emerald-400" : "bg-white"}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+            <div className="h-[3px] rounded-full bg-white/[0.08] overflow-hidden">
+              <div
+                className={`h-full rounded-full ${overshot ? "bg-emerald-400" : "bg-gradient-to-r from-amber-300 to-amber-100"}`}
+                style={{ width: `${Math.min(pct, 100)}%` }}
+              />
             </div>
           </div>
         )}
       </button>
 
-      <div className="relative flex items-center justify-between px-4 py-2 border-t border-white/10">
-        <span className="text-[11px] text-indigo-100/80">
-          {goalCount} Product Goal{goalCount !== 1 ? "s" : ""}
+      <div className="relative flex items-center justify-between px-4 py-2.5 border-t border-white/[0.06]">
+        <span className="text-[11px] text-slate-500">
+          {goalCount} {goalCount !== 1 ? labelPlural : label}
         </span>
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className="opacity-0 group-hover:opacity-100 text-indigo-200 hover:text-red-300 transition-all"
+          className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 transition-all"
           title="Delete business goal"
         >
           <Trash2 size={12} />
@@ -1455,6 +1462,8 @@ function ObjectivesPanel({
   filterObjective,
   onFilterChange,
   onSaved,
+  label,
+  labelPlural,
 }: {
   objectives: CompanyObjective[];
   goals: BusinessGoal[];
@@ -1462,6 +1471,8 @@ function ObjectivesPanel({
   filterObjective: string;
   onFilterChange: (id: string) => void;
   onSaved: () => void;
+  label: string;
+  labelPlural: string;
 }) {
   const [showForm, setShowForm] = useState(false);
 
@@ -1475,7 +1486,7 @@ function ObjectivesPanel({
         <div className="flex items-center gap-3">
           {filterObjective !== "all" && (
             <button onClick={() => onFilterChange("all")} className="text-xs text-indigo-500 hover:underline">
-              Show all Product Goals
+              Show all {labelPlural}
             </button>
           )}
           {!showForm && (
@@ -1495,7 +1506,7 @@ function ObjectivesPanel({
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 py-10 text-center">
           <p className="text-sm text-gray-400 max-w-sm">
             Nothing here yet — this is the one big thing (e.g. &quot;Grow activations &amp; retention this quarter&quot;)
-            that all the Product Goals below should ladder up to.
+            that all the {labelPlural.toLowerCase()} below should ladder up to.
           </p>
         </div>
       ) : (
@@ -1510,10 +1521,12 @@ function ObjectivesPanel({
               onSelect={() => onFilterChange(filterObjective === o.id ? "all" : o.id)}
               onStatusChange={async (status) => { await updateCompanyObjectiveStatus(o.id, status); onSaved(); }}
               onDelete={async () => {
-                if (!confirm(`Delete "${o.title}"? Linked Product Goals stay — they'll just show as not linked.`)) return;
+                if (!confirm(`Delete "${o.title}"? Linked ${labelPlural} stay — they'll just show as not linked.`)) return;
                 await deleteCompanyObjective(o.id);
                 onSaved();
               }}
+              label={label}
+              labelPlural={labelPlural}
             />
           ))}
         </div>
@@ -1666,8 +1679,18 @@ const SYNC_WINDOWS = [
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+// What this org calls the sub-goal layer under a Business Goal — defaults to
+// "Product Goal" but is renamable per org (Settings → Terminology) for
+// white-labeling. Naive pluralization (append "s") covers every label an org
+// is realistically going to pick (Initiative, Workstream, OKR, Goal, etc.).
+function pluralize(label: string): string {
+  return label.toLowerCase().endsWith("s") ? label : `${label}s`;
+}
+
 export default function BusinessGoalsPage() {
   const { currentOrg } = useOrg();
+  const productGoalLabel = currentOrg?.product_goal_label?.trim() || "Product Goal";
+  const productGoalLabelPlural = pluralize(productGoalLabel);
   const [goals, setGoals] = useState<BusinessGoal[]>([]);
   const [health, setHealth] = useState<GoalHealthData>({ featuresByGoal: {}, eventCounts: {} });
   const [impactByFeature, setImpactByFeature] = useState<Record<string, FeatureImpactResult>>({});
@@ -1839,12 +1862,14 @@ export default function BusinessGoalsPage() {
         filterObjective={filterObjective}
         onFilterChange={setFilterObjective}
         onSaved={load}
+        label={productGoalLabel}
+        labelPlural={productGoalLabelPlural}
       />
 
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Product Goals</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{productGoalLabelPlural}</h1>
           <p className="text-sm text-gray-400 mt-1">
             The narrower goals product owns to move the Business Goal(s) above — broken into KPIs (key results), then tracked against the features built to move them.
           </p>
@@ -1899,7 +1924,7 @@ export default function BusinessGoalsPage() {
               onClick={() => setShowForm(true)}
               className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
             >
-              <Plus size={14} /> Add goal
+              <Plus size={14} /> Add {productGoalLabel.toLowerCase()}
             </button>
           )}
         </div>

@@ -2,7 +2,9 @@
 
 import { createAdminClient } from "@/lib/supabase/server";
 import { getFeatureImpactSummaries, type FeatureImpactResult } from "./feature-impact";
-import type { BusinessGoal } from "@/types/database";
+import { getCompanyObjectives } from "./company-objectives";
+import { getGoalProgress, type GoalProgress } from "./metrics";
+import type { BusinessGoal, CompanyObjective } from "@/types/database";
 
 export type RecentReport = {
   id: string;
@@ -14,6 +16,12 @@ export type RecentReport = {
 };
 
 export type DashboardData = {
+  // The real, company-wide Business Goals + each Product Goal's own
+  // KPI-target progress — together these are what the Overview hero
+  // visualizes (Business Goal -> its Product Goals -> indicators).
+  objectives: CompanyObjective[];
+  goalProgress: Record<string, GoalProgress>;
+
   goals: BusinessGoal[];
   activeGoals: BusinessGoal[];
   achievedGoals: BusinessGoal[];
@@ -55,6 +63,8 @@ export async function getDashboardData(orgId: string): Promise<DashboardData> {
 
   const [
     { data: allGoals },
+    objectives,
+    goalProgress,
     { data: allFeatures },
     { count: eventCount },
     { count: eventCount7d },
@@ -66,6 +76,8 @@ export async function getDashboardData(orgId: string): Promise<DashboardData> {
       .select("*")
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false }),
+    getCompanyObjectives(orgId),
+    getGoalProgress(orgId),
     admin.from("feature_metrics")
       .select("id, business_goal_id, suggestions, status")
       .eq("organization_id", orgId)
@@ -120,6 +132,8 @@ export async function getDashboardData(orgId: string): Promise<DashboardData> {
   const doneReports = (recentReports ?? []).filter(r => r.status === "done").length;
 
   return {
+    objectives,
+    goalProgress,
     goals,
     activeGoals,
     achievedGoals,

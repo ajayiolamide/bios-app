@@ -19,6 +19,7 @@ import {
   saveAmplitudeSettings,
   testAmplitudeConnection,
 } from "@/app/actions/amplitude";
+import { updateProductGoalLabel } from "@/app/actions/organizations";
 import { createClient } from "@/lib/supabase/client";
 import type { BrandSettings, ReportTemplate } from "@/types/database";
 
@@ -143,8 +144,16 @@ function TemplateRow({ t, onSaved, onDeleted }: {
 }
 
 export default function SettingsPage() {
-  const { currentOrg } = useOrg();
+  const { currentOrg, setCurrentOrg } = useOrg();
   const [templates, setTemplates] = useState<ReportTemplate[]>([]);
+
+  // Terminology — what this org calls the sub-goal layer under a Business
+  // Goal. Seeded straight from currentOrg (no extra fetch needed) and pushed
+  // back into the same org-context object on save so every page reading
+  // currentOrg.product_goal_label updates immediately, no reload required.
+  const [productGoalLabel, setProductGoalLabel] = useState("Product Goal");
+  const [labelSaving, setLabelSaving] = useState(false);
+  const [labelSaved, setLabelSaved] = useState(false);
   const [brandSaving, setBrandSaving] = useState(false);
   const [brandSaved, setBrandSaved] = useState(false);
   const [companyName, setCompanyName] = useState("");
@@ -220,6 +229,25 @@ export default function SettingsPage() {
   }, [currentOrg]);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  useEffect(() => {
+    if (currentOrg) setProductGoalLabel(currentOrg.product_goal_label?.trim() || "Product Goal");
+  }, [currentOrg]);
+
+  async function saveProductGoalLabel(e: React.FormEvent) {
+    e.preventDefault();
+    if (!currentOrg) return;
+    const trimmed = productGoalLabel.trim();
+    if (!trimmed) return;
+    setLabelSaving(true);
+    const result = await updateProductGoalLabel(currentOrg.id, trimmed);
+    setLabelSaving(false);
+    if (!result.error) {
+      setCurrentOrg({ ...currentOrg, product_goal_label: trimmed });
+      setLabelSaved(true);
+      setTimeout(() => setLabelSaved(false), 2000);
+    }
+  }
 
   async function uploadLogo(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -345,6 +373,37 @@ export default function SettingsPage() {
         <h1 className="text-2xl font-bold">Settings</h1>
         <p className="text-sm text-muted-foreground mt-0.5">Brand, report templates, and integrations</p>
       </div>
+
+      {/* Terminology */}
+      <Section title="Terminology" description="Rename what the app calls the sub-goal layer under a Business Goal — useful if you're reselling this under your own brand and vocabulary.">
+        <form onSubmit={saveProductGoalLabel} className="space-y-3 max-w-sm">
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium">What do you call a Product Goal?</label>
+            <input
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="e.g. Product Goal, Initiative, Workstream, OKR"
+              value={productGoalLabel}
+              onChange={(e) => setProductGoalLabel(e.target.value)}
+              maxLength={40}
+            />
+            <p className="text-xs text-muted-foreground">Shows up everywhere this used to say &ldquo;Product Goal(s)&rdquo; — the Goals page, the Overview dashboard, etc.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="submit"
+              disabled={labelSaving || !productGoalLabel.trim()}
+              className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3.5 py-1.5 rounded-md transition-colors disabled:opacity-50"
+            >
+              {labelSaving ? "Saving…" : "Save"}
+            </button>
+            {labelSaved && (
+              <span className="flex items-center gap-1 text-xs text-emerald-600">
+                <CheckCircle2 className="h-3.5 w-3.5" /> Saved
+              </span>
+            )}
+          </div>
+        </form>
+      </Section>
 
       {/* Brand */}
       <Section title="Brand" description="Applied to all generated reports and decks">

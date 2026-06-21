@@ -3,8 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
-  AlertTriangle,
-  Zap, LayoutTemplate, BrainCircuit,
+  Zap, LayoutTemplate, BrainCircuit, Trophy,
   ArrowRight, Clock, CheckCircle2, AlertCircle,
   Lightbulb, FileText, Plus, Loader2,
 } from "lucide-react";
@@ -12,7 +11,6 @@ import { useOrg } from "@/contexts/org-context";
 import { createClient } from "@/lib/supabase/client";
 import { QuickInsight } from "./quick-insight";
 import { getDashboardData, type DashboardData } from "@/app/actions/dashboard";
-import type { BusinessGoal } from "@/types/database";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -24,162 +22,137 @@ function timeAgo(iso: string) {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
+// Mirrors the same naive pluralization used on the Goals page — an org can
+// rename "Product Goal" to whatever fits their own vocabulary (Settings →
+// Terminology), and this just needs to read that back consistently.
+function pluralize(label: string): string {
+  return label.toLowerCase().endsWith("s") ? label : `${label}s`;
+}
+
 function StatusIcon({ status }: { status: string }) {
   if (status === "done") return <CheckCircle2 size={14} className="text-green-500" />;
   if (status === "failed") return <AlertCircle size={14} className="text-red-400" />;
   return <Clock size={14} className="text-amber-400" />;
 }
 
-// ─── Status summary ───────────────────────────────────────────────────────────
-// Replaces the old dark "Feature impact" hero (segmented bar + colored dot
-// legend) and the "Goal health" card (6 stat pills + a "% of goals with data
-// flowing" progress bar). Both were precise but not legible at a glance,
-// especially with only one or two goals where every bar just reads "100%" or
-// "0%" — true but useless. This says the same things in plain sentences
-// instead, and only surfaces a number when there's more than one of
-// something to count.
+// ─── Goal hierarchy hero ───────────────────────────────────────────────────────
+// Replaces the old "Where things stand" bullet list and "Needs attention" row
+// list with one visual that shows the actual shape of the work: each real
+// Business Goal, the Product Goals moving it, and how close each one is —
+// all at a glance, no reading required.
 
-function StatusSummary({ data }: { data: DashboardData }) {
-  const {
-    activeGoals, achievedGoals, missedGoals, noFeatureGoals, linkedNoDataGoals,
-    trackingGoals, featureImpactSummaries, positiveImpact, inconclusiveImpact,
-    negativeImpact, unmeasurableImpact, negativeImpactFeatures,
-  } = data;
+type Objective = DashboardData["objectives"][number];
+type Goal = DashboardData["goals"][number];
+type ProgressMap = DashboardData["goalProgress"];
 
-  const lines: { text: string; tone: "warn" | "good" | "neutral" }[] = [];
-
-  // Goals
-  if (activeGoals.length === 0) {
-    lines.push({ text: "No active goals right now.", tone: "neutral" });
-  } else {
-    const goalWord = activeGoals.length === 1 ? "goal" : "goals";
-    if (trackingGoals.length === activeGoals.length) {
-      lines.push({
-        text: activeGoals.length === 1
-          ? "Your active goal is wired up and receiving real event data."
-          : `All ${activeGoals.length} active ${goalWord} are wired up and receiving real event data.`,
-        tone: "good",
-      });
-    } else {
-      lines.push({
-        text: `${trackingGoals.length} of ${activeGoals.length} active ${goalWord} ${trackingGoals.length === 1 ? "is" : "are"} actually receiving event data — the rest aren't measurable yet.`,
-        tone: trackingGoals.length === 0 ? "warn" : "neutral",
-      });
-    }
-    if (noFeatureGoals.length > 0) {
-      lines.push({
-        text: `${noFeatureGoals.length} active ${noFeatureGoals.length === 1 ? "goal has" : "goals have"} no feature linked to it yet.`,
-        tone: "warn",
-      });
-    }
-    if (linkedNoDataGoals.length > 0) {
-      lines.push({
-        text: `${linkedNoDataGoals.length} ${linkedNoDataGoals.length === 1 ? "goal has" : "goals have"} a feature linked but no events firing yet.`,
-        tone: "warn",
-      });
-    }
-  }
-  if (achievedGoals.length > 0 || missedGoals.length > 0) {
-    const parts: string[] = [];
-    if (achievedGoals.length > 0) parts.push(`${achievedGoals.length} achieved`);
-    if (missedGoals.length > 0) parts.push(`${missedGoals.length} missed`);
-    lines.push({ text: `Past goals: ${parts.join(", ")}.`, tone: missedGoals.length > 0 ? "warn" : "good" });
-  }
-
-  // Feature impact
-  if (featureImpactSummaries.length > 0) {
-    if (negativeImpact > 0) {
-      lines.push({
-        text: `${negativeImpact} of ${featureImpactSummaries.length} feature${featureImpactSummaries.length === 1 ? "" : "s"} ${negativeImpact === 1 ? "is showing" : "are showing"} no real lift over non-adopters.`,
-        tone: "warn",
-      });
-    }
-    if (positiveImpact > 0) {
-      lines.push({
-        text: `${positiveImpact} feature${positiveImpact === 1 ? "" : "s"} proven to move ${positiveImpact === 1 ? "its" : "their"} goal.`,
-        tone: "good",
-      });
-    }
-    const stillBuilding = inconclusiveImpact + unmeasurableImpact;
-    if (stillBuilding > 0) {
-      lines.push({
-        text: `${stillBuilding} feature${stillBuilding === 1 ? "" : "s"} still building evidence — check back once they've had more usage.`,
-        tone: "neutral",
-      });
-    }
-  }
-
-  const toneStyles: Record<string, string> = {
-    warn: "text-amber-700",
-    good: "text-emerald-700",
-    neutral: "text-gray-600",
-  };
-  const toneDot: Record<string, string> = {
-    warn: "bg-amber-400",
-    good: "bg-emerald-400",
-    neutral: "bg-gray-300",
-  };
-
+function ProgressRing({ pct }: { pct: number | null }) {
+  const size = 52, stroke = 4.5, r = (size - stroke) / 2, c = 2 * Math.PI * r;
+  const clamped = pct === null ? 0 : Math.min(Math.max(pct, 0), 100);
+  const offset = c - (clamped / 100) * c;
+  const hit = pct !== null && pct >= 100;
   return (
-    <div className="bg-white border border-gray-100 rounded-2xl p-5">
-      <div className="flex items-center justify-between mb-3">
-        <p className="text-sm font-semibold text-gray-800">Where things stand</p>
-        <Link href="/goals" className="text-xs text-indigo-500 hover:text-indigo-700 flex items-center gap-0.5 transition-colors">
-          View all <ArrowRight size={11} />
-        </Link>
+    <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#EEF2FF" strokeWidth={stroke} />
+        {pct !== null && (
+          <circle
+            cx={size / 2} cy={size / 2} r={r} fill="none"
+            stroke={hit ? "#10B981" : "#6366F1"} strokeWidth={stroke}
+            strokeDasharray={c} strokeDashoffset={offset} strokeLinecap="round"
+          />
+        )}
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="text-[11px] font-bold text-gray-800">{pct !== null ? `${Math.min(pct, 999)}%` : "—"}</span>
       </div>
-      <div className="space-y-2">
-        {lines.map((l, i) => (
-          <div key={i} className="flex items-start gap-2">
-            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1.5 ${toneDot[l.tone]}`} />
-            <p className={`text-sm ${toneStyles[l.tone]}`}>{l.text}</p>
-          </div>
-        ))}
-      </div>
-
-      {negativeImpactFeatures.length > 0 && (
-        <div className="mt-3 pt-3 border-t border-gray-50 space-y-1.5">
-          {negativeImpactFeatures.map((f) => (
-            <div key={f.featureId} className="flex items-center gap-2 text-xs">
-              <AlertCircle size={12} className="text-red-400 flex-shrink-0" />
-              <span className="font-medium text-gray-600">{f.featureName}</span>
-              <span className="text-gray-400">— showing no real lift over non-adopters</span>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
 
-// ─── Goal row ─────────────────────────────────────────────────────────────────
+function ProductGoalRow({ goal, progress }: { goal: Goal; progress: ProgressMap[string] | undefined }) {
+  const ratio = progress?.progressRatio ?? null;
+  const pct = ratio !== null ? Math.round(ratio * 100) : null;
+  const hit = pct !== null && pct >= 100;
+  return (
+    <div className="flex items-center gap-2.5 py-1.5">
+      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${pct === null ? "bg-gray-200" : hit ? "bg-emerald-400" : "bg-indigo-300"}`} />
+      <span className="text-[13px] text-gray-700 truncate flex-1">{goal.title}</span>
+      <div className="w-16 h-1 rounded-full bg-gray-100 overflow-hidden flex-shrink-0">
+        {pct !== null && (
+          <div className={`h-full rounded-full ${hit ? "bg-emerald-400" : "bg-indigo-400"}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+        )}
+      </div>
+      <span className="text-[11px] text-gray-400 w-10 text-right flex-shrink-0">{pct !== null ? `${pct}%` : "—"}</span>
+    </div>
+  );
+}
 
-function GoalRow({
-  goal, featCount, hasEvents,
-}: { goal: BusinessGoal; featCount: number; hasEvents: boolean }) {
-  const health = featCount === 0 ? "no-features"
-    : !hasEvents ? "no-data"
-    : "tracking";
-
-  const badge =
-    health === "no-features" ? (
-      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-100 font-medium">No features linked</span>
-    ) : health === "no-data" ? (
-      <span className="text-[10px] px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 border border-orange-100 font-medium">No event data</span>
-    ) : (
-      <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 border border-emerald-100 font-medium">Tracking</span>
-    );
+function BusinessGoalBlock({
+  objective, goals, goalProgress, labelPlural,
+}: { objective: Objective; goals: Goal[]; goalProgress: ProgressMap; labelPlural: string }) {
+  const linked = goals.filter(g => g.company_objective_id === objective.id);
+  const ratios = linked
+    .map(g => goalProgress[g.id]?.progressRatio)
+    .filter((r): r is number => typeof r === "number");
+  const pct = ratios.length ? Math.round((ratios.reduce((s, r) => s + r, 0) / ratios.length) * 100) : null;
 
   return (
-    <div className="flex items-center gap-3 py-2.5 border-b border-gray-50 last:border-0">
-      <div className="w-1.5 h-1.5 rounded-full bg-indigo-400 flex-shrink-0 mt-0.5" />
+    <div className="flex gap-4 py-4 border-b border-gray-50 last:border-0">
+      <ProgressRing pct={pct} />
       <div className="flex-1 min-w-0">
-        <p className="text-sm text-gray-800 font-medium truncate">{goal.title}</p>
-        <p className="text-[11px] text-gray-400 mt-0.5">
-          {goal.type} {goal.timeframe ? `· ${goal.timeframe}` : ""}
+        <div className="flex items-center gap-1.5">
+          <Trophy size={11} className="text-indigo-400 flex-shrink-0" />
+          <p className="text-[13px] font-bold text-gray-900 truncate">{objective.title}</p>
+        </div>
+        <p className="text-[11px] text-gray-400 mt-0.5 mb-2">
+          {[objective.target, objective.timeframe].filter(Boolean).join(" · ") || "No target set"}
         </p>
+        {linked.length === 0 ? (
+          <p className="text-xs text-gray-400">No {labelPlural} linked yet.</p>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {linked.map(g => <ProductGoalRow key={g.id} goal={g} progress={goalProgress[g.id]} />)}
+          </div>
+        )}
       </div>
-      {badge}
+    </div>
+  );
+}
+
+function GoalsOverview({ data, labelPlural }: { data: DashboardData; labelPlural: string }) {
+  const { objectives, goals, goalProgress } = data;
+  const activeGoals = goals.filter(g => g.status === "active");
+  const unlinked = activeGoals.filter(g => !g.company_objective_id);
+
+  return (
+    <div className="bg-white border border-gray-100 rounded-2xl p-6">
+      <div className="flex items-center justify-between mb-1">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Business Goal → {labelPlural}</p>
+        <Link href="/goals" className="text-xs text-indigo-500 hover:text-indigo-700 flex items-center gap-0.5 transition-colors">
+          Manage <ArrowRight size={11} />
+        </Link>
+      </div>
+
+      {objectives.length === 0 ? (
+        <p className="text-sm text-gray-400 py-3">
+          No business goal set yet — add the one thing that matters most this quarter on the Goals page.
+        </p>
+      ) : (
+        <div>
+          {objectives.map(o => (
+            <BusinessGoalBlock key={o.id} objective={o} goals={activeGoals} goalProgress={goalProgress} labelPlural={labelPlural} />
+          ))}
+        </div>
+      )}
+
+      {unlinked.length > 0 && (
+        <div className={objectives.length > 0 ? "mt-1 pt-3 border-t border-gray-50" : ""}>
+          <p className="text-[11px] text-gray-400 mb-1">Not linked to a business goal yet</p>
+          <div className="divide-y divide-gray-50">
+            {unlinked.map(g => <ProductGoalRow key={g.id} goal={g} progress={goalProgress[g.id]} />)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -188,6 +161,7 @@ function GoalRow({
 
 export default function DashboardPage() {
   const { currentOrg } = useOrg();
+  const productGoalLabelPlural = pluralize(currentOrg?.product_goal_label?.trim() || "Product Goal");
   const [firstName, setFirstName] = useState("there");
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -227,7 +201,6 @@ export default function DashboardPage() {
   }
 
   const {
-    trackingGoals, attentionGoals, featuresByGoal,
     eventCount, eventCount7d, featureCount, recentReports, doneReports,
     featureImpactSummaries,
   } = data;
@@ -277,8 +250,8 @@ export default function DashboardPage() {
         </div>
       ) : (
         <>
-          {/* ── Where things stand — one plain-language summary ───────────────── */}
-          <StatusSummary data={data} />
+          {/* ── Business Goal → Product Goals → indicators, in one view ───────── */}
+          <GoalsOverview data={data} labelPlural={productGoalLabelPlural} />
 
           {featureImpactSummaries.length === 0 && (
             <div className="bg-gray-50 border border-gray-100 rounded-2xl p-5 flex items-center justify-between gap-6">
@@ -297,32 +270,8 @@ export default function DashboardPage() {
       {/* ── Middle row ──────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        {/* Left: goals needing attention + AI insight */}
+        {/* Left: AI insight */}
         <div className="lg:col-span-2 space-y-5">
-
-          {attentionGoals.length > 0 && (
-            <div className="bg-white border border-amber-100 rounded-2xl p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <AlertTriangle size={14} className="text-amber-500" />
-                <p className="text-sm font-semibold text-gray-800">Needs attention</p>
-                <span className="text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">{attentionGoals.length}</span>
-              </div>
-              <div>
-                {attentionGoals.map(g => (
-                  <GoalRow
-                    key={g.id}
-                    goal={g}
-                    featCount={featuresByGoal[g.id] ?? 0}
-                    hasEvents={trackingGoals.includes(g)}
-                  />
-                ))}
-              </div>
-              <Link href="/goals" className="mt-3 flex items-center gap-1 text-xs text-indigo-500 hover:text-indigo-700 transition-colors">
-                Manage goals <ArrowRight size={11} />
-              </Link>
-            </div>
-          )}
-
           {hasGoals && <QuickInsight orgId={currentOrg?.id ?? ""} hasData={eventCount > 0} />}
         </div>
 

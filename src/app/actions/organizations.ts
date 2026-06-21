@@ -87,6 +87,26 @@ export async function removeOrganization(
   return {};
 }
 
+/** Rename what this org calls the sub-goal layer under a Business Goal
+ *  (default "Product Goal") — supports white-labeling the platform under a
+ *  different vocabulary (e.g. "Initiative", "Workstream", "OKR"). */
+export async function updateProductGoalLabel(
+  orgId: string,
+  label: string
+): Promise<{ error?: string }> {
+  const trimmed = label.trim();
+  if (!trimmed) return { error: "Label can't be empty." };
+  if (trimmed.length > 40) return { error: "Keep it under 40 characters." };
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("organizations")
+    .update({ product_goal_label: trimmed })
+    .eq("id", orgId);
+  if (error) return { error: error.message };
+  return {};
+}
+
 /** Fetch all orgs the current user belongs to — bypasses RLS via admin client. */
 export async function getUserOrganizations(): Promise<Organization[]> {
   const supabase = await createServerClient();

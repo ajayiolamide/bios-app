@@ -10,6 +10,7 @@ import {
   updateFeatureLaunchDate,
   confirmFeatureLaunch,
   updateFeatureLaunchStatus,
+  updateFeatureSuggestionFrequency,
 } from "@/app/actions/feature-metrics";
 import { getBusinessGoals } from "@/app/actions/business-goals";
 import { getKpisByGoal, type MetricWithData } from "@/app/actions/metrics";
@@ -20,7 +21,7 @@ import {
   Lightbulb, Loader2, Plus, Trash2, ChevronRight, ChevronLeft,
   CheckCircle2, BarChart3, TrendingUp, Shield, Zap, Clock,
   ExternalLink, Sparkles, ArrowRight, Trophy, Target, Link2,
-  Calendar, AlertTriangle, Rocket, XCircle, RotateCcw,
+  Calendar, AlertTriangle, Rocket, XCircle, RotateCcw, ChevronDown,
 } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -75,12 +76,49 @@ function TypeBadge({ type }: { type: FeatureSuggestion["type"] }) {
 }
 
 // ─── Frequency badge ──────────────────────────────────────────────────────────
+// Read-only by default. Pass onSelect to make it clickable — used both in the
+// wizard (before saving) and on a saved plan (persists immediately), so the
+// AI's first guess at "how often does this fire" can always be corrected.
 
-function FreqBadge({ freq }: { freq: string }) {
+function FreqBadge({
+  freq, onSelect,
+}: { freq: string; onSelect?: (freq: FeatureSuggestion["frequency"]) => void }) {
+  const [open, setOpen] = useState(false);
+
+  if (!onSelect) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-gray-400 border border-gray-100 px-2 py-0.5 rounded-full">
+        <Clock size={9} /> {freq}
+      </span>
+    );
+  }
+
   return (
-    <span className="inline-flex items-center gap-1 text-xs text-gray-400 border border-gray-100 px-2 py-0.5 rounded-full">
-      <Clock size={9} /> {freq}
-    </span>
+    <div className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1 text-xs text-gray-400 border border-gray-100 px-2 py-0.5 rounded-full hover:border-indigo-200 hover:text-indigo-500 transition-colors"
+        title="Click to change how often this is tracked"
+      >
+        <Clock size={9} /> {freq} <ChevronDown size={9} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-gray-100 rounded-xl shadow-lg overflow-hidden w-28">
+            {(["daily", "weekly", "monthly"] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => { onSelect(f); setOpen(false); }}
+                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-indigo-50 transition-colors ${f === freq ? "text-indigo-600 font-semibold" : "text-gray-600"}`}
+              >
+                {f.charAt(0).toUpperCase() + f.slice(1)}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -205,7 +243,7 @@ function SuggestionCard({
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-bold text-gray-400">#{index + 1}</span>
             <TypeBadge type={s.type} />
-            <FreqBadge freq={s.frequency} />
+            <FreqBadge freq={s.frequency} onSelect={(f) => onChange({ ...s, frequency: f })} />
           </div>
         </div>
         <h3 className="font-bold text-gray-900 text-sm mb-1">{s.name}</h3>
@@ -356,6 +394,11 @@ function SavedPlanCard({
     setSaving(true);
     await updateFeatureLaunchStatus(plan.id, "delayed");
     setSaving(false);
+    onUpdated();
+  }
+
+  async function handleFrequencyChange(index: number, frequency: FeatureSuggestion["frequency"]) {
+    await updateFeatureSuggestionFrequency(plan.id, index, frequency);
     onUpdated();
   }
 
@@ -519,7 +562,12 @@ function SavedPlanCard({
           )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {(plan.suggestions as FeatureSuggestion[]).map((s, i) => (
-              <SuggestionCard key={i} s={s} index={i} existingEvents={[]} onChange={() => {}} />
+              <SuggestionCard
+                key={i} s={s} index={i} existingEvents={[]}
+                onChange={(updated) => {
+                  if (updated.frequency !== s.frequency) handleFrequencyChange(i, updated.frequency);
+                }}
+              />
             ))}
           </div>
           <div className="flex justify-end">

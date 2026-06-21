@@ -18,6 +18,12 @@ export interface Database {
           updated_at: string;
           owner_id: string;
           logo_url: string | null;
+          // White-label terminology: what this org calls the sub-goal layer
+          // under a Business Goal. Defaults to "Product Goal" but a reseller
+          // selling this under their own brand may call it "Initiative",
+          // "Workstream", "OKR", etc. — every place that label shows up in
+          // the UI reads from here instead of a hardcoded string.
+          product_goal_label: string;
         };
         Insert: {
           id?: string;
@@ -27,6 +33,7 @@ export interface Database {
           updated_at?: string;
           owner_id: string;
           logo_url?: string | null;
+          product_goal_label?: string;
         };
         Update: {
           id?: string;
@@ -34,6 +41,7 @@ export interface Database {
           slug?: string;
           updated_at?: string;
           logo_url?: string | null;
+          product_goal_label?: string;
         };
       };
       organization_members: {
