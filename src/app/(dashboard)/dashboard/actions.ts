@@ -58,11 +58,14 @@ export async function getQuickInsight(orgId: string): Promise<{ insight?: string
     return `- ${s.name}: ${rows.length} rows, columns: ${headers}`;
   }).join("\n");
 
-  const metricsSummary = (metrics ?? []).map(m =>
+  // Same `never[]` inference issue as sources above, for these two queries.
+  type MetricRow = { name: string; event_name: string | null; aggregation: string };
+  const metricsSummary = ((metrics ?? []) as MetricRow[]).map(m =>
     `- ${m.name} (tracks: ${m.event_name}, method: ${m.aggregation})`
   ).join("\n");
 
-  const reportsSummary = (recentReports ?? []).map(r =>
+  type ReportRow = { template_name: string; period: string };
+  const reportsSummary = ((recentReports ?? []) as ReportRow[]).map(r =>
     `- ${r.template_name} (${r.period})`
   ).join("\n");
 
