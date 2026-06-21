@@ -51,11 +51,16 @@ export async function getAmplitudeSettings(
   orgId: string
 ): Promise<{ settings?: AmplitudeSettings; connected: boolean }> {
   const admin = createAdminClient();
-  const { data } = await admin
+  const { data: rawData } = await admin
     .from("brand_settings")
     .select("amplitude_api_key, amplitude_secret_key, amplitude_data_region")
     .eq("organization_id", orgId)
     .single();
+
+  // Same Supabase generated-type `never` inference issue as elsewhere in
+  // this codebase — explicit shape matches exactly what .select() returns.
+  type AmplitudeRow = { amplitude_api_key: string | null; amplitude_secret_key: string | null; amplitude_data_region: string | null };
+  const data = rawData as AmplitudeRow | null;
 
   if (!data?.amplitude_api_key || !data?.amplitude_secret_key) return { connected: false };
 
