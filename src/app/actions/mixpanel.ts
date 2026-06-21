@@ -262,8 +262,29 @@ export async function syncMixpanelEventNames(
     const json = await res.json() as string[] | { data?: string[]; error?: string };
     if (!Array.isArray(json) && json.error) return { synced: 0, total: 0, error: json.error };
 
-    const eventNames: string[] = Array.isArray(json) ? json : Array.isArray(json.data) ? json.data : [];
-    if (!eventNames.length) return { synced: 0, total: 0 };
+    const rawEventNames: string[] = Array.isArray(json) ? json : Array.isArray(json.data) ? json.data : [];
+    if (!rawEventNames.length) return { synced: 0, total: 0 };
+
+    // Some client-side tracking sends the user's email (or other PII-shaped
+    // value) AS the event name itself — e.g. calling track(user.email)
+    // instead of track("signup", { email }). Mixpanel's /events/names treats
+    // each one as a distinct "event", so a handful of these can crowd out
+    // real, valid event names from the top-255-by-volume list this endpoint
+    // returns, and they pollute every event picker in the app. Filter them
+    // out at the source rather than surfacing them as if they were real
+    // events to track against.
+    //
+    // Also drop Mixpanel's own internal/autocapture/session-replay events —
+    // by Mixpanel convention every one of these is prefixed "$" ($identify,
+    // $merge, $create_alias, $mp_web_page_view, $web_event, $ae_session_*,
+    // session-replay's own bookkeeping events, etc.). None of these are
+    // events a business would ever build a goal or cohort around — they're
+    // Mixpanel plumbing, not product behavior — and they take up the same
+    // 255 slots real event names compete for.
+    const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const eventNames = rawEventNames.filter(n => n && !EMAIL_RE.test(n.trim()) && !n.trim().startsWith("$"));
+
+    if (!eventNames.length) return { synced: 0, total: rawEventNames.length };
 
     // Only skip names that already have a mixpanel-sourced row — don't block on CSV/SDK rows with the same name
     const admin = createAdminClient();

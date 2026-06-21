@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { fetchEventRows } from "./metrics";
 import { computeTimeWindowedRate } from "@/lib/metrics-engine";
+import { isRealEventName } from "./events";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -166,6 +167,7 @@ export async function getTopEvents(
 
   const evMap: Record<string, { count: number; users: Set<string> }> = {};
   for (const ev of data) {
+    if (!isRealEventName(ev.name as string)) continue;
     if (!evMap[ev.name]) evMap[ev.name] = { count: 0, users: new Set() };
     evMap[ev.name].count++;
     if (ev.user_id) evMap[ev.name].users.add(ev.user_id as string);
@@ -194,14 +196,27 @@ export async function getCohortDataInfo(
   const admin = createAdminClient();
   const since = new Date(Date.now() - weeks * 7 * 86400e3).toISOString();
 
-  const { data } = await admin
+  const { data: rawData } = await admin
     .from("events")
-    .select("user_id, timestamp, properties")
+    .select("name, user_id, timestamp, properties")
     .eq("organization_id", orgId)
     .gte("timestamp", since)
     .limit(50000);
 
-  if (!data?.length) {
+  // is_placeholder rows are name-only stubs from syncMixpanelEventNames
+  // (no real user, no real occurrence — just so a name shows up in
+  // autocomplete lists) stamped with timestamp = sync time. Left in, every
+  // sync makes this "Data window" count and date range look like real,
+  // fresh activity happened just now, when nothing actually did. Every
+  // other real activity count in the app already excludes these. Mixpanel's
+  // own internal/autocapture/session-replay events ("$"-prefixed) and the
+  // stray email-named events aren't real product activity either.
+  const data = (rawData ?? []).filter(ev => {
+    const props = ev.properties as Record<string, unknown> | null;
+    return !props?.is_placeholder && isRealEventName(ev.name as string);
+  });
+
+  if (!data.length) {
     return { totalEvents: 0, totalUsers: 0, dateFrom: since, dateTo: new Date().toISOString(), bySource: [] };
   }
 

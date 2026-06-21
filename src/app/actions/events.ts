@@ -6,6 +6,19 @@ import type { Event } from "@/types/database";
 
 // ─── Fetch events (paginated) ─────────────────────────────────────────────────
 
+// Names that should never surface as pickable "events" — Mixpanel's own
+// internal/autocapture/session-replay bookkeeping (always "$"-prefixed by
+// convention), and a stray case where a client mistakenly tracked a literal
+// email address as the event name. Applied at read time as a second line of
+// defense on top of filtering these out at sync time, so any junk that's
+// already in the table (or sneaks back in some other way) still never shows
+// up in a picker.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+export function isRealEventName(name: string): boolean {
+  const n = name?.trim();
+  return !!n && !n.startsWith("$") && !EMAIL_RE.test(n);
+}
+
 export async function getDistinctEventNames(orgId: string): Promise<string[]> {
   const admin = createAdminClient();
   const { data } = await admin
@@ -15,7 +28,7 @@ export async function getDistinctEventNames(orgId: string): Promise<string[]> {
     .order("name");
   if (!data) return [];
   // Deduplicate
-  return [...new Set(data.map((r) => r.name as string))].sort();
+  return [...new Set(data.map((r) => r.name as string).filter(isRealEventName))].sort();
 }
 
 // Returns distinct event names with their source (csv | mixpanel | sdk | null)
@@ -40,6 +53,7 @@ export async function getEventNamesWithSource(orgId: string): Promise<EventNameW
   const SOURCE_RANK: Record<string, number> = { mixpanel: 3, sdk: 2, csv: 1 };
   const seen = new Map<string, EventNameWithSource>();
   for (const row of data) {
+    if (!isRealEventName(row.name as string)) continue;
     const props = row.properties as Record<string, unknown> | null;
     const src = (props?.source as string | undefined) ?? null;
     const source: EventNameWithSource["source"] =
@@ -68,6 +82,14 @@ export async function getEvents(
     .from("events")
     .select("*", { count: "exact" })
     .eq("organization_id", orgId)
+    // Mixpanel's own internal/autocapture/session-replay bookkeeping events
+    // are always "$"-prefixed by convention, and a stray client bug has
+    // tracked literal email addresses as event names — neither is a real
+    // product event, so neither belongs in this list. Filtered at the query
+    // level (not after fetching) so pagination and the total count stay
+    // correct.
+    .not("name", "like", "$%")
+    .not("name", "ilike", "%@%.%")
     .order("timestamp", { ascending: false })
     .range(offset, offset + limit - 1);
 

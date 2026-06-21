@@ -81,6 +81,129 @@ function persistSaved(orgId: string, cohorts: SavedCohort[]) {
   localStorage.setItem(`bios_cohorts_${orgId}`, JSON.stringify(cohorts));
 }
 
+// ─── Searchable event picker ───────────────────────────────────────────────────
+// Shared by the first-event and second-event pickers in the cohort builder.
+// The synced event list is never guaranteed to be complete — Mixpanel's
+// names sync only returns its top 255 events by volume over the last 31
+// days, and raw per-occurrence sync only ever happens for an event AFTER a
+// cohort already references it. A real, valid event (especially a brand-new
+// one, or one that's only fired a handful of times) can legitimately be
+// missing from the list. Rather than leaving that event unreachable, typing
+// its exact name and choosing "Use ..." accepts it directly — applying the
+// cohort then syncs real occurrences for it via the existing
+// ensureEventsSynced flow, regardless of whether it was ever in the cache.
+function EventPicker({
+  events, eventsLoading, value, onChange, placeholder = "All events",
+}: {
+  events: EventNameWithSource[];
+  eventsLoading: boolean;
+  value: string;
+  onChange: (name: string) => void;
+  placeholder?: string;
+}) {
+  const [showList, setShowList] = useState(false);
+  const [search, setSearch] = useState("");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showList) return;
+    function onOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setShowList(false);
+    }
+    document.addEventListener("mousedown", onOutside);
+    return () => document.removeEventListener("mousedown", onOutside);
+  }, [showList]);
+
+  const filtered = events.filter(e => !search || e.name.toLowerCase().includes(search.toLowerCase()));
+  const selected = events.find(e => e.name === value);
+  const exactMatch = events.some(e => e.name.toLowerCase() === search.trim().toLowerCase());
+  const showCustomOption = search.trim().length > 0 && !exactMatch;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => { setShowList(!showList); setSearch(""); }}
+        className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-sm border border-gray-200 rounded-xl hover:border-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          {value ? (
+            <>
+              <code className="text-xs font-mono text-indigo-600 truncate">{value}</code>
+              {selected ? <SourceBadge source={selected.source} /> : (
+                <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full flex-shrink-0">not synced yet</span>
+              )}
+            </>
+          ) : (
+            <span className="text-gray-400">{placeholder}</span>
+          )}
+        </div>
+        {eventsLoading
+          ? <Loader2 size={13} className="text-gray-400 animate-spin flex-shrink-0" />
+          : <ChevronDown size={13} className="text-gray-400 flex-shrink-0" />
+        }
+      </button>
+
+      {showList && (
+        <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100">
+            <Search size={12} className="text-gray-400 flex-shrink-0" />
+            <input
+              autoFocus
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search, or type an exact event name…"
+              className="flex-1 text-sm outline-none placeholder-gray-400"
+            />
+            {search && <button onClick={() => setSearch("")}><X size={12} className="text-gray-400" /></button>}
+          </div>
+          <div className="max-h-52 overflow-y-auto">
+            <button
+              type="button"
+              onClick={() => { onChange(""); setShowList(false); }}
+              className={`w-full flex items-center px-3 py-2.5 text-left text-sm hover:bg-gray-50 transition-colors ${!value ? "text-indigo-600 font-medium" : "text-gray-400 italic"}`}
+            >
+              {placeholder}
+            </button>
+            {showCustomOption && (
+              <button
+                type="button"
+                onClick={() => { onChange(search.trim()); setShowList(false); setSearch(""); }}
+                className="w-full flex items-start gap-2 px-3 py-2.5 text-left hover:bg-amber-50 transition-colors border-y border-amber-100 bg-amber-50/40"
+              >
+                <Plus size={12} className="text-amber-600 flex-shrink-0 mt-0.5" />
+                <span className="text-xs text-gray-700 leading-snug">
+                  Use <code className="font-mono text-amber-700">{search.trim()}</code>
+                  <span className="text-gray-400"> — not in the synced list yet, will sync on apply</span>
+                </span>
+              </button>
+            )}
+            {eventsLoading ? (
+              <div className="flex items-center gap-2 px-3 py-4 text-xs text-gray-400">
+                <Loader2 size={12} className="animate-spin" /> Loading events…
+              </div>
+            ) : filtered.length === 0 && !showCustomOption ? (
+              <p className="px-3 py-4 text-xs text-gray-400 text-center">No events match</p>
+            ) : (
+              filtered.map(ev => (
+                <button
+                  key={ev.name}
+                  type="button"
+                  onClick={() => { onChange(ev.name); setShowList(false); setSearch(""); }}
+                  className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-indigo-50 transition-colors ${ev.name === value ? "bg-indigo-50" : ""}`}
+                >
+                  <code className={`text-xs font-mono truncate flex-1 ${ev.name === value ? "text-indigo-600" : "text-gray-700"}`}>{ev.name}</code>
+                  <SourceBadge source={ev.source} />
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Cohort builder modal ─────────────────────────────────────────────────────
 
 function CohortBuilderModal({
@@ -109,9 +232,6 @@ function CohortBuilderModal({
 
   const [rawEvent, setRawEvent] = useState(initialFilter?.eventName ?? "");
   const [rawMin, setRawMin]   = useState(initialFilter?.minOccurrences ?? 1);
-  const [rawSearch, setRawSearch] = useState("");
-  const [showList, setShowList] = useState(false);
-  const listRef = useRef<HTMLDivElement>(null);
 
   // Two-step condition — "did rawEvent, THEN secondEvent, within N days, for
   // the same user." Without this a raw-mode cohort can only ever express a
@@ -154,14 +274,6 @@ function CohortBuilderModal({
     return () => { cancelled = true; };
   }, [orgId]);
 
-  useEffect(() => {
-    function onOutside(e: MouseEvent) {
-      if (listRef.current && !listRef.current.contains(e.target as Node)) setShowList(false);
-    }
-    document.addEventListener("mousedown", onOutside);
-    return () => document.removeEventListener("mousedown", onOutside);
-  }, []);
-
   async function handlePromptApply() {
     if (!promptText.trim()) return;
     setParsing(true);
@@ -191,11 +303,6 @@ function CohortBuilderModal({
         : `All active users (at least ${rawMin} event${rawMin > 1 ? "s" : ""})`,
     });
   }
-
-  const filteredEvents = events.filter(e =>
-    !rawSearch || e.name.toLowerCase().includes(rawSearch.toLowerCase())
-  );
-  const selectedEv = events.find(e => e.name === rawEvent);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 p-4">
@@ -265,72 +372,7 @@ function CohortBuilderModal({
               {/* Event picker */}
               <div className="space-y-1.5">
                 <label className="text-xs font-medium text-gray-600">Event <span className="text-gray-400">(optional)</span></label>
-                <div ref={listRef} className="relative">
-                  <button
-                    type="button"
-                    onClick={() => { setShowList(!showList); setRawSearch(""); }}
-                    className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-sm border border-gray-200 rounded-xl hover:border-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
-                  >
-                    <div className="flex items-center gap-2 min-w-0">
-                      {selectedEv ? (
-                        <>
-                          <code className="text-xs font-mono text-indigo-600 truncate">{selectedEv.name}</code>
-                          <SourceBadge source={selectedEv.source} />
-                        </>
-                      ) : (
-                        <span className="text-gray-400">All events</span>
-                      )}
-                    </div>
-                    {eventsLoading
-                      ? <Loader2 size={13} className="text-gray-400 animate-spin flex-shrink-0" />
-                      : <ChevronDown size={13} className="text-gray-400 flex-shrink-0" />
-                    }
-                  </button>
-
-                  {showList && (
-                    <div className="absolute z-50 top-full mt-1 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden">
-                      <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100">
-                        <Search size={12} className="text-gray-400 flex-shrink-0" />
-                        <input
-                          autoFocus
-                          value={rawSearch}
-                          onChange={e => setRawSearch(e.target.value)}
-                          placeholder="Search events…"
-                          className="flex-1 text-sm outline-none placeholder-gray-400"
-                        />
-                        {rawSearch && <button onClick={() => setRawSearch("")}><X size={12} className="text-gray-400" /></button>}
-                      </div>
-                      <div className="max-h-52 overflow-y-auto">
-                        <button
-                          type="button"
-                          onClick={() => { setRawEvent(""); setShowList(false); }}
-                          className={`w-full flex items-center px-3 py-2.5 text-left text-sm hover:bg-gray-50 transition-colors ${!rawEvent ? "text-indigo-600 font-medium" : "text-gray-400 italic"}`}
-                        >
-                          All events
-                        </button>
-                        {eventsLoading ? (
-                          <div className="flex items-center gap-2 px-3 py-4 text-xs text-gray-400">
-                            <Loader2 size={12} className="animate-spin" /> Loading events…
-                          </div>
-                        ) : filteredEvents.length === 0 ? (
-                          <p className="px-3 py-4 text-xs text-gray-400 text-center">No events match</p>
-                        ) : (
-                          filteredEvents.map(ev => (
-                            <button
-                              key={ev.name}
-                              type="button"
-                              onClick={() => { setRawEvent(ev.name); setShowList(false); setRawSearch(""); }}
-                              className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-indigo-50 transition-colors ${ev.name === rawEvent ? "bg-indigo-50" : ""}`}
-                            >
-                              <code className={`text-xs font-mono truncate flex-1 ${ev.name === rawEvent ? "text-indigo-600" : "text-gray-700"}`}>{ev.name}</code>
-                              <SourceBadge source={ev.source} />
-                            </button>
-                          ))
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <EventPicker events={events} eventsLoading={eventsLoading} value={rawEvent} onChange={setRawEvent} placeholder="All events" />
               </div>
 
               {/* Min occurrences */}
@@ -369,14 +411,9 @@ function CohortBuilderModal({
                       </button>
                     </div>
                     <div className="flex items-center gap-2">
-                      <select
-                        value={secondEvent}
-                        onChange={e => setSecondEvent(e.target.value)}
-                        className="flex-1 min-w-0 px-3 py-2.5 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-white"
-                      >
-                        <option value="">Select event…</option>
-                        {events.map(ev => <option key={ev.name} value={ev.name}>{ev.name}</option>)}
-                      </select>
+                      <div className="flex-1 min-w-0">
+                        <EventPicker events={events} eventsLoading={eventsLoading} value={secondEvent} onChange={setSecondEvent} placeholder="Select event…" />
+                      </div>
                       <span className="text-xs text-gray-400 flex-shrink-0">within</span>
                       <input
                         type="number" min={1} value={withinDays}
