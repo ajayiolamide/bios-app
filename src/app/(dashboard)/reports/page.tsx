@@ -704,6 +704,15 @@ function PreviewModal({
   const [inviteResult, setInviteResult] = useState<{ sent: number; failed: string[] } | null>(null);
   const [noEmailProvider, setNoEmailProvider] = useState(false);
   const slideCanvasRef = useRef<HTMLDivElement>(null);
+  // Always-mounted, off-screen render target for PDF export. The visible
+  // slideCanvasRef div only exists in "Slides" view — but "Summary" view
+  // (the default view when a deck opens) has its own "Export PDF" button
+  // that reads slideCanvasRef too. Since that ref is null whenever Summary
+  // is showing, handleExportPDF's `if (!ref.current) return;` guard quietly
+  // no-opped on every click — no spinner, no error, dead button. This ref
+  // is rendered unconditionally regardless of which view tab is active, so
+  // export works the same from either button.
+  const exportCanvasRef = useRef<HTMLDivElement>(null);
   const [rightPanel, setRightPanel] = useState<"none" | "add" | "edit" | "comments">("none");
   const [presenting, setPresenting] = useState(false);
   // Share / review
@@ -822,7 +831,7 @@ function PreviewModal({
   };
 
   const handleExportPDF = async () => {
-    if (!slideCanvasRef.current) return;
+    if (!exportCanvasRef.current) return;
     setPdfExporting(true);
     const savedIdx = idx;
     try {
@@ -840,7 +849,7 @@ function PreviewModal({
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const html2canvas = (window as any).html2canvas;
 
-      const el = slideCanvasRef.current;
+      const el = exportCanvasRef.current;
       // Standard 16:9 presentation dimensions in points (960 × 540 pt = 13.33 × 7.5 in)
       const PAGE_W = 960;
       const PAGE_H = 540;
@@ -972,6 +981,10 @@ function PreviewModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      {/* Off-screen, always-mounted — see exportCanvasRef comment above */}
+      <div ref={exportCanvasRef} style={{ position: "fixed", top: 0, left: -9999, width: 960, height: 540, pointerEvents: "none" }}>
+        {slide ? <SlideCard slide={slide} brand={brand} deckTitle={deck?.title ?? ""} /> : null}
+      </div>
       <div className="bg-white rounded-2xl shadow-2xl flex overflow-hidden" style={{ width: "min(96vw, 1200px)", height: "min(92vh, 720px)" }}>
 
         {/* ── Left: filmstrip ───────────────────────────────────────────── */}
