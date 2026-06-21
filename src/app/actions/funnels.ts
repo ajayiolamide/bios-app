@@ -5,15 +5,6 @@ import type { Funnel } from "@/types/database";
 import { getMixpanelSettings, fetchMixpanelEventCounts, syncMixpanelRawEvents } from "@/app/actions/mixpanel";
 import Anthropic from "@anthropic-ai/sdk";
 
-// computeFunnel does a live Mixpanel raw-export sync before computing (see
-// below) — that's a real network call to Mixpanel that can run past
-// Vercel's default Server Action timeout on a funnel with multiple steps
-// and several weeks of history, which kills the whole request mid-flight
-// and leaves the calling UI stuck (the click handler's promise never
-// resolves or rejects cleanly). Raising this gives it real room to finish
-// instead of getting cut off silently.
-export const maxDuration = 60;
-
 export type FunnelStep = { event_name: string };
 
 export type FunnelStepResult = {
