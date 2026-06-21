@@ -9,7 +9,7 @@ import {
   type CohortConversionResult,
 } from "@/app/actions/cohorts";
 import { getDistinctEventNames, getEventNamesWithSource, type EventNameWithSource } from "@/app/actions/events";
-import { getMixpanelSettings, syncMixpanelEventNames } from "@/app/actions/mixpanel";
+import { getMixpanelSettings, syncMixpanelEventNames, syncMixpanelRawEvents } from "@/app/actions/mixpanel";
 import {
   Users, TrendingUp, Zap, RefreshCw, ChevronDown, Sparkles,
   Filter, MessageSquare, Database, Loader2, X, Search,
@@ -988,6 +988,28 @@ export default function CohortsPage() {
   const [pendingSave, setPendingSave] = useState(false);
   const [savedCohorts, setSavedCohorts] = useState<SavedCohort[]>([]);
 
+  // Picking an event here (via the builder, a saved cohort, or the plain
+  // dropdown) only ever searched Mixpanel for the NAME — syncMixpanelEventNames
+  // populates the autocomplete list but never pulls the actual per-user rows.
+  // Retention/conversion math below reads only from our own `events` table,
+  // so an event that's never been wired to a goal's tracked feature (the only
+  // other place a Mixpanel sync runs) would show "no users" here even though
+  // Mixpanel itself has plenty of occurrences. Pulling the specific event(s)
+  // a cohort filter actually needs, right when it's applied, fixes that at
+  // the source instead of just explaining the gap in an error message.
+  const [syncingFilter, setSyncingFilter] = useState(false);
+
+  async function ensureEventsSynced(filter: CohortFilter) {
+    if (!currentOrg) return;
+    const names = [filter.eventName, filter.secondEventName].filter((n): n is string => !!n);
+    if (!names.length) return;
+    const { connected } = await getMixpanelSettings(currentOrg.id);
+    if (!connected) return;
+    setSyncingFilter(true);
+    await syncMixpanelRawEvents(currentOrg.id, names, 90).catch(() => {});
+    setSyncingFilter(false);
+  }
+
   const [cohortData, setCohortData] = useState<CohortData>({ rows: [], maxWeeks: 0 });
   const [wauData, setWauData]       = useState<WAURow[]>([]);
   const [topEvents, setTopEvents]   = useState<TopEventRow[]>([]);
@@ -1033,11 +1055,12 @@ export default function CohortsPage() {
 
   if (!currentOrg) return null;
 
-  function applyFilter(filter: CohortFilter) {
+  async function applyFilter(filter: CohortFilter) {
+    setShowBuilder(false);
+    await ensureEventsSynced(filter);
     setActiveFilter(filter);
     setActiveCohortId(null);
     setEventName(filter.eventName ?? "");
-    setShowBuilder(false);
     setTab("retention");
     setPendingSave(true);
     setTimeout(() => retentionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
@@ -1053,7 +1076,8 @@ export default function CohortsPage() {
     setPendingSave(false);
   }
 
-  function selectSavedCohort(c: SavedCohort) {
+  async function selectSavedCohort(c: SavedCohort) {
+    await ensureEventsSynced(c.filter);
     setActiveFilter(c.filter);
     setActiveCohortId(c.id);
     setEventName(c.filter.eventName ?? "");
@@ -1103,7 +1127,11 @@ export default function CohortsPage() {
           </div>
 
           {tab === "retention" && !activeFilter && eventNames.length > 0 && (
-            <EventFilterDropdown value={eventName} events={eventNames} onChange={setEventName} />
+            <EventFilterDropdown
+              value={eventName}
+              events={eventNames}
+              onChange={async (name) => { await ensureEventsSynced({ eventName: name || null }); setEventName(name); }}
+            />
           )}
 
           <button
@@ -1120,6 +1148,11 @@ export default function CohortsPage() {
       </div>
 
       {/* ── Data window ──────────────────────────────────────────────────────── */}
+      {syncingFilter && (
+        <div className="flex items-center gap-2 text-xs text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2">
+          <RefreshCw size={12} className="animate-spin" /> Pulling the latest occurrences of this event from Mixpanel…
+        </div>
+      )}
       <DataInfoBar info={dataInfo} loading={loading} />
 
       {/* ── Saved cohorts strip ──────────────────────────────────────────────── */}

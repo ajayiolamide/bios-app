@@ -325,6 +325,40 @@ export async function resolveComment(commentId: string): Promise<void> {
   await admin.from("slide_comments").update({ resolved: true }).eq("id", commentId);
 }
 
+// ─── Keep comments pinned to the right slide after reordering ───────────────
+// Comments are stored against a plain numeric slide_index, not a stable
+// per-slide id — so dragging slide #5 to position #2 would otherwise leave
+// every comment pointing at whatever slide now happens to sit at the index
+// it used to. This rewrites slide_index for affected comments right after a
+// drag-reorder, using the same old-index -> new-index map the editor just
+// applied to the slides array itself.
+
+export async function remapCommentSlideIndexes(
+  reviewId: string,
+  oldToNew: Record<number, number>
+): Promise<{ error?: string }> {
+  const admin = createAdminClient();
+  const { data: rows, error: fetchErr } = await admin
+    .from("slide_comments")
+    .select("id, slide_index")
+    .eq("review_id", reviewId);
+  if (fetchErr) return { error: fetchErr.message };
+
+  const toUpdate = (rows ?? []).filter(
+    (r) => oldToNew[r.slide_index] !== undefined && oldToNew[r.slide_index] !== r.slide_index
+  );
+  if (!toUpdate.length) return {};
+
+  const results = await Promise.all(
+    toUpdate.map((r) =>
+      admin.from("slide_comments").update({ slide_index: oldToNew[r.slide_index] }).eq("id", r.id)
+    )
+  );
+  const failed = results.find((r) => r.error);
+  if (failed?.error) return { error: failed.error.message };
+  return {};
+}
+
 // ─── Replan a single slide using a comment as direction ──────────────────────
 
 export async function replanSlide(

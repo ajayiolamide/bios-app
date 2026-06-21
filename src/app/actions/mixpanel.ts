@@ -334,16 +334,22 @@ export async function syncMixpanelRawEvents(
   }
 
   const admin = createAdminClient();
-  const { data: brand } = await admin
-    .from("brand_settings")
-    .select("mixpanel_raw_synced_until")
-    .eq("organization_id", orgId)
-    .single();
 
   const cappedDays = Math.min(days, 90);
   const earliestAllowedMs = Date.now() - cappedDays * 864e5;
-  const lastSyncMs = brand?.mixpanel_raw_synced_until ? new Date(brand.mixpanel_raw_synced_until).getTime() : null;
-  const fromMs = lastSyncMs && lastSyncMs > earliestAllowedMs ? lastSyncMs : earliestAllowedMs;
+  // This used to start from a single org-wide watermark
+  // (brand_settings.mixpanel_raw_synced_until) instead of the full requested
+  // window. That broke the moment this got called for an event name that had
+  // never been synced before: the watermark had already moved forward from
+  // an earlier, unrelated sync (e.g. a different goal's KPI event), so this
+  // new event's real historical occurrences in Mixpanel were silently
+  // skipped — looking like "no data" in the app when Mixpanel clearly had
+  // it. Always pulling the full requested window and de-duping against what
+  // we already have (below) before inserting is the correct fix: a bit of
+  // redundant API/DB work on repeat syncs, instead of missing real events.
+  // mixpanel_raw_synced_until is still written below — it's now purely
+  // informational (the "last synced" hint on the Goals page).
+  const fromMs = earliestAllowedMs;
   const toMs = Date.now();
 
   try {
@@ -411,11 +417,34 @@ export async function syncMixpanelRawEvents(
       return { synced: 0 };
     }
 
+    // Now that every sync re-fetches the full window instead of resuming
+    // from a watermark, the same Mixpanel occurrence can come back on a
+    // later sync — filter out anything already sitting in `events` for this
+    // org/event/time range before inserting, keyed by name+user+timestamp
+    // (Mixpanel's own export doesn't expose a row id we can rely on, but a
+    // real distinct user firing the same named event in the same second
+    // twice is rare enough to accept).
+    const { data: existing } = await admin
+      .from("events")
+      .select("name, user_id, timestamp")
+      .eq("organization_id", orgId)
+      .in("name", eventNames)
+      .gte("timestamp", new Date(fromMs).toISOString());
+    const existingKeys = new Set(
+      (existing ?? []).map((e) => `${e.name}|${e.user_id ?? ""}|${e.timestamp}`)
+    );
+    const newRows = rows.filter((r) => !existingKeys.has(`${r.name}|${r.user_id ?? ""}|${r.timestamp}`));
+
+    if (!newRows.length) {
+      await admin.from("brand_settings").update({ mixpanel_raw_synced_until: new Date(toMs).toISOString() }).eq("organization_id", orgId);
+      return { synced: 0 };
+    }
+
     // Batch insert to keep individual payloads reasonable.
     const CHUNK = 500;
     let inserted = 0;
-    for (let i = 0; i < rows.length; i += CHUNK) {
-      const chunk = rows.slice(i, i + CHUNK);
+    for (let i = 0; i < newRows.length; i += CHUNK) {
+      const chunk = newRows.slice(i, i + CHUNK);
       const { error } = await admin.from("events").insert(chunk);
       if (error) return { synced: inserted, error: error.message };
       inserted += chunk.length;
