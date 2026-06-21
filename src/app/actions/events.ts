@@ -66,9 +66,19 @@ export async function getEvents(
   { search = "", offset = 0, limit = 50, source }: { search?: string; offset?: number; limit?: number; source?: "csv" | "mixpanel" | "all" } = {}
 ): Promise<{ events: Event[]; total: number }> {
   const admin = createAdminClient();
+  // "estimated" instead of "exact": an exact count forces Postgres to scan
+  // and count every matching row on every page load, which on a few-hundred-
+  // thousand-row table under load (e.g. while the project is short on
+  // compute) is slow enough to time out. When that happened, the query
+  // error was never checked below, so a failed/timed-out request silently
+  // looked identical to "this org genuinely has zero events" — the count
+  // pill went blank and the page showed the empty state instead of an
+  // error. Estimated count reads Postgres's existing table statistics
+  // instead of scanning, which is instant and plenty accurate for a page
+  // count display.
   let query = admin
     .from("events")
-    .select("*", { count: "exact" })
+    .select("*", { count: "estimated" })
     .eq("organization_id", orgId)
     // Mixpanel's own internal/autocapture/session-replay bookkeeping events
     // are always "$"-prefixed by convention, and a stray client bug has
@@ -85,7 +95,12 @@ export async function getEvents(
   if (source === "csv")      query = query.filter("properties->>source", "eq", "csv");
   if (source === "mixpanel") query = query.filter("properties->>source", "eq", "mixpanel");
 
-  const { data, count } = await query;
+  const { data, count, error } = await query;
+  if (error) {
+    // Previously swallowed — a failed/timed-out query looked exactly like
+    // "no events exist" with no way to tell the difference from the UI.
+    console.error("[getEvents]", error);
+  }
   return { events: (data ?? []) as Event[], total: count ?? 0 };
 }
 
