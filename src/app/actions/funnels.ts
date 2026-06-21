@@ -5,6 +5,15 @@ import type { Funnel } from "@/types/database";
 import { getMixpanelSettings, fetchMixpanelEventCounts, syncMixpanelRawEvents } from "@/app/actions/mixpanel";
 import Anthropic from "@anthropic-ai/sdk";
 
+// computeFunnel does a live Mixpanel raw-export sync before computing (see
+// below) — that's a real network call to Mixpanel that can run past
+// Vercel's default Server Action timeout on a funnel with multiple steps
+// and several weeks of history, which kills the whole request mid-flight
+// and leaves the calling UI stuck (the click handler's promise never
+// resolves or rejects cleanly). Raising this gives it real room to finish
+// instead of getting cut off silently.
+export const maxDuration = 60;
+
 export type FunnelStep = { event_name: string };
 
 export type FunnelStepResult = {
@@ -74,19 +83,48 @@ export async function deleteFunnel(funnelId: string): Promise<{ error: string | 
   return { error: error?.message ?? null };
 }
 
+// ─── Lookback window ─────────────────────────────────────────────────────────
+//
+// Per-funnel, adjustable from the card itself rather than locked in at
+// creation — a flow with a longer conversion cycle (e.g. signup to first
+// purchase on an insurance product) genuinely needs more than 30 days to
+// see real conversions; a fast flow doesn't need the slower 90-day pull.
+
+export async function updateFunnelLookback(
+  funnelId: string,
+  lookbackDays: number
+): Promise<{ error: string | null }> {
+  const days = Math.min(Math.max(Math.round(lookbackDays), 1), 90);
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("funnels")
+    .update({ lookback_days: days, updated_at: new Date().toISOString() })
+    .eq("id", funnelId);
+  return { error: error?.message ?? null };
+}
+
 // ─── Compute conversion ──────────────────────────────────────────────────────
 
 export async function computeFunnel(
   orgId: string,
-  steps: FunnelStep[]
+  steps: FunnelStep[],
+  // How many days back to sequence users through the steps. Used to be a
+  // hardcoded 30 everywhere — fine for fast-converting flows, but it
+  // silently undercounts longer sales cycles (e.g. someone who signs up
+  // week 1 and doesn't complete a purchase until week 6 reads as a
+  // drop-off, when they actually converted just outside the window).
+  // Capped at 90 to match Mixpanel raw-export's own cap below.
+  lookbackDays: number = 30
 ): Promise<FunnelStepResult[]> {
   if (steps.length === 0) return [];
 
+  const days = Math.min(Math.max(lookbackDays, 1), 90);
+
   const admin = createAdminClient();
 
-  // Fetch all relevant events for this funnel (last 30 days)
+  // Fetch all relevant events for this funnel within the lookback window
   const since = new Date();
-  since.setDate(since.getDate() - 29);
+  since.setDate(since.getDate() - (days - 1));
   since.setHours(0, 0, 0, 0);
 
   const eventNames = [...new Set(steps.map((s) => s.event_name))];
@@ -101,9 +139,16 @@ export async function computeFunnel(
   // same gap Cohorts had before it started syncing on demand. Doing the same
   // here means a funnel works correctly the moment it's computed, not only
   // for events that happened to already be raw-synced by something else.
+  //
+  // Days here matches the `since` window above — it used to always ask for
+  // 90 days of raw export while only ever reading a hardcoded last-30, which
+  // meant computing a funnel for the first time pulled 3x more data from
+  // Mixpanel than it could ever use, making the click that opens a funnel
+  // noticeably slower (and on a step with a lot of volume, slow enough to
+  // hit the function timeout and leave the panel stuck not-expanding).
   const { connected } = await getMixpanelSettings(orgId);
   if (connected) {
-    await syncMixpanelRawEvents(orgId, eventNames, 90).catch(() => {});
+    await syncMixpanelRawEvents(orgId, eventNames, days).catch(() => {});
   }
 
   // Fetch real user-level events (excludes Mixpanel stubs which have null user_id)
@@ -159,7 +204,7 @@ export async function computeFunnel(
     const mpNames = [...new Set(mixpanelOnlySteps.map(s => s.event_name))];
     const { settings, connected } = await getMixpanelSettings(orgId);
     if (connected && settings) {
-      const { counts } = await fetchMixpanelEventCounts(orgId, mpNames, 30);
+      const { counts } = await fetchMixpanelEventCounts(orgId, mpNames, days);
       if (counts) mixpanelCounts = counts;
     }
   }

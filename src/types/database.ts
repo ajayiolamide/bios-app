@@ -160,6 +160,13 @@ export interface Database {
           name: string;
           description: string | null;
           steps: { event_name: string }[];
+          // How many days back computeFunnel looks when sequencing users
+          // through the steps. Used to be hardcoded to 30 everywhere, which
+          // silently undercounts conversions on longer sales cycles (e.g. a
+          // user who signs up week 1 and completes a purchase week 6).
+          // Per-funnel and adjustable from the funnel card, not locked in
+          // at creation.
+          lookback_days: number;
           created_by: string | null;
           created_at: string;
           updated_at: string;
@@ -170,6 +177,7 @@ export interface Database {
           name: string;
           description?: string | null;
           steps: { event_name: string }[];
+          lookback_days?: number;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -178,6 +186,7 @@ export interface Database {
           name?: string;
           description?: string | null;
           steps?: { event_name: string }[];
+          lookback_days?: number;
           updated_at?: string;
         };
       };

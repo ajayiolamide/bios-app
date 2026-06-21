@@ -420,10 +420,20 @@ export async function syncMixpanelRawEvents(
         if (!parsed.event || !eventNames.includes(parsed.event)) continue;
         const props = parsed.properties ?? {};
         const timeSec = typeof props.time === "number" ? props.time : Math.floor(Date.now() / 1000);
+        // Mixpanel's raw export properties payload includes device, browser,
+        // city, screen size, library version, etc. — every field it ships
+        // with. Nothing in this app ever reads any of that back out; the
+        // only two keys anything checks are `source` and `is_placeholder`
+        // (see isRealEventName usage and the is_placeholder filters in
+        // cohorts.ts/events.ts). Storing the full payload was pure waste —
+        // at ~590k rows it alone accounted for the bulk of the database
+        // hitting its disk-space cap and going read-only. Only `distinct_id`
+        // and `time` are ever used, and those are already pulled out into
+        // their own user_id/timestamp columns above.
         rows.push({
           organization_id: orgId,
           name: parsed.event,
-          properties: { ...props, source: "mixpanel" },
+          properties: { source: "mixpanel" },
           user_id: typeof props.distinct_id === "string" ? props.distinct_id : null,
           session_id: null,
           timestamp: new Date(timeSec * 1000).toISOString(),

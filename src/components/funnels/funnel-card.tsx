@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Trash2, ChevronDown, ChevronUp, Sparkles, RefreshCw, Loader2 } from "lucide-react";
 import type { Funnel, FunnelStepResult } from "@/app/actions/funnels";
-import { computeFunnel, deleteFunnel, getFunnelInsight } from "@/app/actions/funnels";
+import { computeFunnel, deleteFunnel, getFunnelInsight, updateFunnelLookback } from "@/app/actions/funnels";
 import { FunnelConversionChart } from "./funnel-chart";
 import { SaveInsightButton } from "@/components/saved-insights/save-insight-button";
 
@@ -13,12 +13,25 @@ interface Props {
   onDeleted: () => void;
 }
 
+const LOOKBACK_OPTIONS = [30, 60, 90];
+
 export function FunnelCard({ funnel, orgId, onDeleted }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [results, setResults] = useState<FunnelStepResult[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [insight, setInsight] = useState("");
   const [insightLoading, setInsightLoading] = useState(false);
+  // computeFunnel does a live Mixpanel sync before computing, which is a real
+  // network call that can fail or run long. Without a try/catch here, a
+  // thrown error skipped straight past setLoading(false) and setExpanded —
+  // the chevron looked "frozen" because the click handler died silently
+  // partway through, never reaching the lines that would un-stick the UI.
+  const [computeError, setComputeError] = useState<string | null>(null);
+  // How far back to sequence users through the steps. Used to be a fixed
+  // 30 days everywhere, which under-counts longer conversion cycles (e.g.
+  // signup week 1, first purchase week 6 reads as a drop-off). Persisted
+  // per-funnel so the choice sticks next time it's opened.
+  const [lookbackDays, setLookbackDays] = useState(funnel.lookback_days ?? 30);
 
   async function generateInsight(r: FunnelStepResult[]) {
     setInsightLoading(true);
@@ -27,15 +40,32 @@ export function FunnelCard({ funnel, orgId, onDeleted }: Props) {
     setInsightLoading(false);
   }
 
-  async function toggle() {
-    if (!expanded && results === null) {
-      setLoading(true);
-      const r = await computeFunnel(orgId, funnel.steps as { event_name: string }[]);
+  async function loadResults(days: number) {
+    setLoading(true);
+    setComputeError(null);
+    try {
+      const r = await computeFunnel(orgId, funnel.steps as { event_name: string }[], days);
       setResults(r);
-      setLoading(false);
+      setInsight("");
       if (r.some(s => s.users > 0)) generateInsight(r);
+    } catch (err) {
+      setComputeError((err as Error)?.message || "Couldn't load this funnel — try again.");
+    } finally {
+      setLoading(false);
     }
+  }
+
+  function toggle() {
+    if (!expanded && results === null && !loading) loadResults(lookbackDays);
     setExpanded((v) => !v);
+  }
+
+  function changeLookback(days: number) {
+    if (days === lookbackDays || loading) return;
+    setLookbackDays(days);
+    setResults(null);
+    updateFunnelLookback(funnel.id, days).catch(() => {});
+    loadResults(days);
   }
 
   async function handleDelete() {
@@ -88,9 +118,41 @@ export function FunnelCard({ funnel, orgId, onDeleted }: Props) {
       {/* Expanded chart */}
       {expanded && (
         <div className="border-t px-5 py-4 space-y-4">
+          {/* Lookback window — defaults to 30 days, but a flow with a longer
+              conversion cycle (sign up week 1, purchase week 6) needs more
+              room than that to avoid reading real conversions as drop-off. */}
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] text-muted-foreground">Looking back</span>
+            <div className="flex gap-1">
+              {LOOKBACK_OPTIONS.map(d => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => changeLookback(d)}
+                  disabled={loading}
+                  className={`text-[11px] font-medium px-2.5 py-1 rounded-full border transition-colors disabled:opacity-50 ${
+                    lookbackDays === d ? "bg-indigo-50 border-indigo-200 text-indigo-700" : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+                  }`}
+                >
+                  {d} days
+                </button>
+              ))}
+            </div>
+          </div>
+
           {loading ? (
             <div className="h-48 flex items-center justify-center text-sm text-muted-foreground">
               Computing…
+            </div>
+          ) : computeError ? (
+            <div className="h-32 flex flex-col items-center justify-center gap-2 text-sm text-center">
+              <p className="text-red-500">{computeError}</p>
+              <button
+                onClick={() => loadResults(lookbackDays)}
+                className="text-xs font-medium text-indigo-600 hover:text-indigo-700"
+              >
+                Try again
+              </button>
             </div>
           ) : results ? (
             <>
