@@ -14,7 +14,7 @@ import type { SlideContent } from "@/app/actions/reports";
 // component both pages import fixes that at the source — there is now only
 // one chart renderer to keep correct.
 
-export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; brand: { primary: string; secondary: string }; deckTitle: string }) {
+export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; brand: { primary: string; secondary: string; logoUrl?: string | null }; deckTitle: string }) {
   const p = brand.primary;
 
   // ── Brand slides (title / closing) — full colour ────────────────────────────
@@ -30,6 +30,11 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
           <img src={slide.image_url} alt="" className="absolute inset-0 w-full h-full object-cover opacity-30" />
           <div className="absolute inset-0" style={{ background: `linear-gradient(90deg, ${p} 40%, transparent 100%)` }} />
         </>
+      )}
+      {/* Company logo — mirrors where pptxgenjs places it on the exported cover slide */}
+      {brand.logoUrl && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={brand.logoUrl} alt="" className="absolute top-6 right-8 h-8 max-w-[120px] object-contain" />
       )}
       <div className="relative">
         <p className="text-white/50 text-[11px] tracking-widest uppercase mb-4">{deckTitle}</p>

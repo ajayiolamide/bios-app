@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Trash2, Edit2, Check, X, Upload, ImageIcon, Link2, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { Plus, Trash2, Edit2, Check, X, Upload, ImageIcon, Link2, Loader2, CheckCircle2, AlertCircle, Tag, Palette, Plug, LayoutTemplate } from "lucide-react";
 import { useOrg } from "@/contexts/org-context";
 import {
   getBrandSettings, saveBrandSettings,
@@ -23,19 +23,34 @@ import { updateProductGoalLabel } from "@/app/actions/organizations";
 import { createClient } from "@/lib/supabase/client";
 import type { BrandSettings, ReportTemplate } from "@/types/database";
 
-function Section({ title, description, children }: {
-  title: string; description?: string; children: React.ReactNode;
+function Section({ title, description, icon: Icon, children }: {
+  title: string; description?: string; icon?: React.ComponentType<{ className?: string }>; children: React.ReactNode;
 }) {
   return (
     <div className="rounded-xl border bg-card p-6 space-y-4">
-      <div>
-        <h2 className="font-semibold text-base">{title}</h2>
-        {description && <p className="text-sm text-muted-foreground mt-0.5">{description}</p>}
+      <div className="flex items-start gap-2.5">
+        {Icon && (
+          <div className="h-8 w-8 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0 mt-0.5">
+            <Icon className="h-4 w-4 text-indigo-500" />
+          </div>
+        )}
+        <div>
+          <h2 className="font-semibold text-base">{title}</h2>
+          {description && <p className="text-sm text-muted-foreground mt-0.5">{description}</p>}
+        </div>
       </div>
       <div className="border-t pt-4">{children}</div>
     </div>
   );
 }
+
+const SETTINGS_TABS = [
+  { id: "terminology", label: "Terminology", icon: Tag },
+  { id: "brand", label: "Brand", icon: Palette },
+  { id: "integrations", label: "Integrations", icon: Plug },
+  { id: "templates", label: "Report templates", icon: LayoutTemplate },
+] as const;
+type SettingsTab = typeof SETTINGS_TABS[number]["id"];
 
 function BrandPreview({ companyName, primaryColor, secondaryColor, logoUrl }: {
   companyName: string; primaryColor: string; secondaryColor: string; logoUrl: string;
@@ -145,6 +160,7 @@ function TemplateRow({ t, onSaved, onDeleted }: {
 
 export default function SettingsPage() {
   const { currentOrg, setCurrentOrg } = useOrg();
+  const [activeTab, setActiveTab] = useState<SettingsTab>("terminology");
   const [templates, setTemplates] = useState<ReportTemplate[]>([]);
 
   // Terminology — what this org calls the sub-goal layer under a Business
@@ -169,6 +185,7 @@ export default function SettingsPage() {
   // logo in generated decks, even though the upload itself worked fine.)
   const [logoCacheBust, setLogoCacheBust] = useState(0);
   const [logoUploading, setLogoUploading] = useState(false);
+  const [logoError, setLogoError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [showNew, setShowNew] = useState(false);
@@ -253,11 +270,18 @@ export default function SettingsPage() {
     const file = e.target.files?.[0];
     if (!file || !currentOrg) return;
     setLogoUploading(true);
+    setLogoError(null);
     const supabase = createClient();
     const ext = file.name.split(".").pop();
     const path = `${currentOrg.id}/logo.${ext}`;
     const { error } = await supabase.storage.from("logos").upload(path, file, { upsert: true });
-    if (!error) {
+    if (error) {
+      setLogoError(
+        error.message?.toLowerCase().includes("bucket not found")
+          ? "Upload storage isn't set up yet — run the latest database migration, then try again."
+          : `Upload failed: ${error.message}`
+      );
+    } else {
       const { data } = supabase.storage.from("logos").getPublicUrl(path);
       setLogoUrl(data.publicUrl);
       setLogoCacheBust(Date.now());
@@ -368,14 +392,38 @@ export default function SettingsPage() {
   );
 
   return (
-    <div className="space-y-6 max-w-3xl">
-      <div>
+    <div className="max-w-5xl">
+      <div className="mb-6">
         <h1 className="text-2xl font-bold">Settings</h1>
         <p className="text-sm text-muted-foreground mt-0.5">Brand, report templates, and integrations</p>
       </div>
 
-      {/* Terminology */}
-      <Section title="Terminology" description="Rename what the app calls the sub-goal layer under a Business Goal — useful if you're reselling this under your own brand and vocabulary.">
+      <div className="flex gap-8">
+        {/* Section nav */}
+        <nav className="w-48 shrink-0 space-y-1 sticky top-6 self-start">
+          {SETTINGS_TABS.map((tab) => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-left ${
+                  active ? "bg-indigo-50 text-indigo-700" : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+              >
+                <Icon className={`h-4 w-4 shrink-0 ${active ? "text-indigo-500" : "text-muted-foreground"}`} />
+                {tab.label}
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* Active section content */}
+        <div className="flex-1 min-w-0 space-y-6">
+
+      {activeTab === "terminology" && (
+      <Section title="Terminology" icon={Tag} description="Rename what the app calls the sub-goal layer under a Business Goal.">
         <form onSubmit={saveProductGoalLabel} className="space-y-3 max-w-sm">
           <div className="space-y-1.5">
             <label className="text-sm font-medium">What do you call a Product Goal?</label>
@@ -404,9 +452,10 @@ export default function SettingsPage() {
           </div>
         </form>
       </Section>
+      )}
 
-      {/* Brand */}
-      <Section title="Brand" description="Applied to all generated reports and decks">
+      {activeTab === "brand" && (
+      <Section title="Brand" icon={Palette} description="Applied to all generated reports and decks">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <form onSubmit={saveBrand} className="space-y-4">
             {/* Logo */}
@@ -428,6 +477,7 @@ export default function SettingsPage() {
                     {logoUploading ? "Uploading…" : "Upload logo"}
                   </button>
                   <p className="text-xs text-muted-foreground mt-1">PNG, JPG or SVG — max 2MB</p>
+                  {logoError && <p className="text-xs text-red-500 mt-1 max-w-xs">{logoError}</p>}
                 </div>
                 <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={uploadLogo} />
               </div>
@@ -491,9 +541,12 @@ export default function SettingsPage() {
           </div>
         </div>
       </Section>
+      )}
 
+      {activeTab === "integrations" && (
+      <>
       {/* Mixpanel */}
-      <Section title="Mixpanel" description="Connect your Mixpanel project to pull live event counts into Business Goals health tracking.">
+      <Section title="Mixpanel" icon={Plug} description="Connect your Mixpanel project to pull live event counts into Business Goals health tracking.">
         <div className="space-y-4">
           {/* Status indicator */}
           <div className="flex items-center gap-2">
@@ -617,7 +670,7 @@ export default function SettingsPage() {
       </Section>
 
       {/* Amplitude */}
-      <Section title="Amplitude" description="Connect your Amplitude project to pull live event counts into Business Goals health tracking — same role as the Mixpanel connector above, for orgs using Amplitude instead.">
+      <Section title="Amplitude" icon={Plug} description="Connect your Amplitude project to pull live event counts into Business Goals health tracking — same role as the Mixpanel connector above, for orgs using Amplitude instead.">
         <div className="space-y-4">
           {/* Status indicator */}
           <div className="flex items-center gap-2">
@@ -724,9 +777,11 @@ export default function SettingsPage() {
           </div>
         </div>
       </Section>
+      </>
+      )}
 
-      {/* Report Templates */}
-      <Section title="Report templates"
+      {activeTab === "templates" && (
+      <Section title="Report templates" icon={LayoutTemplate}
         description="Each template generates one deck. Edit the instructions to tell the AI what to focus on for each audience.">
         {templates.map((t) => (
           <TemplateRow key={t.id} t={t} onSaved={loadData} onDeleted={loadData} />
@@ -767,6 +822,10 @@ export default function SettingsPage() {
           </button>
         )}
       </Section>
+      )}
+
+        </div>
+      </div>
     </div>
   );
 }

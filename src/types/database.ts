@@ -206,6 +206,25 @@ export interface Database {
           updated_at?: string;
         };
       };
+      ai_business_briefs: {
+        Row: {
+          id: string;
+          organization_id: string;
+          created_by: string | null;
+          content: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          created_by?: string | null;
+          content: string;
+          created_at?: string;
+        };
+        Update: {
+          content?: string;
+        };
+      };
       events: {
         Row: {
           id: string;

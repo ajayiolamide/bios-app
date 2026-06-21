@@ -998,16 +998,24 @@ export default function CohortsPage() {
   // a cohort filter actually needs, right when it's applied, fixes that at
   // the source instead of just explaining the gap in an error message.
   const [syncingFilter, setSyncingFilter] = useState(false);
+  // Surfaced instead of swallowed — if the sync itself can't pull raw
+  // events (wrong credentials, a Mixpanel plan that doesn't include raw
+  // export, etc.) the "no users fired this event" message below would
+  // otherwise look identical to "this just hasn't been synced yet", and
+  // there'd be no way to tell which one is actually happening.
+  const [syncError, setSyncError] = useState<string | null>(null);
 
   async function ensureEventsSynced(filter: CohortFilter) {
     if (!currentOrg) return;
     const names = [filter.eventName, filter.secondEventName].filter((n): n is string => !!n);
     if (!names.length) return;
+    setSyncError(null);
     const { connected } = await getMixpanelSettings(currentOrg.id);
     if (!connected) return;
     setSyncingFilter(true);
-    await syncMixpanelRawEvents(currentOrg.id, names, 90).catch(() => {});
+    const result = await syncMixpanelRawEvents(currentOrg.id, names, 90).catch((e) => ({ synced: 0, error: (e as Error).message }));
     setSyncingFilter(false);
+    if (result.error) setSyncError(result.error);
   }
 
   const [cohortData, setCohortData] = useState<CohortData>({ rows: [], maxWeeks: 0 });
@@ -1151,6 +1159,11 @@ export default function CohortsPage() {
       {syncingFilter && (
         <div className="flex items-center gap-2 text-xs text-indigo-600 bg-indigo-50 border border-indigo-100 rounded-xl px-3 py-2">
           <RefreshCw size={12} className="animate-spin" /> Pulling the latest occurrences of this event from Mixpanel…
+        </div>
+      )}
+      {syncError && !syncingFilter && (
+        <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+          Couldn&apos;t pull fresh Mixpanel data for this event: {syncError}
         </div>
       )}
       <DataInfoBar info={dataInfo} loading={loading} />

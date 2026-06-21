@@ -62,7 +62,7 @@ export async function updateReviewAccess(
 // ─── Get review session by token (public — no auth) ──────────────────────────
 
 export async function getReviewSession(token: string): Promise<{
-  review: { id: string; deck: SlidesDeck; deck_title: string; period: string; status: string; brand: { primary: string; secondary: string } } | null;
+  review: { id: string; deck: SlidesDeck; deck_title: string; period: string; status: string; brand: { primary: string; secondary: string; logoUrl: string | null } } | null;
   comments: SlideComment[];
   error: string | null;
   errorType?: "not_found" | "private" | "expired";
@@ -85,15 +85,15 @@ export async function getReviewSession(token: string): Promise<{
     return { review: null, comments: [], error: "This link has expired.", errorType: "expired" };
   }
 
-  // Fetch brand colors via org so the review page matches the creator's brand
-  let brand = { primary: "#6366f1", secondary: "#a5b4fc" };
+  // Fetch brand colors + logo via org so the review page matches the creator's brand
+  let brand: { primary: string; secondary: string; logoUrl: string | null } = { primary: "#6366f1", secondary: "#a5b4fc", logoUrl: null };
   if (review.organization_id) {
     const { data: bs } = await admin
       .from("brand_settings")
-      .select("primary_color, secondary_color")
+      .select("primary_color, secondary_color, logo_url")
       .eq("organization_id", review.organization_id)
       .single();
-    if (bs) brand = { primary: bs.primary_color, secondary: bs.secondary_color };
+    if (bs) brand = { primary: bs.primary_color, secondary: bs.secondary_color, logoUrl: bs.logo_url ?? null };
   }
 
   const { data: comments } = await admin
@@ -128,7 +128,7 @@ export async function getReviewSessionForOwner(reviewId: string): Promise<{
   review: {
     id: string; deck: SlidesDeck; deck_title: string; period: string; status: string;
     share_token: string; is_private: boolean; expires_at: string | null;
-    brand: { primary: string; secondary: string };
+    brand: { primary: string; secondary: string; logoUrl: string | null };
   } | null;
   error: string | null;
 }> {
@@ -145,14 +145,14 @@ export async function getReviewSessionForOwner(reviewId: string): Promise<{
 
   if (error || !review) return { review: null, error: "Review not found" };
 
-  let brand = { primary: "#6366f1", secondary: "#a5b4fc" };
+  let brand: { primary: string; secondary: string; logoUrl: string | null } = { primary: "#6366f1", secondary: "#a5b4fc", logoUrl: null };
   if (review.organization_id) {
     const { data: bs } = await admin
       .from("brand_settings")
-      .select("primary_color, secondary_color")
+      .select("primary_color, secondary_color, logo_url")
       .eq("organization_id", review.organization_id)
       .single();
-    if (bs) brand = { primary: bs.primary_color, secondary: bs.secondary_color };
+    if (bs) brand = { primary: bs.primary_color, secondary: bs.secondary_color, logoUrl: bs.logo_url ?? null };
   }
 
   return {

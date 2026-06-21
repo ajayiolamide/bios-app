@@ -416,7 +416,7 @@ const BG_PRESETS = [
 
 function PresentMode({ slides, brand, deckTitle, startIdx, onExit }: {
   slides: SlideContent[];
-  brand: { primary: string; secondary: string };
+  brand: { primary: string; secondary: string; logoUrl?: string | null };
   deckTitle: string;
   startIdx: number;
   onExit: () => void;
@@ -666,7 +666,7 @@ function PreviewModal({
   period: string;
   orgId: string;
   theme: DesignTheme;
-  brand: { primary: string; secondary: string };
+  brand: { primary: string; secondary: string; logoUrl?: string | null };
   tokensUsed: number;
   slackWebhook?: string;
   // Present when reopening an already-shared deck (e.g. from History) so the
@@ -2703,7 +2703,7 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
   });
   const [customPeriod, setCustomPeriod] = useState(false);
   const [theme, setTheme] = useState<DesignTheme>("brand");
-  const [brandColors, setBrandColors] = useState({ primary: "#6366f1", secondary: "#a5b4fc" });
+  const [brandColors, setBrandColors] = useState<{ primary: string; secondary: string; logoUrl?: string | null }>({ primary: "#6366f1", secondary: "#a5b4fc", logoUrl: null });
   const [slackWebhook, setSlackWebhook] = useState("");
 
   // BIOS data sections
@@ -2729,7 +2729,7 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
     import("@/app/actions/settings").then(({ getBrandSettings }) =>
       getBrandSettings(orgId).then(b => {
         if (b) {
-          setBrandColors({ primary: b.primary_color, secondary: b.secondary_color });
+          setBrandColors({ primary: b.primary_color, secondary: b.secondary_color, logoUrl: b.logo_url ?? null });
           setSlackWebhook(b.slack_webhook ?? "");
         }
       })
@@ -3285,7 +3285,7 @@ function HistoryTab({ orgId, refresh }: { orgId: string; refresh: number }) {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [historyPreview, setHistoryPreview] = useState<{
     deck: SlidesDeck; templateName: string; templateId: string; period: string;
-    brand: { primary: string; secondary: string };
+    brand: { primary: string; secondary: string; logoUrl?: string | null };
     // Only set when reopening an already-shared deck — lets the access-control
     // card in PreviewModal show the link's real saved settings instead of
     // resetting to "never expires / not private".
@@ -3293,14 +3293,14 @@ function HistoryTab({ orgId, refresh }: { orgId: string; refresh: number }) {
     initialAccess?: { isPrivate: boolean; expiresAt: string | null };
   } | null>(null);
   const [loadingPreview, setLoadingPreview] = useState<string | null>(null);
-  const [brand, setBrand] = useState({ primary: "#6366f1", secondary: "#a5b4fc" });
+  const [brand, setBrand] = useState<{ primary: string; secondary: string; logoUrl?: string | null }>({ primary: "#6366f1", secondary: "#a5b4fc", logoUrl: null });
   const [slackWebhookHistory, setSlackWebhookHistory] = useState("");
 
   useEffect(() => {
     import("@/app/actions/settings").then(({ getBrandSettings }) =>
       getBrandSettings(orgId).then(b => {
         if (b) {
-          setBrand({ primary: b.primary_color, secondary: b.secondary_color });
+          setBrand({ primary: b.primary_color, secondary: b.secondary_color, logoUrl: b.logo_url ?? null });
           setSlackWebhookHistory(b.slack_webhook ?? "");
         }
       })

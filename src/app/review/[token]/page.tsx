@@ -199,7 +199,7 @@ export default function ReviewPage({ params }: { params: Promise<{ token: string
   const [deck, setDeck] = useState<SlidesDeck | null>(null);
   const [period, setPeriod] = useState("");
   const [comments, setComments] = useState<SlideComment[]>([]);
-  const [brand, setBrand] = useState({ primary: "#6366f1", secondary: "#a5b4fc" });
+  const [brand, setBrand] = useState<{ primary: string; secondary: string; logoUrl?: string | null }>({ primary: "#6366f1", secondary: "#a5b4fc", logoUrl: null });
   const [idx, setIdx] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [showComments, setShowComments] = useState(false);
