@@ -490,18 +490,17 @@ function SavedPlanCard({
                     : <span className="text-gray-400 italic text-xs">No date set</span>}
                 </span>
                 <div className="flex items-center gap-2">
-                  {effectiveStatus !== "launched" && (
-                    <>
-                      <button onClick={() => setEditingDate(true)}
-                        className="text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2 py-1 rounded hover:bg-indigo-50 transition-colors">
-                        {plan.planned_launch_date ? "Reschedule" : "Set date"}
-                      </button>
-                      <button onClick={handleConfirmLaunch} disabled={saving}
-                        className="text-xs bg-green-600 text-white px-2.5 py-1 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors font-medium">
-                        {saving ? "…" : "✓ Launched"}
-                      </button>
-                    </>
-                  )}
+                  {/* effectiveStatus is already guaranteed not to be "launched" here —
+                      this whole block only renders in the else-branch of the
+                      effectiveStatus === "launched" ternary above. */}
+                  <button onClick={() => setEditingDate(true)}
+                    className="text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2 py-1 rounded hover:bg-indigo-50 transition-colors">
+                    {plan.planned_launch_date ? "Reschedule" : "Set date"}
+                  </button>
+                  <button onClick={handleConfirmLaunch} disabled={saving}
+                    className="text-xs bg-green-600 text-white px-2.5 py-1 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors font-medium">
+                    {saving ? "…" : "✓ Launched"}
+                  </button>
                 </div>
               </div>
             )}
