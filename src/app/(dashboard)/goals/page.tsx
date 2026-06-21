@@ -1801,13 +1801,25 @@ export default function BusinessGoalsPage() {
 
   function handleDelete(id: string) {
     setGoals((prev) => prev.filter((g) => g.id !== id));
-    startTransition(async () => { await deleteBusinessGoal(id); });
+    // Re-sync with the DB after the delete attempt instead of trusting the
+    // optimistic removal blindly — if the write actually failed, this both
+    // surfaces it immediately and restores the goal right away, rather than
+    // having it silently reappear later when something else triggers a load().
+    startTransition(async () => {
+      const { error } = await deleteBusinessGoal(id);
+      if (error) alert(`Couldn't delete this goal, so it's back: ${error}`);
+      await load();
+    });
   }
 
   function handlePermanentDelete(id: string) {
     if (!confirm("Permanently delete this goal? It won't appear anywhere, including reports.")) return;
     setGoals((prev) => prev.filter((g) => g.id !== id));
-    startTransition(async () => { await permanentlyDeleteBusinessGoal(id); });
+    startTransition(async () => {
+      const { error } = await permanentlyDeleteBusinessGoal(id);
+      if (error) alert(`Couldn't delete this goal, so it's back: ${error}`);
+      await load();
+    });
   }
 
   // Apply filters

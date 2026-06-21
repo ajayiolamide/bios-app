@@ -89,9 +89,17 @@ export async function updateGoalDates(
 
 // ─── Soft-drop a goal ─────────────────────────────────────────────────────────
 
-export async function deleteBusinessGoal(id: string): Promise<void> {
+export async function deleteBusinessGoal(id: string): Promise<{ error?: string }> {
   const admin = createAdminClient();
-  await admin.from("business_goals").update({ status: "dropped" }).eq("id", id);
+  // This previously returned void and never checked for a failed write — the
+  // page removed the goal from view immediately regardless of whether the
+  // UPDATE actually landed. If it silently failed (e.g. the database under
+  // strain), the goal looked deleted but its status never changed in the
+  // DB, so the next refetch brought it back as "active" — looking like it
+  // had spontaneously reappeared.
+  const { error } = await admin.from("business_goals").update({ status: "dropped" }).eq("id", id);
+  if (error) return { error: error.message };
+  return {};
 }
 
 // ─── Permanently delete a goal (hard delete — removes from DB + reports) ──────
