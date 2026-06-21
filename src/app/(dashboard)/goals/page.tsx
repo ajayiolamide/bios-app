@@ -1362,82 +1362,85 @@ function ObjectiveCard({
   return (
     <div
       className={cn(
-        "group relative rounded-2xl border bg-white overflow-hidden transition-shadow",
-        selected ? "border-indigo-300 shadow-[0_0_0_2px_rgba(99,102,241,0.25)]" : "border-gray-200 hover:shadow-sm"
+        "group relative rounded-2xl overflow-hidden transition-all bg-gradient-to-br from-indigo-600 via-indigo-600 to-violet-700",
+        selected ? "ring-2 ring-offset-2 ring-indigo-400" : "hover:shadow-lg hover:shadow-indigo-900/20"
       )}
     >
-      {/* Top accent band — visually marks this as the tier above Product
-          Goals, without going full dark-card (which read as a different app
-          area rather than just "a level up"). */}
-      <div className="h-1.5 bg-gradient-to-r from-indigo-500 to-violet-500" />
+      {/* Oversized faded watermark icon — this is the deliberate visual
+          weight the plain white-card version lacked; it's what makes this
+          read as "the one big thing" at a glance instead of just another
+          card in a grid. */}
+      <Trophy size={120} className="absolute -right-6 -bottom-8 text-white/10 rotate-12 pointer-events-none" />
 
-      <button onClick={onSelect} className="w-full text-left p-4 pb-3">
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[10px] font-semibold tracking-widest uppercase text-indigo-400">Business Goal</span>
+      <button onClick={onSelect} className="relative w-full text-left p-5 pb-4">
+        <div className="flex items-center justify-between mb-2.5">
+          <span className="flex items-center gap-1.5 text-[10px] font-bold tracking-widest uppercase text-indigo-200">
+            <Trophy size={11} /> Business Goal
+          </span>
           <span
             role="button"
             onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
-            className="flex items-center gap-0.5 text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+            className="flex items-center gap-0.5 text-[11px] font-medium text-white/70 hover:text-white transition-colors bg-white/10 hover:bg-white/20 rounded-full px-2 py-0.5"
           >
             {STATUS_OPTIONS.find((s) => s.value === objective.status)?.label}
             <ChevronDown size={10} />
           </span>
         </div>
 
-        <p className={`text-[15px] font-semibold leading-snug mb-1 ${isMissed ? "line-through text-gray-300" : "text-gray-900"}`}>
+        <p className={`text-xl font-bold leading-snug mb-1.5 ${isMissed ? "line-through text-white/40" : "text-white"}`}>
           {objective.title}
-          {objective.status === "achieved" && <Trophy size={12} className="inline ml-1.5 text-yellow-500" />}
+          {objective.status === "achieved" && <Trophy size={14} className="inline ml-1.5 text-yellow-300" />}
         </p>
 
         {objective.description && (
-          <p className="text-xs text-gray-400 leading-relaxed mb-1.5">{objective.description}</p>
+          <p className="text-xs text-indigo-100/80 leading-relaxed mb-1.5">{objective.description}</p>
         )}
 
-        <p className="text-xs text-gray-400 mb-2.5">
+        <p className="text-xs font-medium text-indigo-100 mb-3">
           {[objective.target, objective.timeframe].filter(Boolean).join(" · ") || "No target set"}
         </p>
 
         {pct === null ? (
-          <p className="text-[11px] text-gray-400">
+          <p className="text-[11px] text-indigo-100/80">
             {goalCount === 0
               ? "No Product Goals linked yet."
               : `${goalCount} Product Goal${goalCount !== 1 ? "s" : ""} linked — none measurable yet.`}
           </p>
         ) : (
           <div>
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[11px] font-medium text-gray-500">Rolled up from Product Goals</span>
-              <span className={`text-[11px] font-semibold ${overshot ? "text-emerald-600" : "text-gray-700"}`}>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[11px] font-medium text-indigo-100">Rolled up from Product Goals</span>
+              <span className={`text-sm font-bold ${overshot ? "text-emerald-300" : "text-white"}`}>
                 {pct.toLocaleString()}%{overshot ? " — exceeded" : ""}
               </span>
             </div>
-            <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
-              <div className={`h-full rounded-full ${overshot ? "bg-emerald-500" : "bg-indigo-500"}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+            <div className="h-2 rounded-full bg-white/15 overflow-hidden">
+              <div className={`h-full rounded-full ${overshot ? "bg-emerald-400" : "bg-white"}`} style={{ width: `${Math.min(pct, 100)}%` }} />
             </div>
-            <p className="text-[10px] text-gray-400 mt-1">
+            <p className="text-[10px] text-indigo-100/70 mt-1.5">
               Average of {measurableGoalCount}/{goalCount} linked Product Goal{goalCount !== 1 ? "s" : ""} with measurable progress.
             </p>
           </div>
         )}
       </button>
 
-      <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-100 bg-gray-50/50">
-        <span className="text-[11px] text-gray-400">
+      <div className="relative flex items-center justify-between px-5 py-3 border-t border-white/15 bg-black/10">
+        <span className="text-[11px] font-medium text-indigo-100">
           {goalCount} Product Goal{goalCount !== 1 ? "s" : ""}
         </span>
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all"
+          className="opacity-0 group-hover:opacity-100 text-indigo-200 hover:text-red-300 transition-all"
           title="Delete business goal"
         >
-          <Trash2 size={12} />
+          <Trash2 size={13} />
         </button>
       </div>
 
       {menuOpen && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-          <div className="absolute right-4 top-9 z-20 w-36 rounded-lg border border-gray-200 bg-white shadow-md overflow-hidden">
+          <div className="absolute right-5 top-10 z-20 w-36 rounded-lg border border-gray-200 bg-white shadow-md overflow-hidden">
             {STATUS_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
