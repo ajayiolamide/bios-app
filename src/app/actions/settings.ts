@@ -23,6 +23,7 @@ export async function saveBrandSettings(
     secondary_color: string;
     slack_webhook: string;
     logo_url?: string;
+    design_theme?: string;
   }
 ): Promise<{ error: string | null }> {
   const admin = createAdminClient();
@@ -35,6 +36,7 @@ export async function saveBrandSettings(
     secondary_color: payload.secondary_color || "#a5b4fc",
     slack_webhook: payload.slack_webhook.trim() || null,
     ...(payload.logo_url !== undefined ? { logo_url: payload.logo_url } : {}),
+    ...(payload.design_theme !== undefined ? { design_theme: payload.design_theme } : {}),
     updated_at: new Date().toISOString(),
   };
 

@@ -290,6 +290,7 @@ export interface Database {
           amplitude_secret_key: string | null;
           amplitude_data_region: string;
           amplitude_raw_synced_until: string | null;
+          design_theme: string;
           created_at: string;
           updated_at: string;
         };
@@ -310,6 +311,7 @@ export interface Database {
           amplitude_secret_key?: string | null;
           amplitude_data_region?: string;
           amplitude_raw_synced_until?: string | null;
+          design_theme?: string;
         };
         Update: {
           company_name?: string | null;
@@ -326,6 +328,7 @@ export interface Database {
           amplitude_secret_key?: string | null;
           amplitude_data_region?: string;
           amplitude_raw_synced_until?: string | null;
+          design_theme?: string;
           updated_at?: string;
         };
       };

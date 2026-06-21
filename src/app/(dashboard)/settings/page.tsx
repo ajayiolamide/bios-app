@@ -45,6 +45,12 @@ function Section({ title, description, icon: Icon, children }: {
   );
 }
 
+const DESIGN_THEMES = [
+  { id: "brand", label: "Brand", desc: "Brand color cover, white content slides" },
+  { id: "midnight", label: "Midnight", desc: "Dark navy throughout" },
+  { id: "clean", label: "Clean", desc: "All-white, typography-first" },
+] as const;
+
 const SETTINGS_TABS = [
   { id: "organization", label: "Organization", icon: Building2 },
   { id: "terminology", label: "Terminology", icon: Tag },
@@ -187,6 +193,13 @@ export default function SettingsPage() {
   const [companyName, setCompanyName] = useState("");
   const [primaryColor, setPrimaryColor] = useState("#6366f1");
   const [secondaryColor, setSecondaryColor] = useState("#a5b4fc");
+  // Which color/layout theme generated decks use — moved here from the
+  // Reports page, where it was a 3-up grid of large color-swatch cards that
+  // made the "Report setup" step look bigger than it needed to be for a
+  // setting most people pick once and never touch again. Lives with the
+  // rest of the brand settings it visually depends on (primary/secondary
+  // color + logo).
+  const [designTheme, setDesignTheme] = useState("brand");
   const [slackWebhook, setSlackWebhook] = useState("");
   const [logoUrl, setLogoUrl] = useState("");
   // Bumped on every re-upload to bust the browser's <img> cache for the
@@ -241,6 +254,7 @@ export default function SettingsPage() {
       setSecondaryColor((b as BrandSettings & { secondary_color?: string }).secondary_color ?? "#a5b4fc");
       setSlackWebhook(b.slack_webhook ?? "");
       setLogoUrl(b.logo_url ?? "");
+      setDesignTheme((b as BrandSettings & { design_theme?: string }).design_theme ?? "brand");
     }
     if (mp.connected && mp.settings) {
       setMpUsername(mp.settings.username ?? "");
@@ -346,6 +360,7 @@ export default function SettingsPage() {
       secondary_color: secondaryColor,
       slack_webhook: slackWebhook,
       logo_url: logoUrl,
+      design_theme: designTheme,
     });
     setBrandSaving(false);
     setBrandSaved(true);
@@ -624,6 +639,35 @@ export default function SettingsPage() {
                   <span className="text-xs text-muted-foreground font-mono">{secondaryColor}</span>
                 </div>
               </div>
+            </div>
+
+            {/* Design theme — which color/layout style generated decks use.
+                Compact pill row instead of a big 3-up card grid: this is a
+                pick-once-and-forget setting, not something that needs a
+                large visual every time someone opens report settings. */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Report deck theme</label>
+              <div className="flex gap-2">
+                {DESIGN_THEMES.map(t => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    title={t.desc}
+                    onClick={() => setDesignTheme(t.id)}
+                    className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+                      designTheme === t.id ? "bg-indigo-50 border-indigo-200 text-indigo-700" : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+                    }`}
+                  >
+                    <span
+                      className={`h-2.5 w-2.5 rounded-full shrink-0 ${
+                        t.id === "midnight" ? "bg-slate-900" : t.id === "clean" ? "bg-white border border-gray-300" : "bg-indigo-600"
+                      }`}
+                    />
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">{DESIGN_THEMES.find(t => t.id === designTheme)?.desc}</p>
             </div>
 
             {/* Slack */}

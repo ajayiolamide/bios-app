@@ -15,7 +15,7 @@ import {
 } from "@/app/actions/review";
 import type { SlideComment } from "@/app/actions/review";
 import { getReportTemplates } from "@/app/actions/settings";
-import type { ReportSource, Report, ReportTemplate } from "@/types/database";
+import type { ReportSource, Report, ReportTemplate, BrandSettings } from "@/types/database";
 import type { SlidesDeck, SlideContent, DesignTheme } from "@/app/actions/reports";
 import { SlideCard } from "@/components/reports/slide-card";
 import {
@@ -2678,8 +2678,8 @@ const THEMES: { id: DesignTheme; label: string; desc: string; preview: string }[
 //
 // Optionally collapsible: the setup step's fields are all quick one-time
 // choices that default to something reasonable, so showing every field's
-// full UI on every visit (a dropdown, a checkbox row, a 3-up theme grid)
-// made the page read as long even after consolidating four cards into one.
+// full UI on every visit (a dropdown, a checkbox row) made the page read
+// as long even after consolidating four cards into one.
 // Collapsed by default with a one-line summary, it expands back to the full
 // editable form on click — nothing is hidden permanently, it's just not
 // taking up space until someone actually wants to change it.
@@ -2757,6 +2757,8 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
         if (b) {
           setBrandColors({ primary: b.primary_color, secondary: b.secondary_color, logoUrl: b.logo_url ?? null });
           setSlackWebhook(b.slack_webhook ?? "");
+          // Theme now lives in Settings → Brand, not picked per-report here.
+          setTheme(((b as BrandSettings & { design_theme?: string }).design_theme as DesignTheme) ?? "brand");
         }
       })
     );
@@ -2998,19 +3000,6 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
             </div>
           </div>
 
-          <div className="pt-4 border-t border-gray-100">
-            <p className="text-xs font-semibold text-gray-600 mb-2">Design theme</p>
-            <div className="grid grid-cols-3 gap-2">
-              {THEMES.map(t => (
-                <button key={t.id} onClick={() => setTheme(t.id)}
-                  className={`p-3 rounded-xl border-2 text-left transition-all ${theme === t.id ? "border-indigo-500 bg-indigo-50" : "border-gray-100 hover:border-gray-200"}`}>
-                  <div className={`w-full h-8 rounded-lg mb-2 ${t.preview}`} />
-                  <p className="text-xs font-semibold text-gray-800">{t.label}</p>
-                  <p className="text-xs text-gray-400 leading-tight mt-0.5">{t.desc}</p>
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       </StepCard>
 
