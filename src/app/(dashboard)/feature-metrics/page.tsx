@@ -559,16 +559,16 @@ function GoalSelector({
             <Trophy size={18} className="text-gray-400" />
           </div>
           <div>
-            <p className="text-sm font-semibold text-gray-700 mb-1">No business goals set yet</p>
+            <p className="text-sm font-semibold text-gray-700 mb-1">No goals set yet</p>
             <p className="text-xs text-gray-400 max-w-xs">
-              Add company goals in Business Goals first, and this feature plan will automatically align to one.
+              Add a goal on the Goals page first, and this feature plan will automatically align to one.
             </p>
           </div>
           <a
             href="/goals"
             className="text-xs text-indigo-600 hover:underline font-medium"
           >
-            Set up Business Goals →
+            Go to Goals →
           </a>
         </div>
         <div className="flex justify-end">
@@ -871,7 +871,7 @@ function Wizard({ goals, kpisByGoal, onSaved, existingEventNames }: { goals: Bus
               { tool: "Mixpanel", tip: `Fire the suggested event names above. Create a ${input.sector?.toLowerCase()} report filtering on these events to monitor adoption and frequency.` },
               { tool: "Amplitude", tip: "Use the event names to build a Chart. Set up a Compass signal so you get alerted when targets are hit or missed." },
               { tool: "Google Analytics 4", tip: "Log as custom events using the suggested event names. Use Explorations to build a funnel or segment report." },
-              { tool: "This platform (BIOS)", tip: "Events you fire from your app appear in the Events tab. The trackable items above have been automatically added and show up under Business Goals." },
+              { tool: "This platform (Metrik)", tip: "Events you fire from your app appear in the Events tab. The trackable items above have been automatically added and show up under Goals." },
             ].map(({ tool, tip }) => (
               <div key={tool} className="bg-white/60 rounded-xl p-3">
                 <p className="font-bold text-indigo-900 mb-1">{tool}</p>

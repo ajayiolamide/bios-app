@@ -10,7 +10,7 @@ const STEPS = [
     icon: Figma,
     color: "bg-pink-100 text-pink-600",
     title: "Paste your Figma design URL",
-    desc: "Connect a Figma frame or flow. BIOS reads every screen, component, and interaction in the flow.",
+    desc: "Connect a Figma frame or flow. Metrik reads every screen, component, and interaction in the flow.",
   },
   {
     icon: Eye,
@@ -22,7 +22,7 @@ const STEPS = [
     icon: Zap,
     color: "bg-amber-100 text-amber-700",
     title: "Get suggested event names",
-    desc: "BIOS proposes clean, consistent event names following your naming convention — e.g. claim_submitted, payment_flow_started.",
+    desc: "Metrik proposes clean, consistent event names following your naming convention — e.g. claim_submitted, payment_flow_started.",
   },
   {
     icon: Code2,
@@ -68,7 +68,7 @@ export default function FigmaPage() {
           Design → Tracking Plan, automatically
         </h1>
         <p className="text-base text-gray-500 max-w-xl mx-auto leading-relaxed">
-          Paste a Figma URL. BIOS reads your flow, identifies every trackable moment, suggests event names,
+          Paste a Figma URL. Metrik reads your flow, identifies every trackable moment, suggests event names,
           and connects it all to your Feature Metrics — with a Mixpanel spec ready to ship.
         </p>
       </div>

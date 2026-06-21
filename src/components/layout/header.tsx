@@ -28,7 +28,7 @@ function getTitle(pathname: string): string {
   for (const [key, value] of Object.entries(PAGE_TITLES)) {
     if (pathname === key || pathname.startsWith(`${key}/`)) return value;
   }
-  return "Business Intelligence OS";
+  return "Metrik";
 }
 
 interface HeaderProps {

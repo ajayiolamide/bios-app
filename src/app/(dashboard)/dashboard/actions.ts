@@ -69,7 +69,7 @@ export async function getQuickInsight(orgId: string): Promise<{ insight?: string
     `- ${r.template_name} (${r.period})`
   ).join("\n");
 
-  const prompt = `You are a business intelligence assistant. Analyse the following data snapshot from a company's BIOS (Business Intelligence OS) dashboard and write a concise, sharp executive brief — 3 to 5 bullet points — covering:
+  const prompt = `You are a business intelligence assistant. Analyse the following data snapshot from a company's Metrik dashboard and write a concise, sharp executive brief — 3 to 5 bullet points — covering:
 1. What's looking good
 2. What needs attention or action
 3. One specific next step you recommend

@@ -3376,11 +3376,11 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
         <p className="text-xs text-gray-400 mt-2">Current selection: <span className="font-medium text-gray-600">{period}</span></p>
       </StepCard>
 
-      {/* BIOS Data sections */}
+      {/* Metrik Data sections */}
       <StepCard
         step={sourcesWithData.length > 0 ? 3 : 2}
-        title="Include BIOS data"
-        hint="Pull live data from your BIOS workspace into the report"
+        title="Include Metrik data"
+        hint="Pull live data from your Metrik workspace into the report"
         badge={!anyBiosSection && filteredRows.length === 0 ? <span className="text-[11px] text-red-500 font-medium">Select at least one source</span> : undefined}
       >
         <div className="space-y-2.5">

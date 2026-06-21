@@ -15,7 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { BarChart3, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -49,13 +49,12 @@ export default function LoginPage() {
     <Card className="border-slate-700 bg-slate-800/50 backdrop-blur-sm">
       <CardHeader className="space-y-3 text-center">
         <div className="flex justify-center">
-          <div className="flex items-center gap-2 rounded-xl bg-blue-600 p-3">
-            <BarChart3 className="h-6 w-6 text-white" />
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-metrik-white.svg" alt="Metrik" className="h-7 w-auto" />
         </div>
         <CardTitle className="text-2xl text-white">Welcome back</CardTitle>
         <CardDescription className="text-slate-400">
-          Sign in to your Business Intelligence OS
+          Sign in to Metrik
         </CardDescription>
       </CardHeader>
       <CardContent>

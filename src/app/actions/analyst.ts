@@ -121,7 +121,7 @@ export async function askAnalyst(
 
   const context = await buildContext(orgId);
 
-  const systemPrompt = `You are BIOS AI — a sharp, senior business intelligence analyst embedded inside a BI platform. You have direct access to the organisation's live data.
+  const systemPrompt = `You are Metrik AI — a sharp, senior business intelligence analyst embedded inside a BI platform. You have direct access to the organisation's live data.
 
 Your job is to:
 - Answer questions about the data accurately and concisely

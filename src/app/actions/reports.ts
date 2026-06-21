@@ -508,7 +508,7 @@ export async function planReport(
     }
 
     if (parts.length > 0) {
-      biosBlock = `\nINTERNAL BIOS DATA:\n${parts.join("\n\n")}\n`;
+      biosBlock = `\nINTERNAL METRIK DATA:\n${parts.join("\n\n")}\n`;
     }
   }
 
@@ -621,7 +621,7 @@ PERIOD: ${period}
 SLIDES: ${template.slide_hint}
 AUDIENCE: ${template.instructions}
 ${biosBlock}${sourceConfigBlock}${biggestMoversBlock}${slideGuidesBlock}
-SHEET DATA (${filteredRows.length} rows)${filteredRows.length === 0 ? " — no sheet data provided, use internal BIOS data above" : ""}:
+SHEET DATA (${filteredRows.length} rows)${filteredRows.length === 0 ? " — no sheet data provided, use internal Metrik data above" : ""}:
 ${filteredRows.length > 0 ? `Headers: ${headers}\n---\n${csvPreview}\n---` : "(none)"}
 
 Generate exactly ${template.slide_hint} slides as JSON.

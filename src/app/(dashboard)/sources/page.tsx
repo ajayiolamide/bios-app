@@ -308,7 +308,7 @@ export default function SourcesPage() {
                 </button>
               </div>
               <p className="text-xs text-gray-400">
-                Pulls your top event names from the last 90 days and adds any new ones to BIOS Events.
+                Pulls your top event names from the last 90 days and adds any new ones to Metrik Events.
                 Once synced, they appear as autocomplete suggestions across Feature Metrics and Funnels.
               </p>
               {mpResult && (mpResult.synced > 0 || mpResult.total > 0) && (
@@ -316,14 +316,14 @@ export default function SourcesPage() {
                   <CheckCircle2 size={13} className="text-green-500 flex-shrink-0" />
                   {mpResult.synced > 0
                     ? <span>Added <strong>{mpResult.synced}</strong> new event{mpResult.synced !== 1 ? "s" : ""} out of {mpResult.total} found in Mixpanel.</span>
-                    : <span>All <strong>{mpResult.total}</strong> Mixpanel events already in BIOS — nothing new to add.</span>}
+                    : <span>All <strong>{mpResult.total}</strong> Mixpanel events already in Metrik — nothing new to add.</span>}
                 </div>
               )}
               {mpResult && mpResult.synced === 0 && mpResult.total === 0 && (
                 <div className="flex items-start gap-2 text-xs bg-amber-50 border border-amber-100 rounded-lg px-3 py-2 text-amber-700">
                   <AlertCircle size={13} className="flex-shrink-0 mt-0.5" />
                   <span>
-                    Mixpanel returned <strong>0</strong> events for this project in the last 90 days — this isn&apos;t a BIOS issue, Mixpanel itself has nothing to sync. Check the Project ID, data region (US/EU), and that this Service Account has access to that specific project.
+                    Mixpanel returned <strong>0</strong> events for this project in the last 90 days — this isn&apos;t a Metrik issue, Mixpanel itself has nothing to sync. Check the Project ID, data region (US/EU), and that this Service Account has access to that specific project.
                   </span>
                 </div>
               )}
@@ -372,7 +372,7 @@ export default function SourcesPage() {
                 </button>
               </div>
               <p className="text-xs text-gray-400">
-                Pulls event names via Amplitude&apos;s Taxonomy API and adds any new ones to BIOS Events.
+                Pulls event names via Amplitude&apos;s Taxonomy API and adds any new ones to Metrik Events.
                 That API needs to be enabled by Amplitude for your plan — if it isn&apos;t yet, you&apos;ll see a clear message below instead of a silent failure.
               </p>
               {ampResult && (ampResult.synced > 0 || ampResult.total > 0) && (
@@ -380,7 +380,7 @@ export default function SourcesPage() {
                   <CheckCircle2 size={13} className="text-green-500 flex-shrink-0" />
                   {ampResult.synced > 0
                     ? <span>Added <strong>{ampResult.synced}</strong> new event{ampResult.synced !== 1 ? "s" : ""} out of {ampResult.total} found in Amplitude.</span>
-                    : <span>All <strong>{ampResult.total}</strong> Amplitude events already in BIOS — nothing new to add.</span>}
+                    : <span>All <strong>{ampResult.total}</strong> Amplitude events already in Metrik — nothing new to add.</span>}
                 </div>
               )}
               {ampResult && ampResult.synced === 0 && ampResult.total === 0 && (

@@ -15,7 +15,6 @@ import {
   Lightbulb,
   Trophy,
   Figma,
-  BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { OrgSwitcher } from "./org-switcher";
@@ -67,14 +66,9 @@ export function Sidebar() {
   return (
     <aside className="flex h-screen w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
       {/* Logo */}
-      <div className="flex h-14 items-center gap-2.5 px-4 border-b border-sidebar-border flex-shrink-0">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-600 flex-shrink-0">
-          <BarChart3 className="h-3.5 w-3.5 text-white" />
-        </div>
-        <div className="min-w-0">
-          <p className="font-bold text-sidebar-foreground text-sm leading-none">BIOS</p>
-          <p className="text-[10px] text-slate-500 mt-0.5 leading-none">Business Intelligence OS</p>
-        </div>
+      <div className="flex h-14 items-center px-4 border-b border-sidebar-border flex-shrink-0">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo-metrik-white.svg" alt="Metrik" className="h-5 w-auto" />
       </div>
 
       {/* Org switcher */}

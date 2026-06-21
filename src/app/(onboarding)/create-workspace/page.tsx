@@ -77,7 +77,7 @@ export default function CreateWorkspacePage() {
               />
             </div>
             <p className="text-xs text-slate-500">
-              This will be your company or team name inside BIOS.
+              This will be your company or team name inside Metrik.
             </p>
           </div>
 
