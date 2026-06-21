@@ -1,0 +1,13 @@
+-- Some KPIs aren't a single event's volume against a flat number — "95% of
+-- claims paid within 24h" is really a ratio: claims paid ÷ claims submitted.
+-- The existing model (one event_name + aggregation + target_value) can't
+-- express a ratio between two different events. This adds an optional
+-- second event as the denominator: when set, the KPI's "actual" becomes
+-- (event_name count ÷ denominator_event_name count) * 100, and target_value
+-- is read as a percentage instead of a raw count.
+--
+-- Note: this computes a plain ratio over the same time window — it does NOT
+-- check that an individual claim was paid within 24h of its own submission,
+-- since that requires the two events to carry a shared id (e.g. claim_id)
+-- linking them to the same claim, which this column alone doesn't guarantee.
+alter table public.metrics add column if not exists denominator_event_name text default null;

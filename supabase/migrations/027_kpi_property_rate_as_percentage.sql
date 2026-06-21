@@ -1,0 +1,12 @@
+-- Until now, "has a denominator_event_name" and "is expressed as a
+-- percentage" were the same thing — setting one meant the other. That broke
+-- down once within_hours needed to work for a plain count too (e.g. "1,000
+-- claims paid within 24h" as a volume target, not "95% of claims paid
+-- within 24h" as a rate). This decouples them: a KPI can have a reference
+-- event without being a percentage, so within_hours can drive either a rate
+-- or a raw count.
+--
+-- Defaults to true so every existing rate KPI (created before this column
+-- existed) keeps behaving exactly as it does today — nothing changes for
+-- them.
+alter table public.metrics add column if not exists rate_as_percentage boolean not null default true;

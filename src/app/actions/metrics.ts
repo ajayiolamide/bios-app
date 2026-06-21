@@ -1,0 +1,539 @@
+"use server";
+
+import { createServerClient, createAdminClient } from "@/lib/supabase/server";
+import type { Metric } from "@/types/database";
+import { computeTimeWindowedRate } from "@/lib/metrics-engine";
+import type { MetricDataPoint } from "@/lib/metrics-engine";
+
+// Server Actions files can only export async functions, so the actual sync
+// computeTimeWindowedRate helper lives in src/lib/metrics-engine.ts. cohorts.ts
+// imports it from there directly (not from this file) for the same reason.
+export type { MetricDataPoint } from "@/lib/metrics-engine";
+
+export type MetricWithData = Metric & {
+  total: number;
+  trend: MetricDataPoint[];
+  feature_name: string | null;
+  business_goal_title: string | null;
+};
+
+// ─── List ────────────────────────────────────────────────────────────────────
+// Pulls each metric together with the feature it was built to measure and
+// the business goal that feature serves, so the page can render the real
+// hierarchy (Business Goal -> Feature -> KPI) instead of a flat list.
+
+export async function getMetrics(orgId: string): Promise<MetricWithData[]> {
+  const admin = createAdminClient();
+
+  const { data: metrics, error } = await admin
+    .from("metrics")
+    .select("*")
+    .eq("organization_id", orgId)
+    .order("created_at", { ascending: false });
+
+  if (error) console.error("[getMetrics]", error.message);
+  if (error || !metrics) return [];
+
+  // Resolve feature names and goal titles with plain lookups instead of a
+  // PostgREST embedded select (e.g. .select("*, feature_metrics(...), business_goals(...)")).
+  // Embedded selects depend on PostgREST's schema cache picking up the FK
+  // columns added in migrations 017/018 — right after running a migration
+  // that cache can be stale until the project reloads it, and the embedded
+  // select then fails silently (error set, caught above, empty result) with
+  // no obvious cause. Two plain queries have no such dependency.
+  const featureIds = [...new Set(metrics.map((m) => m.feature_metric_id).filter((id): id is string => !!id))];
+  const goalIds = [...new Set(metrics.map((m) => m.business_goal_id).filter((id): id is string => !!id))];
+
+  const [featureRes, goalRes] = await Promise.all([
+    featureIds.length > 0
+      ? admin.from("feature_metrics").select("id, feature_name").in("id", featureIds)
+      : Promise.resolve({ data: [] as { id: string; feature_name: string }[] }),
+    goalIds.length > 0
+      ? admin.from("business_goals").select("id, title").in("id", goalIds)
+      : Promise.resolve({ data: [] as { id: string; title: string }[] }),
+  ]);
+
+  const featureNameById = new Map((featureRes.data ?? []).map((f) => [f.id, f.feature_name]));
+  const goalTitleById = new Map((goalRes.data ?? []).map((g) => [g.id, g.title]));
+
+  // Fetch 30-day trend data for each metric in parallel
+  const results = await Promise.all(
+    metrics.map(async (m) => {
+      const withData = await attachTrendData(m, orgId);
+      return {
+        ...withData,
+        feature_name: m.feature_metric_id ? featureNameById.get(m.feature_metric_id) ?? null : null,
+        business_goal_title: m.business_goal_id ? goalTitleById.get(m.business_goal_id) ?? null : null,
+      };
+    })
+  );
+
+  return results;
+}
+
+// ─── Create ──────────────────────────────────────────────────────────────────
+
+export async function createMetric(
+  orgId: string,
+  payload: { name: string; description: string; event_name: string; aggregation: string }
+): Promise<{ data: Metric | null; error: string | null }> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { data: null, error: "Not authenticated" };
+
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("metrics")
+    .insert({
+      organization_id: orgId,
+      name: payload.name.trim(),
+      description: payload.description.trim() || null,
+      event_name: payload.event_name.trim(),
+      aggregation: payload.aggregation as Metric["aggregation"],
+      created_by: user.id,
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    console.error("[createMetric]", error);
+    return { data: null, error: error.message };
+  }
+
+  return { data, error: null };
+}
+
+// ─── Goal-level KPIs ───────────────────────────────────────────────────────────
+// A KPI belongs to the business goal it breaks down, not to whichever
+// feature happens to get built first. These are created directly on a goal,
+// independent of any feature — features then pick which existing KPI they're
+// meant to move (see feature_metrics.target_kpi_id) instead of each one
+// inventing its own.
+
+export async function getKpisByGoal(orgId: string): Promise<Record<string, MetricWithData[]>> {
+  const all = await getMetrics(orgId);
+  const byGoal: Record<string, MetricWithData[]> = {};
+  for (const m of all) {
+    if (m.kind !== "kpi" || !m.business_goal_id) continue;
+    if (!byGoal[m.business_goal_id]) byGoal[m.business_goal_id] = [];
+    byGoal[m.business_goal_id].push(m);
+  }
+  return byGoal;
+}
+
+export async function createGoalKpi(
+  orgId: string,
+  businessGoalId: string,
+  payload: {
+    name: string;
+    description: string;
+    event_name?: string | null;
+    // A KPI can carry one optional "property": a reference event that
+    // changes how event_name's total is computed. Two independent switches
+    // control what that means (see migration 027):
+    //   - rate_as_percentage: express the total as % of the reference
+    //     event's count, instead of a raw number.
+    //   - within_hours: only count it when event_name lands within this
+    //     many hours of THAT SAME user's reference event, instead of
+    //     treating the two events as independent headcounts.
+    // Either, both, or neither (within_hours unset = no time constraint) can
+    // be on — e.g. percentage alone is a plain ratio, hours alone is a raw
+    // count of timely conversions, both together is "% who converted in
+    // time" (e.g. the claims-paid-within-24h KPI).
+    denominator_event_name?: string | null;
+    within_hours?: number | null;
+    rate_as_percentage?: boolean;
+    aggregation: string;
+    target: string;
+    target_value?: number | null;
+  }
+): Promise<{ data: Metric | null; error: string | null }> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { data: null, error: "Not authenticated" };
+
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("metrics")
+    .insert({
+      organization_id: orgId,
+      name: payload.name.trim(),
+      description: payload.description.trim() || null,
+      // Optional on purpose — a KPI is a goal-level target decided up front;
+      // the event that measures it can be wired up later (manually here, or
+      // automatically when a feature targets this KPI). See migration 019.
+      event_name: payload.event_name?.trim() || null,
+      denominator_event_name: payload.denominator_event_name?.trim() || null,
+      within_hours: payload.within_hours ?? null,
+      rate_as_percentage: payload.rate_as_percentage ?? true,
+      aggregation: payload.aggregation as Metric["aggregation"],
+      business_goal_id: businessGoalId,
+      target: payload.target.trim() || null,
+      target_value: payload.target_value ?? null,
+      kind: "kpi",
+      created_by: user.id,
+    })
+    .select("*")
+    .single();
+
+  if (error) {
+    console.error("[createGoalKpi]", error);
+    return { data: null, error: error.message };
+  }
+
+  return { data, error: null };
+}
+
+// ─── Attach an event to an existing KPI ───────────────────────────────────────
+// Lets a KPI created without an event (see createGoalKpi above) get wired up
+// later — either from the Goals page directly, or when a feature is pointed
+// at this KPI and supplies the event itself.
+
+export async function attachEventToKpi(
+  metricId: string,
+  eventName: string,
+  aggregation?: string
+): Promise<{ error: string | null }> {
+  const admin = createAdminClient();
+  const update: { event_name: string; aggregation?: Metric["aggregation"] } = {
+    event_name: eventName.trim(),
+  };
+  if (aggregation) update.aggregation = aggregation as Metric["aggregation"];
+
+  const { error } = await admin.from("metrics").update(update).eq("id", metricId);
+  if (error) return { error: error.message };
+  return { error: null };
+}
+
+// ─── Edit / delete a goal-level KPI ───────────────────────────────────────────
+// Same fields and semantics as createGoalKpi above — this just updates an
+// existing row in place instead of inserting a new one. All fields are
+// optional so a caller can patch just what changed; omit a field to leave it
+// untouched, or pass null/undefined explicitly where the type allows it to
+// clear that field (e.g. removing the reference-event property).
+
+export async function updateGoalKpi(
+  kpiId: string,
+  payload: {
+    name?: string;
+    description?: string;
+    event_name?: string | null;
+    denominator_event_name?: string | null;
+    within_hours?: number | null;
+    rate_as_percentage?: boolean;
+    aggregation?: string;
+    target?: string | null;
+    target_value?: number | null;
+  }
+): Promise<{ error: string | null }> {
+  const admin = createAdminClient();
+  const update: Record<string, unknown> = {};
+  if (payload.name !== undefined) update.name = payload.name.trim();
+  if (payload.description !== undefined) update.description = payload.description.trim() || null;
+  if (payload.event_name !== undefined) update.event_name = payload.event_name?.trim() || null;
+  if (payload.denominator_event_name !== undefined) update.denominator_event_name = payload.denominator_event_name?.trim() || null;
+  if (payload.within_hours !== undefined) update.within_hours = payload.within_hours;
+  if (payload.rate_as_percentage !== undefined) update.rate_as_percentage = payload.rate_as_percentage;
+  if (payload.aggregation !== undefined) update.aggregation = payload.aggregation;
+  if (payload.target !== undefined) update.target = payload.target?.trim() || null;
+  if (payload.target_value !== undefined) update.target_value = payload.target_value;
+
+  const { error } = await admin.from("metrics").update(update).eq("id", kpiId);
+  if (error) {
+    console.error("[updateGoalKpi]", error);
+    return { error: error.message };
+  }
+  return { error: null };
+}
+
+export async function deleteGoalKpi(kpiId: string): Promise<{ error: string | null }> {
+  const admin = createAdminClient();
+  const { error } = await admin.from("metrics").delete().eq("id", kpiId);
+  if (error) {
+    console.error("[deleteGoalKpi]", error);
+    return { error: error.message };
+  }
+  return { error: null };
+}
+
+// ─── Goal-level progress ──────────────────────────────────────────────────────
+// A goal's progress is only real when its KPIs have BOTH a wired event
+// (something is actually being measured) AND a numeric target_value (a
+// number to measure against, in the metric's own unit). Anything else is
+// shown as "not yet measurable" rather than guessed at — consistent with the
+// app's rule against implying a percentage it can't actually compute.
+
+export type GoalProgress = {
+  businessGoalId: string;
+  measurableKpiCount: number;
+  totalKpiCount: number;
+  // Plain average of each measurable KPI's (actual / target_value) — left
+  // UNCAPPED on purpose. A KPI running 20x over its target is real
+  // information ("blew past it"), not the same thing as "hit it exactly" —
+  // silently capping every KPI at 100% before averaging would erase that
+  // difference and quietly lie about how far over/under target things are.
+  // Capping only happens at render time, for the filled width of the bar —
+  // a bar can't visually draw past 100% — but the number shown next to it
+  // stays real and can exceed 100%.
+  progressRatio: number | null;
+};
+
+export async function getGoalProgress(orgId: string): Promise<Record<string, GoalProgress>> {
+  const kpisByGoal = await getKpisByGoal(orgId);
+  const result: Record<string, GoalProgress> = {};
+
+  for (const [goalId, kpis] of Object.entries(kpisByGoal)) {
+    const measurable = kpis.filter((k) => k.event_name && typeof k.target_value === "number" && k.target_value > 0);
+
+    let progressRatio: number | null = null;
+    if (measurable.length > 0) {
+      const ratios = measurable.map((k) => k.total / (k.target_value as number));
+      progressRatio = ratios.reduce((sum, r) => sum + r, 0) / ratios.length;
+    }
+
+    result[goalId] = {
+      businessGoalId: goalId,
+      measurableKpiCount: measurable.length,
+      totalKpiCount: kpis.length,
+      progressRatio,
+    };
+  }
+
+  return result;
+}
+
+// ─── Delete ──────────────────────────────────────────────────────────────────
+
+export async function deleteMetric(metricId: string): Promise<{ error: string | null }> {
+  const admin = createAdminClient();
+  const { error } = await admin.from("metrics").delete().eq("id", metricId);
+  if (error) return { error: error.message };
+  return { error: null };
+}
+
+// ─── Trend data ──────────────────────────────────────────────────────────────
+
+async function attachTrendData(metric: Metric, orgId: string): Promise<MetricWithData> {
+  const since = new Date();
+  since.setDate(since.getDate() - 29); // last 30 days
+  since.setHours(0, 0, 0, 0);
+
+  // A KPI can be defined before any event is wired to it (see migration 019).
+  // No event_name means there's nothing to query yet — return a flat/empty
+  // result instead of running a query that would just match nothing.
+  if (!metric.event_name) {
+    return { ...metric, total: 0, trend: buildTrend([], metric.aggregation, since) };
+  }
+
+  const admin = createAdminClient();
+  const numeratorEvents = await fetchEventRows(admin, orgId, metric.event_name, since);
+
+  // KPI "property" (migration 024/026/027) — a reference event changes how
+  // event_name's total is computed. Two independent switches decide how:
+  // rate_as_percentage (express vs. the reference event's count) and
+  // within_hours (require it within a time window of THAT SAME user's
+  // reference event, instead of treating the two as independent
+  // headcounts). See createGoalKpi's comment for the full combination table.
+  if (metric.denominator_event_name) {
+    const denominatorEvents = await fetchEventRows(admin, orgId, metric.denominator_event_name, since);
+    const hasWindow = !!metric.within_hours && metric.within_hours > 0;
+    const asPercentage = metric.rate_as_percentage !== false;
+
+    if (hasWindow && asPercentage) {
+      // % of reference-event users whose event_name landed in time.
+      const { total, trend } = computeTimeWindowedRate(numeratorEvents, denominatorEvents, metric.within_hours as number, since);
+      return { ...metric, total, trend };
+    }
+
+    if (hasWindow && !asPercentage) {
+      // Raw count of reference-event occurrences that got a timely match —
+      // e.g. "1,000 claims paid within 24h" as a volume target.
+      const { total, trend } = computeTimeWindowedCount(numeratorEvents, denominatorEvents, metric.within_hours as number, since);
+      return { ...metric, total, trend };
+    }
+
+    if (asPercentage) {
+      // Plain ratio — two independent headcounts in the same window. Does
+      // NOT check that any individual record in the numerator corresponds
+      // to one in the denominator.
+      const trend = buildRateTrend(numeratorEvents, denominatorEvents, metric.aggregation, since);
+      const numTotal = computeTotal(numeratorEvents, metric.aggregation);
+      const denTotal = computeTotal(denominatorEvents, metric.aggregation);
+      const total = denTotal > 0 ? Math.round((numTotal / denTotal) * 1000) / 10 : 0;
+      return { ...metric, total, trend };
+    }
+
+    // Reference event present but neither switch is meaningfully on — falls
+    // through to a plain volume KPI on event_name alone, ignoring it.
+  }
+
+  const trend = buildTrend(numeratorEvents, metric.aggregation, since);
+  const total = computeTotal(numeratorEvents, metric.aggregation);
+
+  return { ...metric, total, trend };
+}
+
+export async function fetchEventRows(
+  admin: ReturnType<typeof createAdminClient>,
+  orgId: string,
+  eventName: string,
+  since: Date
+): Promise<{ timestamp: string; user_id: string | null; session_id: string | null }[]> {
+  const { data } = await admin
+    .from("events")
+    .select("timestamp, user_id, session_id")
+    .eq("organization_id", orgId)
+    .eq("name", eventName)
+    .gte("timestamp", since.toISOString())
+    // Exclude only the name-only placeholder rows Sync Event Names creates —
+    // not real Mixpanel-sourced occurrences synced via Pull Mixpanel Data,
+    // which share the same source tag but are real data and should count.
+    .or("properties->>is_placeholder.is.null,properties->>is_placeholder.neq.true");
+  return data ?? [];
+}
+
+// Per-user time-windowed matching (migration 026) — for each user who fired
+// the denominator event, check whether THAT SAME user also fired the
+// numerator event within `withinHours` hours afterward. Always matches by
+// user_id regardless of the KPI's aggregation setting, since "did this
+// specific person convert in time" inherently needs an actor identity —
+// raw event counts or session ids don't carry that across two different
+// event streams the way a user_id does.
+//
+// Caveat: if a user has more than one denominator instance in the window
+// (e.g. started two claims), they count as a success if ANY of their
+// instances has a matching numerator event in time — this can't currently
+// tell apart "claim A was fast, claim B was slow" for the same person.
+//
+// The actual implementation now lives in src/lib/metrics-engine.ts (imported
+// above) since "use server" files can only export async functions — this
+// comment block stays here as the canonical explanation of what it does.
+
+// Same per-user time match as computeTimeWindowedRate, but for a raw COUNT
+// target instead of a percentage — e.g. "1,000 claims paid within 24h" as a
+// volume goal. The unit here is different on purpose: this counts matched
+// reference-event INSTANCES (each qualifying claim), not unique users, since
+// a volume target is naturally about how many things happened, and one user
+// can contribute more than one.
+function computeTimeWindowedCount(
+  numeratorEvents: { timestamp: string; user_id: string | null }[],
+  denominatorEvents: { timestamp: string; user_id: string | null }[],
+  withinHours: number,
+  since: Date
+): { total: number; trend: MetricDataPoint[] } {
+  const windowMs = withinHours * 3600 * 1000;
+
+  const numByUser = new Map<string, number[]>();
+  for (const ev of numeratorEvents) {
+    if (!ev.user_id) continue;
+    const t = new Date(ev.timestamp).getTime();
+    const list = numByUser.get(ev.user_id);
+    if (list) list.push(t); else numByUser.set(ev.user_id, [t]);
+  }
+
+  const dayCounts: Record<string, number> = {};
+  for (let i = 0; i < 30; i++) {
+    const d = new Date(since);
+    d.setDate(d.getDate() + i);
+    dayCounts[d.toISOString().slice(0, 10)] = 0;
+  }
+
+  let total = 0;
+  for (const ev of denominatorEvents) {
+    if (!ev.user_id) continue;
+    const dt = new Date(ev.timestamp).getTime();
+    const userNumTimes = numByUser.get(ev.user_id) ?? [];
+    const matched = userNumTimes.some((nt) => nt >= dt && nt - dt <= windowMs);
+    if (matched) {
+      total++;
+      const key = new Date(dt).toISOString().slice(0, 10);
+      if (key in dayCounts) dayCounts[key]++;
+    }
+  }
+
+  const trend = Object.keys(dayCounts)
+    .sort()
+    .map((date) => ({ date, value: dayCounts[date] }));
+
+  return { total, trend };
+}
+
+function buildTrend(
+  events: { timestamp: string; user_id: string | null; session_id: string | null }[],
+  aggregation: Metric["aggregation"],
+  since: Date
+): MetricDataPoint[] {
+  // Build a map of date → set/count
+  const days: Record<string, Set<string> | number> = {};
+
+  // Pre-fill all 30 days with 0 / empty sets
+  for (let i = 0; i < 30; i++) {
+    const d = new Date(since);
+    d.setDate(d.getDate() + i);
+    const key = d.toISOString().slice(0, 10);
+    days[key] = aggregation === "count" ? 0 : new Set<string>();
+  }
+
+  for (const ev of events) {
+    const key = ev.timestamp.slice(0, 10);
+    if (!(key in days)) continue;
+
+    if (aggregation === "count") {
+      (days[key] as number)++;
+    } else if (aggregation === "unique_users" && ev.user_id) {
+      (days[key] as Set<string>).add(ev.user_id);
+    } else if (aggregation === "unique_sessions" && ev.session_id) {
+      (days[key] as Set<string>).add(ev.session_id);
+    }
+  }
+
+  return Object.entries(days)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, val]) => ({
+      date,
+      value: typeof val === "number" ? val : (val as Set<string>).size,
+    }));
+}
+
+// Per-day version of the same ratio used for the KPI's overall total — reuses
+// buildTrend to get daily counts on each side, then divides day by day so the
+// trend line shows the rate moving over time instead of two raw counts.
+function buildRateTrend(
+  numeratorEvents: { timestamp: string; user_id: string | null; session_id: string | null }[],
+  denominatorEvents: { timestamp: string; user_id: string | null; session_id: string | null }[],
+  aggregation: Metric["aggregation"],
+  since: Date
+): MetricDataPoint[] {
+  const numTrend = buildTrend(numeratorEvents, aggregation, since);
+  const denTrend = buildTrend(denominatorEvents, aggregation, since);
+  return numTrend.map((point, i) => {
+    const denVal = denTrend[i]?.value ?? 0;
+    const rate = denVal > 0 ? Math.round((point.value / denVal) * 1000) / 10 : 0;
+    return { date: point.date, value: rate };
+  });
+}
+
+function computeTotal(
+  events: { user_id: string | null; session_id: string | null }[],
+  aggregation: Metric["aggregation"]
+): number {
+  if (aggregation === "count") return events.length;
+  if (aggregation === "unique_users") {
+    return new Set(events.map((e) => e.user_id).filter(Boolean)).size;
+  }
+  return new Set(events.map((e) => e.session_id).filter(Boolean)).size;
+}
+
+// ─── Distinct event names (for the create form dropdown) ─────────────────────
+
+export async function getDistinctEventNames(orgId: string): Promise<string[]> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("events")
+    .select("name")
+    .eq("organization_id", orgId)
+    .order("name");
+
+  if (!data) return [];
+  return [...new Set(data.map((r) => r.name))];
+}

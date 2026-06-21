@@ -1,0 +1,11 @@
+-- The rate KPI added in migration 024 compares two independent headcounts in
+-- the same 30-day window (e.g. users who clicked start vs users who got
+-- paid) — it doesn't check that the SAME user's payment actually landed
+-- soon after their own click. This adds an optional time window: when set
+-- alongside denominator_event_name, the KPI switches from a plain ratio to
+-- per-user matching — for each user who fired the denominator event, check
+-- whether THAT user also fired the numerator event within within_hours
+-- hours afterward. Leave it null and the KPI keeps the existing plain-ratio
+-- behaviour (e.g. for cases where there's no meaningful "before/after"
+-- relationship between the two events).
+alter table public.metrics add column if not exists within_hours integer default null;
