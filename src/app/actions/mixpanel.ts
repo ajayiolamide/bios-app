@@ -54,11 +54,11 @@ function dateStr(d: Date) {
 
 export async function getMixpanelSettings(
   orgId: string
-): Promise<{ settings?: MixpanelSettings; connected: boolean }> {
+): Promise<{ settings?: MixpanelSettings; connected: boolean; lastSyncedAt?: string | null }> {
   const admin = createAdminClient();
   const { data } = await admin
     .from("brand_settings")
-    .select("mixpanel_username, mixpanel_api_secret, mixpanel_project_id, mixpanel_data_region")
+    .select("mixpanel_username, mixpanel_api_secret, mixpanel_project_id, mixpanel_data_region, mixpanel_raw_synced_until")
     .eq("organization_id", orgId)
     .single();
 
@@ -66,6 +66,10 @@ export async function getMixpanelSettings(
 
   return {
     connected: true,
+    // Surfaced so the UI can explain what picking a given sync window will
+    // actually do — e.g. "never synced, pick a wide window to backfill"
+    // vs. "synced 2 days ago, a short window is enough to catch up."
+    lastSyncedAt: data.mixpanel_raw_synced_until ?? null,
     settings: {
       username:    data.mixpanel_username    ?? "",
       api_secret:  data.mixpanel_api_secret,

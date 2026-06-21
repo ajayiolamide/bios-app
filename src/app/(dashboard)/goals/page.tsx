@@ -5,7 +5,7 @@ import {
   Plus, Target, TrendingUp, Users, Settings, Package, Globe,
   Trash2, Loader2, Trophy, CheckCircle2, ChevronDown, Check,
   ChevronRight, Lightbulb, Zap, AlertCircle, Activity, RefreshCw,
-  Calendar, ShieldAlert, Pencil,
+  Calendar, ShieldAlert, Pencil, FileSpreadsheet,
 } from "lucide-react";
 import { useOrg } from "@/contexts/org-context";
 import { cn } from "@/lib/utils";
@@ -30,7 +30,12 @@ import {
   getDistinctEventNames, attachEventToKpi,
   getGoalProgress, type MetricWithData, type GoalProgress,
 } from "@/app/actions/metrics";
-import type { BusinessGoal, FeatureSuggestion, Metric } from "@/types/database";
+import {
+  getCompanyObjectives, createCompanyObjective, setGoalObjective,
+} from "@/app/actions/company-objectives";
+import { getReportSources, fetchSheetData } from "@/app/actions/reports";
+import { getSheetRowOptions } from "@/app/actions/manual-kpi";
+import type { BusinessGoal, FeatureSuggestion, Metric, CompanyObjective, ReportSource } from "@/types/database";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -394,6 +399,35 @@ function KpiRow({ kpi, featureCount, orgId, onWired, onEdit, onDelete }: {
     </div>
   ) : null;
 
+  // Manually sourced from a connected sheet row (migration 029) — no event,
+  // but a real number, so it shouldn't fall into the "not yet measurable"
+  // branch below just because event_name is empty.
+  if (!kpi.event_name && kpi.source_report_id && kpi.source_row_value) {
+    return (
+      <div className="group py-2 border-b border-gray-50 last:border-0">
+        <div className="flex items-center gap-3">
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-gray-700 truncate">{kpi.name}</p>
+            <p className="flex items-center gap-1 text-[11px] text-gray-400 truncate">
+              <FileSpreadsheet size={10} className="flex-shrink-0" />
+              From sheet row &quot;{kpi.source_row_value}&quot;
+              {kpi.target && <span> · Target: {kpi.target}</span>}
+              {typeof kpi.target_value === "number" && <span> · Goal: {kpi.target_value.toLocaleString()}</span>}
+            </p>
+          </div>
+          <div className="text-right flex-shrink-0">
+            <p className="text-sm font-bold text-gray-900 tabular-nums">{kpi.total.toLocaleString()}</p>
+            <p className="text-[10px] text-gray-400">latest month</p>
+          </div>
+          {RowActions}
+          <span className="text-[10px] text-gray-400 flex-shrink-0 w-16 text-right">
+            {featureCount} feature{featureCount !== 1 ? "s" : ""}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   if (!kpi.event_name) {
     return (
       <div className="group py-2 border-b border-gray-50 last:border-0">
@@ -503,6 +537,49 @@ function KpiForm({ orgId, goalId, initial, onSaved, onCancel }: { orgId: string;
     target: initial?.target ?? "",
     target_value: typeof initial?.target_value === "number" ? String(initial.target_value) : "",
   });
+
+  // How this KPI's number gets measured — a tracked event (Mixpanel/
+  // Amplitude/app SDK), or a row in a connected sheet for operational
+  // numbers nothing tracks (e.g. claims paid within 24hrs, from asking ops
+  // and typing the answer into the sheet). See migration 029.
+  const [sourceMode, setSourceMode] = useState<"event" | "manual">(
+    initial?.source_report_id && initial?.source_row_value ? "manual" : "event"
+  );
+  const [sources, setSources] = useState<ReportSource[]>([]);
+  const [sheetHeaders, setSheetHeaders] = useState<string[]>([]);
+  const [rowOptions, setRowOptions] = useState<string[]>([]);
+  const [manual, setManual] = useState({
+    reportSourceId: initial?.source_report_id ?? "",
+    labelColumn: initial?.source_label_column ?? "",
+    rowValue: initial?.source_row_value ?? "",
+  });
+  const [loadingHeaders, setLoadingHeaders] = useState(false);
+  const [loadingRows, setLoadingRows] = useState(false);
+
+  useEffect(() => { getReportSources(orgId).then(setSources); }, [orgId]);
+
+  // Re-fetch the sheet's real column headers whenever the picked source
+  // changes — same "don't let the user type a column name that doesn't
+  // exist" rule as the Sources page's parameter config.
+  useEffect(() => {
+    if (!manual.reportSourceId) { setSheetHeaders([]); return; }
+    setLoadingHeaders(true);
+    fetchSheetData(manual.reportSourceId).then(({ headers }) => {
+      setSheetHeaders(headers);
+      setLoadingHeaders(false);
+    });
+  }, [manual.reportSourceId]);
+
+  // Re-fetch the real distinct values in the picked label column, so "which
+  // row is this KPI" is a pick-from-what's-actually-there list, not free text.
+  useEffect(() => {
+    if (!manual.reportSourceId || !manual.labelColumn) { setRowOptions([]); return; }
+    setLoadingRows(true);
+    getSheetRowOptions(manual.reportSourceId, manual.labelColumn).then(({ options }) => {
+      setRowOptions(options);
+      setLoadingRows(false);
+    });
+  }, [manual.reportSourceId, manual.labelColumn]);
   // null = plain KPI on form.event_name alone. Set = the KPI is also
   // measured against a reference event — express it as a % of that event,
   // and/or only count it within so many hours of that event. Either
@@ -530,7 +607,13 @@ function KpiForm({ orgId, goalId, initial, onSaved, onCancel }: { orgId: string;
 
   async function handleSave() {
     if (!form.name.trim()) { setError("Name is required."); return; }
-    if (property) {
+    if (sourceMode === "manual") {
+      if (!manual.reportSourceId || !manual.labelColumn || !manual.rowValue) {
+        setError("Pick a sheet, the column that names each row, and which row is this KPI.");
+        return;
+      }
+    }
+    if (sourceMode === "event" && property) {
       if (!form.event_name.trim() || !property.referenceEvent.trim()) {
         setError("A KPI with a property needs both events — the one being measured and the reference event.");
         return;
@@ -548,11 +631,14 @@ function KpiForm({ orgId, goalId, initial, onSaved, onCancel }: { orgId: string;
     setError("");
     const payload = {
       ...form,
-      event_name: form.event_name.trim() || null,
-      denominator_event_name: property ? property.referenceEvent.trim() || null : null,
-      within_hours: property?.withinHoursEnabled && property.withinHours.trim() ? Number(property.withinHours) : null,
-      rate_as_percentage: property ? property.asPercentage : true,
+      event_name: sourceMode === "event" ? form.event_name.trim() || null : null,
+      denominator_event_name: sourceMode === "event" && property ? property.referenceEvent.trim() || null : null,
+      within_hours: sourceMode === "event" && property?.withinHoursEnabled && property.withinHours.trim() ? Number(property.withinHours) : null,
+      rate_as_percentage: sourceMode === "event" && property ? property.asPercentage : true,
       target_value: form.target_value.trim() ? Number(form.target_value) : null,
+      source_report_id: sourceMode === "manual" ? manual.reportSourceId : null,
+      source_label_column: sourceMode === "manual" ? manual.labelColumn : null,
+      source_row_value: sourceMode === "manual" ? manual.rowValue : null,
     };
     const result = initial
       ? await updateGoalKpi(initial.id, payload)
@@ -573,29 +659,100 @@ function KpiForm({ orgId, goalId, initial, onSaved, onCancel }: { orgId: string;
         className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300"
       />
 
-      <p className="text-[10px] text-gray-400">
-        Event is optional — define the KPI now, wire up the event that measures it whenever it&apos;s ready.
-      </p>
-      <div className="flex items-center gap-1.5">
-        <EventCombobox
-          value={form.event_name}
-          onChange={(v) => setForm({ ...form, event_name: v })}
-          options={eventNames}
-          placeholder={eventNames.length > 0 ? "No event yet — search events…" : "event_name (optional)"}
-          className="flex-1"
-        />
-        <select
-          value={form.aggregation}
-          onChange={(e) => setForm({ ...form, aggregation: e.target.value as "count" | "unique_users" | "unique_sessions" })}
-          disabled={!!property?.withinHoursEnabled && property.asPercentage}
-          title={property?.withinHoursEnabled && property.asPercentage ? "Ignored — time-matched rates always match by user" : undefined}
-          className="border border-gray-200 rounded px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300 disabled:opacity-40"
-        >
-          <option value="unique_users">Unique users</option>
-          <option value="count">Event count</option>
-          <option value="unique_sessions">Unique sessions</option>
-        </select>
+      {/* How this KPI gets measured — a tracked event, or a row in a
+          connected sheet for operational numbers nothing tracks. */}
+      <div className="flex items-center gap-1.5 pt-0.5">
+        {(["event", "manual"] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            onClick={() => setSourceMode(m)}
+            className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors ${
+              sourceMode === m ? "bg-indigo-50 border-indigo-200 text-indigo-600" : "bg-white border-gray-200 text-gray-400 hover:text-gray-600"
+            }`}
+          >
+            {m === "event" ? "Tracked event" : "Manual / from sheet"}
+          </button>
+        ))}
       </div>
+
+      {sourceMode === "event" && (
+        <>
+          <p className="text-[10px] text-gray-400">
+            Event is optional — define the KPI now, wire up the event that measures it whenever it&apos;s ready.
+          </p>
+          <div className="flex items-center gap-1.5">
+            <EventCombobox
+              value={form.event_name}
+              onChange={(v) => setForm({ ...form, event_name: v })}
+              options={eventNames}
+              placeholder={eventNames.length > 0 ? "No event yet — search events…" : "event_name (optional)"}
+              className="flex-1"
+            />
+            <select
+              value={form.aggregation}
+              onChange={(e) => setForm({ ...form, aggregation: e.target.value as "count" | "unique_users" | "unique_sessions" })}
+              disabled={!!property?.withinHoursEnabled && property.asPercentage}
+              title={property?.withinHoursEnabled && property.asPercentage ? "Ignored — time-matched rates always match by user" : undefined}
+              className="border border-gray-200 rounded px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300 disabled:opacity-40"
+            >
+              <option value="unique_users">Unique users</option>
+              <option value="count">Event count</option>
+              <option value="unique_sessions">Unique sessions</option>
+            </select>
+          </div>
+        </>
+      )}
+
+      {sourceMode === "manual" && (
+        <div className="border border-gray-200 rounded-lg p-2.5 space-y-2 bg-gray-50/60">
+          <p className="text-[10px] text-gray-400">
+            Pulls this KPI&apos;s number from a row in a sheet you&apos;ve already connected (Reports → Sources) — for numbers nothing tracks automatically, like asking ops how long claims took and typing the answer in.
+          </p>
+          {sources.length === 0 ? (
+            <p className="text-[11px] text-amber-600">
+              No sheet connected yet — add one on the Reports page first.
+            </p>
+          ) : (
+            <>
+              <select
+                value={manual.reportSourceId}
+                onChange={(e) => setManual({ reportSourceId: e.target.value, labelColumn: "", rowValue: "" })}
+                className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300"
+              >
+                <option value="">Which sheet?</option>
+                {sources.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </select>
+              {manual.reportSourceId && (
+                <select
+                  value={manual.labelColumn}
+                  onChange={(e) => setManual({ ...manual, labelColumn: e.target.value, rowValue: "" })}
+                  disabled={loadingHeaders}
+                  className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300 disabled:opacity-50"
+                >
+                  <option value="">{loadingHeaders ? "Loading columns…" : "Which column names each row?"}</option>
+                  {sheetHeaders.map((h) => <option key={h} value={h}>{h}</option>)}
+                </select>
+              )}
+              {manual.labelColumn && (
+                <select
+                  value={manual.rowValue}
+                  onChange={(e) => setManual({ ...manual, rowValue: e.target.value })}
+                  disabled={loadingRows}
+                  className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300 disabled:opacity-50"
+                >
+                  <option value="">{loadingRows ? "Loading rows…" : "Which row is this KPI?"}</option>
+                  {rowOptions.map((v) => <option key={v} value={v}>{v}</option>)}
+                </select>
+              )}
+              <p className="text-[10px] text-gray-400">
+                Reads whichever month column (e.g. &quot;May - Value&quot;) is most recent at or before today.
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center gap-1.5">
         <input
           type="number"
@@ -613,72 +770,76 @@ function KpiForm({ orgId, goalId, initial, onSaved, onCancel }: { orgId: string;
         />
       </div>
       <p className="text-[10px] text-gray-400">
-        {property?.asPercentage
+        {sourceMode === "manual"
+          ? "Numeric goal is in the same unit as the sheet's value column — that's what lets this goal's progress actually compute."
+          : property?.asPercentage
           ? "Target is a percentage — computed against the reference event below."
           : "Numeric goal is in the same unit as above (users/events/sessions) — that's what lets this goal's progress actually compute."}
       </p>
 
-      {property === null ? (
-        <button
-          type="button"
-          onClick={() => setProperty({ referenceEvent: "", asPercentage: false, withinHoursEnabled: false, withinHours: "" })}
-          className="text-[11px] font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
-        >
-          + Add property
-        </button>
-      ) : (
-        <div className="border border-gray-200 rounded-lg p-2.5 space-y-2 bg-gray-50/60">
-          <div className="flex items-center justify-between">
-            <p className="text-[10px] font-medium text-gray-500">Reference event</p>
-            <button
-              type="button"
-              onClick={() => setProperty(null)}
-              className="text-[10px] text-gray-400 hover:text-red-500"
-            >
-              Remove
-            </button>
-          </div>
-          <p className="text-[10px] text-gray-400">
-            Some KPIs can&apos;t stand alone — they only mean something next to another event (e.g. claim_paid out of claim_start_clicked). Pick that event, then choose how it should be used below. Either box, or both.
-          </p>
-          <EventCombobox
-            value={property.referenceEvent}
-            onChange={(v) => setProperty({ ...property, referenceEvent: v })}
-            options={eventNames}
-            placeholder="Search events…"
-            className="w-full"
-          />
-          <label className="flex items-start gap-1.5 text-[11px] text-gray-600">
-            <input
-              type="checkbox"
-              checked={property.asPercentage}
-              onChange={(e) => setProperty({ ...property, asPercentage: e.target.checked })}
-              className="mt-0.5"
-            />
-            <span>Express as a percentage of the reference event (e.g. 95% of claim_start_clicked)</span>
-          </label>
-          <label className="flex items-start gap-1.5 text-[11px] text-gray-600">
-            <input
-              type="checkbox"
-              checked={property.withinHoursEnabled}
-              onChange={(e) => setProperty({ ...property, withinHoursEnabled: e.target.checked })}
-              className="mt-0.5"
-            />
-            <span>Only count it within a number of hours of the reference event — matched per user, not as two separate headcounts</span>
-          </label>
-          {property.withinHoursEnabled && (
-            <div className="pl-5">
-              <input
-                type="number"
-                min={1}
-                placeholder="Hours, e.g. 24"
-                value={property.withinHours}
-                onChange={(e) => setProperty({ ...property, withinHours: e.target.value })}
-                className="w-32 border border-gray-200 rounded px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300"
-              />
+      {sourceMode === "event" && (
+        property === null ? (
+          <button
+            type="button"
+            onClick={() => setProperty({ referenceEvent: "", asPercentage: false, withinHoursEnabled: false, withinHours: "" })}
+            className="text-[11px] font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+          >
+            + Add property
+          </button>
+        ) : (
+          <div className="border border-gray-200 rounded-lg p-2.5 space-y-2 bg-gray-50/60">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] font-medium text-gray-500">Reference event</p>
+              <button
+                type="button"
+                onClick={() => setProperty(null)}
+                className="text-[10px] text-gray-400 hover:text-red-500"
+              >
+                Remove
+              </button>
             </div>
-          )}
-        </div>
+            <p className="text-[10px] text-gray-400">
+              Some KPIs can&apos;t stand alone — they only mean something next to another event (e.g. claim_paid out of claim_start_clicked). Pick that event, then choose how it should be used below. Either box, or both.
+            </p>
+            <EventCombobox
+              value={property.referenceEvent}
+              onChange={(v) => setProperty({ ...property, referenceEvent: v })}
+              options={eventNames}
+              placeholder="Search events…"
+              className="w-full"
+            />
+            <label className="flex items-start gap-1.5 text-[11px] text-gray-600">
+              <input
+                type="checkbox"
+                checked={property.asPercentage}
+                onChange={(e) => setProperty({ ...property, asPercentage: e.target.checked })}
+                className="mt-0.5"
+              />
+              <span>Express as a percentage of the reference event (e.g. 95% of claim_start_clicked)</span>
+            </label>
+            <label className="flex items-start gap-1.5 text-[11px] text-gray-600">
+              <input
+                type="checkbox"
+                checked={property.withinHoursEnabled}
+                onChange={(e) => setProperty({ ...property, withinHoursEnabled: e.target.checked })}
+                className="mt-0.5"
+              />
+              <span>Only count it within a number of hours of the reference event — matched per user, not as two separate headcounts</span>
+            </label>
+            {property.withinHoursEnabled && (
+              <div className="pl-5">
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="Hours, e.g. 24"
+                  value={property.withinHours}
+                  onChange={(e) => setProperty({ ...property, withinHours: e.target.value })}
+                  className="w-32 border border-gray-200 rounded px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300"
+                />
+              </div>
+            )}
+          </div>
+        )
       )}
 
       {error && <p className="text-[11px] text-red-500">{error}</p>}
@@ -740,11 +901,13 @@ function GoalCard({
   impactByFeature,
   kpis,
   goalProgress,
+  objectives,
   orgId,
   onStatusChange,
   onDelete,
   onDatesUpdated,
   onKpiAdded,
+  onObjectiveChanged,
 }: {
   goal: BusinessGoal;
   features: FeatureHealthItem[];
@@ -752,14 +915,18 @@ function GoalCard({
   impactByFeature?: Record<string, FeatureImpactResult>;
   kpis?: MetricWithData[];
   goalProgress?: GoalProgress;
+  objectives?: CompanyObjective[];
   orgId?: string;
   onStatusChange: (id: string, status: BusinessGoal["status"]) => void;
   onDelete: (id: string) => void;
   onDatesUpdated?: () => void;
   onKpiAdded?: () => void;
+  onObjectiveChanged?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [objMenuOpen, setObjMenuOpen] = useState(false);
+  const objectiveTitle = objectives?.find((o) => o.id === goal.company_objective_id)?.title ?? null;
   const [editingDates, setEditingDates] = useState(false);
   const [startDate, setStartDate] = useState(goal.start_date ?? "");
   const [endDate, setEndDate]     = useState(goal.end_date ?? "");
@@ -869,6 +1036,46 @@ function GoalCard({
         <p className="text-xs text-gray-400 mt-1">
           {[goal.target, goal.timeframe].filter(Boolean).join(" · ")}
         </p>
+
+        {/* Which business goal this Product Goal ladders up to — separate
+            from the goal's own type tag above, which just categorizes it. */}
+        {objectives && objectives.length > 0 && (
+          <div className="relative mt-1.5 inline-block">
+            <button
+              onClick={() => setObjMenuOpen(!objMenuOpen)}
+              className={`flex items-center gap-1 text-[11px] transition-colors ${
+                objectiveTitle ? "text-indigo-500 hover:text-indigo-700" : "text-amber-600 hover:text-amber-700"
+              }`}
+            >
+              {objectiveTitle ? `↳ ${objectiveTitle}` : "⚠ Not linked to a business goal"}
+              <ChevronDown size={9} />
+            </button>
+            {objMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setObjMenuOpen(false)} />
+                <div className="absolute left-0 top-5 z-20 w-56 rounded-lg border border-gray-200 bg-white shadow-md overflow-hidden">
+                  <button
+                    onClick={async () => { await setGoalObjective(goal.id, null); setObjMenuOpen(false); onObjectiveChanged?.(); }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-xs text-gray-500 hover:bg-gray-50 transition-colors"
+                  >
+                    {!goal.company_objective_id ? <Check size={11} className="text-indigo-500" /> : <span className="w-[11px]" />}
+                    Not linked yet
+                  </button>
+                  {objectives.map((o) => (
+                    <button
+                      key={o.id}
+                      onClick={async () => { await setGoalObjective(goal.id, o.id); setObjMenuOpen(false); onObjectiveChanged?.(); }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors text-left"
+                    >
+                      {goal.company_objective_id === o.id ? <Check size={11} className="text-indigo-500 flex-shrink-0" /> : <span className="w-[11px] flex-shrink-0" />}
+                      {o.title}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Real, computed progress — only shown when at least one KPI has both an event and a numeric goal */}
         <div className="mt-2.5">
@@ -1026,11 +1233,175 @@ function GoalCard({
   );
 }
 
+// ─── Business Goals panel ──────────────────────────────────────────────────
+// The real, company-wide objectives (one big thing for the quarter/year).
+// Everything below this panel — what the rest of the page calls "goals" —
+// is actually the narrower Product Goal layer that ladders up to one of
+// these via the picker in AddGoalForm/GoalCard.
+
+function ObjectiveForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
+  const { currentOrg } = useOrg();
+  const [form, setForm] = useState({ title: "", description: "", target: "", timeframe: "" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSave() {
+    if (!currentOrg || !form.title.trim()) { setError("Title is required."); return; }
+    setSaving(true);
+    setError("");
+    const result = await createCompanyObjective(currentOrg.id, form);
+    setSaving(false);
+    if (result.error) { setError(result.error); return; }
+    onSaved();
+  }
+
+  return (
+    <div className="bg-white border border-gray-100 rounded-2xl p-5 space-y-4">
+      <p className="text-sm font-bold text-gray-800">New business goal</p>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1.5">The one big thing — what is the company trying to achieve? *</label>
+        <input
+          autoFocus
+          type="text"
+          placeholder="e.g. Grow policy activations & retention this quarter"
+          value={form.title}
+          onChange={(e) => setForm({ ...form, title: e.target.value })}
+          onKeyDown={(e) => e.key === "Enter" && handleSave()}
+          className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+        />
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1.5">Target</label>
+          <input
+            type="text"
+            placeholder="e.g. 98% activation, NPS 58+"
+            value={form.target}
+            onChange={(e) => setForm({ ...form, target: e.target.value })}
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1.5">Timeframe</label>
+          <select
+            value={form.timeframe}
+            onChange={(e) => setForm({ ...form, timeframe: e.target.value })}
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+          >
+            <option value="">Select…</option>
+            {TIMEFRAMES.map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1.5">
+          Context <span className="text-gray-400 font-normal">(optional)</span>
+        </label>
+        <textarea
+          placeholder="Why this matters this quarter/year…"
+          value={form.description}
+          onChange={(e) => setForm({ ...form, description: e.target.value })}
+          rows={2}
+          className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+        />
+      </div>
+      {error && <p className="text-xs text-red-500">{error}</p>}
+      <div className="flex items-center gap-3 pt-1">
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors disabled:opacity-50"
+        >
+          {saving && <Loader2 size={13} className="animate-spin" />}
+          Save business goal
+        </button>
+        <button onClick={onCancel} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ObjectivesPanel({
+  objectives,
+  goals,
+  filterObjective,
+  onFilterChange,
+  onSaved,
+}: {
+  objectives: CompanyObjective[];
+  goals: BusinessGoal[];
+  filterObjective: string;
+  onFilterChange: (id: string) => void;
+  onSaved: () => void;
+}) {
+  const [showForm, setShowForm] = useState(false);
+
+  return (
+    <div className="bg-gray-900 rounded-2xl p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-[10px] font-semibold tracking-widest uppercase text-gray-400">This quarter / year</p>
+          <p className="text-sm font-bold text-white">Business Goals</p>
+        </div>
+        {!showForm && (
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-1.5 text-xs font-medium text-gray-300 hover:text-white transition-colors"
+          >
+            <Plus size={12} /> Add business goal
+          </button>
+        )}
+      </div>
+
+      {showForm ? (
+        <ObjectiveForm onSaved={() => { setShowForm(false); onSaved(); }} onCancel={() => setShowForm(false)} />
+      ) : objectives.length === 0 ? (
+        <p className="text-xs text-gray-400">
+          Nothing here yet — this is the one big thing (e.g. &quot;Grow activations &amp; retention this quarter&quot;)
+          that all the Product Goals below should ladder up to.
+        </p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => onFilterChange("all")}
+            className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${
+              filterObjective === "all" ? "bg-white text-gray-900" : "bg-white/10 text-gray-300 hover:bg-white/20"
+            }`}
+          >
+            All
+          </button>
+          {objectives.map((o) => {
+            const count = goals.filter((g) => g.company_objective_id === o.id).length;
+            const selected = filterObjective === o.id;
+            return (
+              <button
+                key={o.id}
+                onClick={() => onFilterChange(selected ? "all" : o.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${
+                  selected ? "bg-white text-gray-900" : "bg-white/10 text-gray-300 hover:bg-white/20"
+                }`}
+                title={[o.target, o.timeframe].filter(Boolean).join(" · ")}
+              >
+                {o.title}
+                <span className={selected ? "text-gray-400" : "text-gray-500"}>
+                  {count} goal{count !== 1 ? "s" : ""}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Add Goal Form ────────────────────────────────────────────────────────────
 
-function AddGoalForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
+function AddGoalForm({ objectives, onSaved, onCancel }: { objectives: CompanyObjective[]; onSaved: () => void; onCancel: () => void }) {
   const { currentOrg } = useOrg();
-  const [form, setForm] = useState({ title: "", description: "", type: "growth", target: "", timeframe: "" });
+  const [form, setForm] = useState({ title: "", description: "", type: "growth", target: "", timeframe: "", company_objective_id: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -1038,7 +1409,10 @@ function AddGoalForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () 
     if (!currentOrg || !form.title.trim()) { setError("Goal title is required."); return; }
     setSaving(true);
     setError("");
-    const result = await createBusinessGoal(currentOrg.id, form);
+    const result = await createBusinessGoal(currentOrg.id, {
+      ...form,
+      company_objective_id: form.company_objective_id || null,
+    });
     setSaving(false);
     if (result.error) { setError(result.error); return; }
     onSaved();
@@ -1046,20 +1420,36 @@ function AddGoalForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () 
 
   return (
     <div className="bg-white border border-gray-100 rounded-2xl p-6 space-y-5">
-      <p className="text-sm font-bold text-gray-800">New business goal</p>
+      <p className="text-sm font-bold text-gray-800">New product goal</p>
 
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1.5">What&apos;s the goal? *</label>
         <input
           autoFocus
           type="text"
-          placeholder="e.g. Grow MRR by 40% this year"
+          placeholder="e.g. Improve onboarding CSAT to 4.5"
           value={form.title}
           onChange={(e) => setForm({ ...form, title: e.target.value })}
           onKeyDown={(e) => e.key === "Enter" && handleSave()}
           className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
         />
       </div>
+
+      {objectives.length > 0 && (
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1.5">
+            Which business goal does this move? <span className="text-gray-400 font-normal">(optional, can set later)</span>
+          </label>
+          <select
+            value={form.company_objective_id}
+            onChange={(e) => setForm({ ...form, company_objective_id: e.target.value })}
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+          >
+            <option value="">Not linked yet</option>
+            {objectives.map((o) => <option key={o.id} value={o.id}>{o.title}</option>)}
+          </select>
+        </div>
+      )}
 
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-2">Type</label>
@@ -1165,23 +1555,32 @@ export default function BusinessGoalsPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [syncDays, setSyncDays] = useState(30);
+  // When this sync last actually ran — drives the "first time, pick a wide
+  // window" vs. "synced recently, a short window is enough" hint below.
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+  // The real, company-wide objectives — see ObjectivesPanel.
+  const [objectives, setObjectives] = useState<CompanyObjective[]>([]);
 
   // ── Filters
   const [filterType, setFilterType]     = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
+  const [filterObjective, setFilterObjective] = useState<string>("all");
 
   async function load() {
     if (!currentOrg) return;
-    const [goalsData, healthData, mpStatus, kpiData, progressData] = await Promise.all([
+    const [goalsData, healthData, mpStatus, kpiData, progressData, objectivesData] = await Promise.all([
       getBusinessGoals(currentOrg.id),
       getGoalHealthData(currentOrg.id),
       getMixpanelSettings(currentOrg.id),
       getKpisByGoal(currentOrg.id),
       getGoalProgress(currentOrg.id),
+      getCompanyObjectives(currentOrg.id),
     ]);
     setGoals(goalsData);
+    setObjectives(objectivesData);
     setHealth(healthData);
     setMpConnected(mpStatus.connected);
+    setLastSyncedAt(mpStatus.lastSyncedAt ?? null);
     setKpisByGoal(kpiData);
     setGoalProgress(progressData);
     setLoading(false);
@@ -1233,6 +1632,7 @@ export default function BusinessGoalsPage() {
     if (rawResult.error) {
       setSyncMsg(`Synced ${total.toLocaleString()} events across ${unique.length} signals (counts only — ${rawResult.error}).`);
     } else {
+      setLastSyncedAt(new Date().toISOString());
       setSyncMsg(`Synced ${total.toLocaleString()} events across ${unique.length} signals in the last ${syncDays} days${rawResult.synced > 0 ? ` (+${rawResult.synced.toLocaleString()} raw events for impact analysis)` : ""}.`);
     }
     setSyncing(false);
@@ -1264,8 +1664,9 @@ export default function BusinessGoalsPage() {
 
   // Apply filters
   const filtered = goals.filter((g) => {
-    if (filterType   !== "all" && g.type   !== filterType)   return false;
-    if (filterStatus !== "all" && g.status !== filterStatus) return false;
+    if (filterType      !== "all" && g.type !== filterType)                       return false;
+    if (filterStatus    !== "all" && g.status !== filterStatus)                   return false;
+    if (filterObjective !== "all" && g.company_objective_id !== filterObjective)  return false;
     return true;
   });
 
@@ -1277,7 +1678,21 @@ export default function BusinessGoalsPage() {
   const totalFeatures = Object.values(health.featuresByGoal).flat().length;
   const firingEvents  = Object.values(health.eventCounts).filter((c) => c > 0).length;
   const totalEvents   = Object.keys(health.eventCounts).length;
-  const filtersActive = filterType !== "all" || filterStatus !== "all";
+  const filtersActive = filterType !== "all" || filterStatus !== "all" || filterObjective !== "all";
+
+  // Drives the hint text next to the day-window picker — first-time syncs
+  // need a wide window to get real history, recent ones don't.
+  const daysSinceSync = lastSyncedAt
+    ? Math.floor((Date.now() - new Date(lastSyncedAt).getTime()) / 864e5)
+    : null;
+  const syncHint =
+    daysSinceSync === null
+      ? "Never synced — pick 90d to pull as much history as Mixpanel allows."
+      : daysSinceSync === 0
+      ? "Synced today — 7d is enough to catch up."
+      : `Last synced ${daysSinceSync} day${daysSinceSync === 1 ? "" : "s"} ago — ${
+          daysSinceSync <= 14 ? "7d or 14d" : "30d+"
+        } should cover the gap.`;
 
   if (loading) {
     return (
@@ -1290,44 +1705,60 @@ export default function BusinessGoalsPage() {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
 
+      {/* The real, company-wide Business Goals — separate from the Product
+          Goals below, which ladder up to one of these. */}
+      <ObjectivesPanel
+        objectives={objectives}
+        goals={goals}
+        filterObjective={filterObjective}
+        onFilterChange={setFilterObjective}
+        onSaved={load}
+      />
+
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Business Goals</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Product Goals</h1>
           <p className="text-sm text-gray-400 mt-1">
-            What your company is trying to achieve (your objectives) — broken into KPIs (key results), then tracked against the features built to move them.
+            The narrower goals product owns to move the Business Goal(s) above — broken into KPIs (key results), then tracked against the features built to move them.
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           {/* Mixpanel sync block */}
           {mpConnected ? (
-            <div className="flex items-center gap-1.5 border border-gray-200 rounded-xl overflow-hidden">
-              {/* Time window pills */}
-              <div className="flex items-center px-2 gap-0.5">
-                {SYNC_WINDOWS.map((w) => (
-                  <button
-                    key={w.days}
-                    onClick={() => setSyncDays(w.days)}
-                    className={`px-2 py-1 rounded-lg text-[11px] font-medium transition-colors ${
-                      syncDays === w.days
-                        ? "bg-indigo-600 text-white"
-                        : "text-gray-400 hover:text-gray-600"
-                    }`}
-                  >
-                    {w.label}
-                  </button>
-                ))}
+            <div className="flex flex-col items-end gap-1">
+              <div className="flex items-center gap-1.5 border border-gray-200 rounded-xl overflow-hidden">
+                {/* Time window pills */}
+                <div className="flex items-center px-2 gap-0.5">
+                  {SYNC_WINDOWS.map((w) => (
+                    <button
+                      key={w.days}
+                      onClick={() => setSyncDays(w.days)}
+                      title={`Pull the last ${w.days} days of Mixpanel data`}
+                      className={`px-2 py-1 rounded-lg text-[11px] font-medium transition-colors ${
+                        syncDays === w.days
+                          ? "bg-indigo-600 text-white"
+                          : "text-gray-400 hover:text-gray-600"
+                      }`}
+                    >
+                      {w.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="w-px h-5 bg-gray-200" />
+                <button
+                  onClick={syncMixpanel}
+                  disabled={syncing}
+                  title="Pulls event counts and raw data from Mixpanel for features already linked to a goal — different from 'Sync Event Names' on the Sources page, which just imports event names."
+                  className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                >
+                  {syncing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                  Pull Mixpanel Data
+                </button>
               </div>
-              <div className="w-px h-5 bg-gray-200" />
-              <button
-                onClick={syncMixpanel}
-                disabled={syncing}
-                title="Pulls event counts and raw data from Mixpanel for features already linked to a goal — different from 'Sync Event Names' on the Sources page, which just imports event names."
-                className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-50"
-              >
-                {syncing ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-                Pull Mixpanel Data
-              </button>
+              {/* Plain-language hint so the window picker is self-explanatory
+                  instead of just showing bare day counts. */}
+              <p className="text-[11px] text-gray-400 pr-1">{syncHint}</p>
             </div>
           ) : (
             <a
@@ -1403,7 +1834,7 @@ export default function BusinessGoalsPage() {
             </select>
             {filtersActive && (
               <button
-                onClick={() => { setFilterType("all"); setFilterStatus("all"); }}
+                onClick={() => { setFilterType("all"); setFilterStatus("all"); setFilterObjective("all"); }}
                 className="text-xs text-indigo-500 hover:underline"
               >
                 Clear
@@ -1416,6 +1847,7 @@ export default function BusinessGoalsPage() {
       {/* Form */}
       {showForm && (
         <AddGoalForm
+          objectives={objectives}
           onSaved={async () => { setShowForm(false); await load(); }}
           onCancel={() => setShowForm(false)}
         />
@@ -1445,7 +1877,7 @@ export default function BusinessGoalsPage() {
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-100 py-12 text-center">
           <p className="text-sm text-gray-400 mb-2">No goals match the current filters.</p>
           <button
-            onClick={() => { setFilterType("all"); setFilterStatus("all"); }}
+            onClick={() => { setFilterType("all"); setFilterStatus("all"); setFilterObjective("all"); }}
             className="text-xs text-indigo-500 hover:underline"
           >
             Clear filters
@@ -1470,11 +1902,13 @@ export default function BusinessGoalsPage() {
                 impactByFeature={impactByFeature}
                 kpis={kpisByGoal[g.id] ?? []}
                 goalProgress={goalProgress[g.id]}
+                objectives={objectives}
                 orgId={currentOrg?.id}
                 onStatusChange={handleStatusChange}
                 onDelete={handleDelete}
                 onDatesUpdated={load}
                 onKpiAdded={load}
+                onObjectiveChanged={load}
               />
             ))}
             {!showForm && filterType === "all" && filterStatus === "all" && (
@@ -1506,11 +1940,13 @@ export default function BusinessGoalsPage() {
                 impactByFeature={impactByFeature}
                 kpis={kpisByGoal[g.id] ?? []}
                 goalProgress={goalProgress[g.id]}
+                objectives={objectives}
                 orgId={currentOrg?.id}
                 onStatusChange={handleStatusChange}
                 onDelete={handleDelete}
                 onDatesUpdated={load}
                 onKpiAdded={load}
+                onObjectiveChanged={load}
               />
             ))}
           </div>
@@ -1534,11 +1970,13 @@ export default function BusinessGoalsPage() {
                 impactByFeature={impactByFeature}
                 kpis={kpisByGoal[g.id] ?? []}
                 goalProgress={goalProgress[g.id]}
+                objectives={objectives}
                 orgId={currentOrg?.id}
                 onStatusChange={handleStatusChange}
                 onDelete={handleDelete}
                 onDatesUpdated={load}
                 onKpiAdded={load}
+                onObjectiveChanged={load}
               />
             ))}
           </div>
@@ -1563,10 +2001,12 @@ export default function BusinessGoalsPage() {
                   impactByFeature={impactByFeature}
                   kpis={kpisByGoal[g.id] ?? []}
                   goalProgress={goalProgress[g.id]}
+                  objectives={objectives}
                   orgId={currentOrg?.id}
                   onStatusChange={handleStatusChange}
                   onDelete={handleDelete}
                   onKpiAdded={load}
+                  onObjectiveChanged={load}
                 />
                 <button
                   onClick={() => handlePermanentDelete(g.id)}

@@ -94,6 +94,12 @@ export interface Database {
           target: string | null;
           target_value: number | null;
           kind: "metric" | "kpi" | "guardrail";
+          // Alternative to event_name for KPIs with no tracked source — read
+          // the current month's value out of a connected sheet row instead.
+          // See migration 029. All three null = "tracked event" mode.
+          source_report_id: string | null;
+          source_label_column: string | null;
+          source_row_value: string | null;
           created_by: string | null;
           created_at: string;
           updated_at: string;
@@ -113,6 +119,9 @@ export interface Database {
           target?: string | null;
           target_value?: number | null;
           kind?: "metric" | "kpi" | "guardrail";
+          source_report_id?: string | null;
+          source_label_column?: string | null;
+          source_row_value?: string | null;
           created_by?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -130,6 +139,9 @@ export interface Database {
           target?: string | null;
           target_value?: number | null;
           kind?: "metric" | "kpi" | "guardrail";
+          source_report_id?: string | null;
+          source_label_column?: string | null;
+          source_row_value?: string | null;
           updated_at?: string;
         };
       };
@@ -428,6 +440,10 @@ export interface Database {
           start_date: string | null;
           end_date: string | null;
           status: "active" | "achieved" | "missed" | "dropped";
+          // Which company-wide objective this product goal ladders up to —
+          // see company_objectives below. Nullable: not every goal has been
+          // assigned one yet.
+          company_objective_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -443,6 +459,7 @@ export interface Database {
           start_date?: string | null;
           end_date?: string | null;
           status?: "active" | "achieved" | "missed" | "dropped";
+          company_objective_id?: string | null;
         };
         Update: {
           title?: string;
@@ -452,6 +469,42 @@ export interface Database {
           timeframe?: string | null;
           start_date?: string | null;
           end_date?: string | null;
+          status?: "active" | "achieved" | "missed" | "dropped";
+          company_objective_id?: string | null;
+          updated_at?: string;
+        };
+      };
+      // The real, company-wide "Business Goal" — the one big thing for the
+      // quarter/year that business_goals (renamed "Product Goals" in the UI)
+      // ladder up to via company_objective_id above.
+      company_objectives: {
+        Row: {
+          id: string;
+          organization_id: string;
+          created_by: string | null;
+          title: string;
+          description: string | null;
+          target: string | null;
+          timeframe: string | null;
+          status: "active" | "achieved" | "missed" | "dropped";
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          organization_id: string;
+          created_by?: string | null;
+          title: string;
+          description?: string | null;
+          target?: string | null;
+          timeframe?: string | null;
+          status?: "active" | "achieved" | "missed" | "dropped";
+        };
+        Update: {
+          title?: string;
+          description?: string | null;
+          target?: string | null;
+          timeframe?: string | null;
           status?: "active" | "achieved" | "missed" | "dropped";
           updated_at?: string;
         };
@@ -574,4 +627,6 @@ export type ReportSource = Database["public"]["Tables"]["report_sources"]["Row"]
 export type Report = Database["public"]["Tables"]["reports"]["Row"];
 export type FeatureMetric = Database["public"]["Tables"]["feature_metrics"]["Row"];
 export type BusinessGoal = Database["public"]["Tables"]["business_goals"]["Row"];
+// The real, company-wide objective — see company_objectives migration notes.
+export type CompanyObjective = Database["public"]["Tables"]["company_objectives"]["Row"];
 export type BusinessGoalType = BusinessGoal["type"];

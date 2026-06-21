@@ -25,6 +25,9 @@ export async function createBusinessGoal(
     type: string;
     target?: string;
     timeframe?: string;
+    // Which company-wide objective (the real "Business Goal") this Product
+    // Goal ladders up to — optional, can be assigned later.
+    company_objective_id?: string | null;
   }
 ): Promise<{ id?: string; error?: string }> {
   const supabase = await createServerClient();
@@ -44,6 +47,7 @@ export async function createBusinessGoal(
       type: payload.type as BusinessGoal["type"],
       target: payload.target || null,
       timeframe: payload.timeframe || null,
+      company_objective_id: payload.company_objective_id || null,
     })
     .select("id")
     .single();

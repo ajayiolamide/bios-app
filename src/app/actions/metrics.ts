@@ -4,6 +4,7 @@ import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 import type { Metric } from "@/types/database";
 import { computeTimeWindowedRate } from "@/lib/metrics-engine";
 import type { MetricDataPoint } from "@/lib/metrics-engine";
+import { getManualKpiValue } from "./manual-kpi";
 
 // Server Actions files can only export async functions, so the actual sync
 // computeTimeWindowedRate helper lives in src/lib/metrics-engine.ts. cohorts.ts
@@ -146,6 +147,10 @@ export async function createGoalKpi(
     aggregation: string;
     target: string;
     target_value?: number | null;
+    // Alternative to event_name — see migration 029 / src/lib/sheet-months.ts.
+    source_report_id?: string | null;
+    source_label_column?: string | null;
+    source_row_value?: string | null;
   }
 ): Promise<{ data: Metric | null; error: string | null }> {
   const supabase = await createServerClient();
@@ -171,6 +176,9 @@ export async function createGoalKpi(
       target: payload.target.trim() || null,
       target_value: payload.target_value ?? null,
       kind: "kpi",
+      source_report_id: payload.source_report_id ?? null,
+      source_label_column: payload.source_label_column ?? null,
+      source_row_value: payload.source_row_value ?? null,
       created_by: user.id,
     })
     .select("*")
@@ -224,6 +232,9 @@ export async function updateGoalKpi(
     aggregation?: string;
     target?: string | null;
     target_value?: number | null;
+    source_report_id?: string | null;
+    source_label_column?: string | null;
+    source_row_value?: string | null;
   }
 ): Promise<{ error: string | null }> {
   const admin = createAdminClient();
@@ -237,6 +248,9 @@ export async function updateGoalKpi(
   if (payload.aggregation !== undefined) update.aggregation = payload.aggregation;
   if (payload.target !== undefined) update.target = payload.target?.trim() || null;
   if (payload.target_value !== undefined) update.target_value = payload.target_value;
+  if (payload.source_report_id !== undefined) update.source_report_id = payload.source_report_id;
+  if (payload.source_label_column !== undefined) update.source_label_column = payload.source_label_column;
+  if (payload.source_row_value !== undefined) update.source_row_value = payload.source_row_value;
 
   const { error } = await admin.from("metrics").update(update).eq("id", kpiId);
   if (error) {
@@ -283,7 +297,13 @@ export async function getGoalProgress(orgId: string): Promise<Record<string, Goa
   const result: Record<string, GoalProgress> = {};
 
   for (const [goalId, kpis] of Object.entries(kpisByGoal)) {
-    const measurable = kpis.filter((k) => k.event_name && typeof k.target_value === "number" && k.target_value > 0);
+    // A KPI counts as measurable either via a tracked event, or via a
+    // connected-sheet row (migration 029) — either way it has a real
+    // `total` by the time getMetrics/attachTrendData runs.
+    const measurable = kpis.filter((k) =>
+      (k.event_name || (k.source_report_id && k.source_row_value)) &&
+      typeof k.target_value === "number" && k.target_value > 0
+    );
 
     let progressRatio: number | null = null;
     if (measurable.length > 0) {
@@ -319,9 +339,17 @@ async function attachTrendData(metric: Metric, orgId: string): Promise<MetricWit
   since.setHours(0, 0, 0, 0);
 
   // A KPI can be defined before any event is wired to it (see migration 019).
-  // No event_name means there's nothing to query yet — return a flat/empty
-  // result instead of running a query that would just match nothing.
+  // No event_name means there's nothing to query — UNLESS it's set up to
+  // pull its number from a connected sheet row instead (migration 029),
+  // which is exactly the path for operational KPIs nothing ever tracks.
   if (!metric.event_name) {
+    if (metric.source_report_id && metric.source_row_value) {
+      const manual = await getManualKpiValue(metric);
+      // No trend line for a manual value — it's a single monthly snapshot,
+      // not an events-derived time series; an empty trend renders as "no
+      // chart" rather than a misleading flat line.
+      return { ...metric, total: manual.value ?? 0, trend: [] };
+    }
     return { ...metric, total: 0, trend: buildTrend([], metric.aggregation, since) };
   }
 
