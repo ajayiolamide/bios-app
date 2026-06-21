@@ -2037,14 +2037,6 @@ export default function BusinessGoalsPage() {
                 onObjectiveChanged={load}
               />
             ))}
-            {!showForm && filterType === "all" && filterStatus === "all" && (
-              <button
-                onClick={() => setShowForm(true)}
-                className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-gray-200 py-8 text-sm text-gray-400 hover:border-indigo-300 hover:text-indigo-500 transition-all"
-              >
-                <Plus size={14} /> Add goal
-              </button>
-            )}
           </div>
         </section>
       )}
