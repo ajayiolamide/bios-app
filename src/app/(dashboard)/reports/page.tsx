@@ -3086,31 +3086,42 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
 
                   {/* Saved insights picker — pin an insight anywhere in the app
                       (Cohorts, AI Analyst, Business Brief), then pick it here
-                      to fold it into this report. */}
-                  {savedInsights.length > 0 && (
-                    <div className="-mx-4 border-t border-gray-100">
-                      <button
-                        onClick={() => setExpandedInsights(prev => ({ ...prev, [t.id]: !prev[t.id] }))}
-                        className="w-full flex items-center justify-between px-4 py-3 hover:bg-amber-50/60 transition-colors group">
-                        <div className="flex items-center gap-3">
-                          <div className="w-7 h-7 rounded-lg bg-amber-100 group-hover:bg-amber-200 flex items-center justify-center flex-shrink-0 transition-colors">
-                            <Bookmark size={13} className="text-amber-600" />
-                          </div>
-                          <div className="text-left">
-                            <p className="text-xs font-semibold text-gray-700">Saved Insights</p>
-                            <p className="text-[11px] text-gray-400 leading-tight">Pick from insights you've saved across the app</p>
-                          </div>
+                      to fold it into this report. Always rendered, even with
+                      zero saved insights yet — otherwise the feature is
+                      undiscoverable: there's nothing pointing someone here
+                      from the pages where "Save for report" buttons live, so
+                      hiding this section until the library isn't empty just
+                      means most people never find out it exists. */}
+                  <div className="-mx-4 border-t border-gray-100">
+                    <button
+                      onClick={() => setExpandedInsights(prev => ({ ...prev, [t.id]: !prev[t.id] }))}
+                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-amber-50/60 transition-colors group">
+                      <div className="flex items-center gap-3">
+                        <div className="w-7 h-7 rounded-lg bg-amber-100 group-hover:bg-amber-200 flex items-center justify-center flex-shrink-0 transition-colors">
+                          <Bookmark size={13} className="text-amber-600" />
                         </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          {(selectedInsightIds[t.id]?.length ?? 0) > 0
-                            ? <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">{selectedInsightIds[t.id]!.length} selected</span>
-                            : <span className="text-[10px] text-gray-400">Optional</span>}
-                          <ChevronDown size={13} className={`text-gray-400 transition-transform ${expandedInsights[t.id] ? "rotate-180" : ""}`} />
+                        <div className="text-left">
+                          <p className="text-xs font-semibold text-gray-700">Saved Insights</p>
+                          <p className="text-[11px] text-gray-400 leading-tight">Pick from insights you've saved across the app</p>
                         </div>
-                      </button>
-                      {expandedInsights[t.id] && (
-                        <div className="px-4 pb-4 border-t border-gray-100 mt-3 space-y-1.5 max-h-64 overflow-y-auto">
-                          {savedInsights.map(ins => {
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {(selectedInsightIds[t.id]?.length ?? 0) > 0
+                          ? <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">{selectedInsightIds[t.id]!.length} selected</span>
+                          : savedInsights.length > 0
+                            ? <span className="text-[10px] text-gray-400">Optional</span>
+                            : <span className="text-[10px] text-gray-400">None saved yet</span>}
+                        <ChevronDown size={13} className={`text-gray-400 transition-transform ${expandedInsights[t.id] ? "rotate-180" : ""}`} />
+                      </div>
+                    </button>
+                    {expandedInsights[t.id] && (
+                      <div className="px-4 pb-4 border-t border-gray-100 mt-3 space-y-1.5 max-h-64 overflow-y-auto">
+                        {savedInsights.length === 0 ? (
+                          <p className="text-xs text-gray-400 leading-relaxed py-2">
+                            Nothing saved yet. Look for the "Save for report" button under any AI insight — on Cohorts, AI Analyst, or your dashboard's Business Brief — to pin it here.
+                          </p>
+                        ) : (
+                          savedInsights.map(ins => {
                             const checked = (selectedInsightIds[t.id] ?? []).includes(ins.id);
                             const sourceLabel = ins.source === "ai_analyst" ? "AI Analyst" : ins.source === "business_brief" ? "Business Brief" : ins.source === "cohort" ? "Cohort" : ins.source;
                             return (
@@ -3133,11 +3144,11 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
                                 </div>
                               </label>
                             );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                          })
+                        )}
+                      </div>
+                    )}
+                  </div>
 
                   {/* Guided slide planner */}
                   {(() => {

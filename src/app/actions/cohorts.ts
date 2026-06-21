@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { fetchEventRows } from "./metrics";
 import { computeTimeWindowedRate } from "@/lib/metrics-engine";
-import { isRealEventName } from "./events";
+import { isRealEventName } from "@/lib/event-name-filter";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
