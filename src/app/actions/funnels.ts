@@ -2,7 +2,7 @@
 
 import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 import type { Funnel } from "@/types/database";
-import { getMixpanelSettings, fetchMixpanelEventCounts } from "@/app/actions/mixpanel";
+import { getMixpanelSettings, fetchMixpanelEventCounts, syncMixpanelRawEvents } from "@/app/actions/mixpanel";
 import Anthropic from "@anthropic-ai/sdk";
 
 export type FunnelStep = { event_name: string };
@@ -90,6 +90,21 @@ export async function computeFunnel(
   since.setHours(0, 0, 0, 0);
 
   const eventNames = [...new Set(steps.map((s) => s.event_name))];
+
+  // Picking a step's event name only ever searched Mixpanel for the NAME
+  // (via syncMixpanelEventNames' "Top Events" list, capped at the top 255 by
+  // volume over the last 31 days) — it never pulled the actual per-user
+  // occurrence rows. A real, low-volume, or simply newer event can be
+  // completely real in Mixpanel and still have zero rows in our own `events`
+  // table, which is what this function actually reads from. That showed up
+  // as "0 users / no data" for a step that's genuinely firing — exactly the
+  // same gap Cohorts had before it started syncing on demand. Doing the same
+  // here means a funnel works correctly the moment it's computed, not only
+  // for events that happened to already be raw-synced by something else.
+  const { connected } = await getMixpanelSettings(orgId);
+  if (connected) {
+    await syncMixpanelRawEvents(orgId, eventNames, 90).catch(() => {});
+  }
 
   // Fetch real user-level events (excludes Mixpanel stubs which have null user_id)
   const { data: userEvents } = await admin

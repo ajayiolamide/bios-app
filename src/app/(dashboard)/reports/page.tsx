@@ -2675,24 +2675,41 @@ const THEMES: { id: DesignTheme; label: string; desc: string; preview: string }[
 // Numbered step wrapper — turns the generate flow from a wall of disconnected
 // cards into a clear "do this, then this" sequence the user can follow top
 // to bottom without guessing what order things matter in.
+//
+// Optionally collapsible: the setup step's fields are all quick one-time
+// choices that default to something reasonable, so showing every field's
+// full UI on every visit (a dropdown, a checkbox row, a 3-up theme grid)
+// made the page read as long even after consolidating four cards into one.
+// Collapsed by default with a one-line summary, it expands back to the full
+// editable form on click — nothing is hidden permanently, it's just not
+// taking up space until someone actually wants to change it.
 function StepCard({
-  step, title, hint, badge, children,
-}: { step: number; title: string; hint?: string; badge?: React.ReactNode; children: React.ReactNode }) {
+  step, title, hint, badge, children, collapsible, summary,
+}: { step: number; title: string; hint?: string; badge?: React.ReactNode; children: React.ReactNode; collapsible?: boolean; summary?: string }) {
+  const [open, setOpen] = useState(!collapsible);
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-5">
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div className="flex items-start gap-3">
+      <div
+        className={`flex items-start justify-between gap-3 ${open ? "mb-3" : ""} ${collapsible ? "cursor-pointer" : ""}`}
+        onClick={collapsible ? () => setOpen(v => !v) : undefined}
+      >
+        <div className="flex items-start gap-3 min-w-0">
           <div className="w-6 h-6 rounded-full bg-gray-900 text-white text-xs font-bold flex items-center justify-center flex-shrink-0 mt-0.5">
             {step}
           </div>
-          <div>
+          <div className="min-w-0">
             <p className="text-sm font-semibold text-gray-800">{title}</p>
-            {hint && <p className="text-xs text-gray-400 mt-0.5">{hint}</p>}
+            {open
+              ? hint && <p className="text-xs text-gray-400 mt-0.5">{hint}</p>
+              : summary && <p className="text-xs text-gray-400 mt-0.5 truncate">{summary}</p>}
           </div>
         </div>
-        {badge && <div className="flex-shrink-0">{badge}</div>}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {badge}
+          {collapsible && <ChevronDown size={14} className={`text-gray-400 transition-transform ${open ? "rotate-180" : ""}`} />}
+        </div>
       </div>
-      <div className="pl-9">{children}</div>
+      {open && <div className="pl-9">{children}</div>}
     </div>
   );
 }
@@ -2816,6 +2833,16 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
 
   const previewState = activePreview ? planStates[activePreview.templateId] : null;
 
+  const includedLabels = ([
+    biosSections.goals && "Goals", biosSections.features && "Features", biosSections.funnelsKpis && "KPIs",
+  ].filter(Boolean) as string[]);
+  const setupSummary = [
+    selected ? `Sheet: ${selected.source.name}` : sourcesWithData.length > 0 ? "No sheet data" : null,
+    `Period: ${period}`,
+    `Includes: ${includedLabels.length > 0 ? includedLabels.join(", ") : "none"}`,
+    `Theme: ${THEMES.find(t => t.id === theme)?.label}`,
+  ].filter(Boolean).join("  ·  ");
+
   return (
     <div className="space-y-5 max-w-2xl">
       {/* Token counter */}
@@ -2833,7 +2860,7 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
           equal-weight cards made the page read as much longer than the actual
           amount of decision-making involved, so they're one card now with
           light dividers between sections instead. */}
-      <StepCard step={1} title="Report setup" hint="A few quick choices before the AI plans anything">
+      <StepCard step={1} title="Report setup" hint="A few quick choices before the AI plans anything" collapsible summary={setupSummary}>
         <div className="space-y-4">
           {sourcesWithData.length > 0 && (
             <div>

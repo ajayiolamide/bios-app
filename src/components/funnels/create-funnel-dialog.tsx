@@ -105,7 +105,11 @@ function EventPicker({
           {/* List */}
           <div className="max-h-52 overflow-y-auto">
             {filtered.length === 0 ? (
-              <p className="px-3 py-4 text-xs text-gray-400 text-center">No events match</p>
+              <p className="px-3 py-4 text-xs text-gray-400 text-center leading-relaxed">
+                {search.trim()
+                  ? "No synced events match. This list only shows events seen recently — type the exact full event name below to use one that isn't cached yet."
+                  : "No events match"}
+              </p>
             ) : (
               filtered.map(ev => (
                 <button
@@ -128,10 +132,13 @@ function EventPicker({
               <button
                 type="button"
                 onClick={() => { onChange(search.trim()); setOpen(false); setSearch(""); }}
-                className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors"
+                className="w-full flex items-start gap-2 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors"
               >
-                <Plus size={11} className="text-gray-400 flex-shrink-0" />
-                <span className="text-xs text-gray-600">Use <code className="font-mono text-indigo-600">{search.trim()}</code></span>
+                <Plus size={11} className="text-gray-400 flex-shrink-0 mt-0.5" />
+                <span className="text-xs text-gray-600 leading-snug">
+                  Use exactly <code className="font-mono text-indigo-600">{search.trim()}</code>
+                  <span className="text-gray-400"> — must match the real event name exactly, not a shortened version</span>
+                </span>
               </button>
             </div>
           )}
