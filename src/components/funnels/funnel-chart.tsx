@@ -87,7 +87,18 @@ export function FunnelConversionChart({ results }: Props) {
                 Mixpanel
               </span>
             )}
-            <span className="text-sm font-semibold tabular-nums">
+            {/* A 0 here from "none" means we found zero tracked occurrences of
+                this exact event name — that's a data gap (wrong name, not
+                synced yet, or genuinely never fires), not evidence that 0%
+                of users converted. Those two look identical as a bare number,
+                so call it out explicitly instead of letting it read as a
+                real, severe drop-off. */}
+            {r.data_source === "none" && (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-100" title="No tracked occurrences of this exact event name in the last 30 days — check the spelling, or it may not have data yet">
+                No data
+              </span>
+            )}
+            <span className="text-sm font-semibold tabular-nums" title={r.data_source === "none" ? "No tracked occurrences found — not the same as a real 0%" : undefined}>
               {r.users.toLocaleString()}
             </span>
             {i > 0 && (
@@ -102,6 +113,11 @@ export function FunnelConversionChart({ results }: Props) {
       {hasMixpanelData && (
         <p className="text-[11px] text-purple-500 text-center pt-1">
           📊 Mixpanel steps show aggregate event counts (last 30 days), not sequential user journeys
+        </p>
+      )}
+      {results.some(r => r.data_source === "none") && (
+        <p className="text-[11px] text-amber-600 text-center pt-1">
+          ⚠ Some steps have no tracked occurrences at all — double-check the event name, or give it time to sync
         </p>
       )}
     </div>

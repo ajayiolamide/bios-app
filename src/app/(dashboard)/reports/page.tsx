@@ -2826,155 +2826,164 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
         </div>
       )}
 
-      {/* Source — optional */}
-      {sourcesWithData.length > 0 && (
-        <StepCard step={1} title="Google Sheet data" hint="Optional — adds spreadsheet rows to the AI's context" badge={<span className="text-[11px] text-gray-400 bg-gray-50 px-2 py-0.5 rounded-full">optional</span>}>
-          <select value={selectedSourceId} onChange={e => setSelectedSourceId(e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
-            <option value="">— Don't include sheet data —</option>
-            {sourcesWithData.map(s => <option key={s.source.id} value={s.source.id}>{s.source.name}</option>)}
-          </select>
-          {selectedSourceId && (
-            <div className={`mt-3 text-xs rounded-lg px-3 py-2 flex items-center gap-2 ${isFiltered ? "bg-indigo-50 text-indigo-700" : "bg-gray-50 text-gray-500"}`}>
-              <Filter size={11} />
-              {isFiltered
-                ? <span>Using <strong>{filteredRows.length}</strong> filtered rows of {totalRows}. Change filter on the <strong>Data</strong> tab.</span>
-                : <span>Using all <strong>{totalRows}</strong> rows. Filter by month/period on the <strong>Data</strong> tab first.</span>}
+      {/* Report setup — sheet data, period, Metrik data toggles, theme.
+          These used to be four separate full-height cards, each with its own
+          number circle and border, even though none of them is a multi-step
+          task on its own — they're all single quick choices. Stacking four
+          equal-weight cards made the page read as much longer than the actual
+          amount of decision-making involved, so they're one card now with
+          light dividers between sections instead. */}
+      <StepCard step={1} title="Report setup" hint="A few quick choices before the AI plans anything">
+        <div className="space-y-4">
+          {sourcesWithData.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-xs font-semibold text-gray-600">Google Sheet data</p>
+                <span className="text-[10px] text-gray-400">Optional</span>
+              </div>
+              <select value={selectedSourceId} onChange={e => setSelectedSourceId(e.target.value)}
+                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                <option value="">— Don't include sheet data —</option>
+                {sourcesWithData.map(s => <option key={s.source.id} value={s.source.id}>{s.source.name}</option>)}
+              </select>
+              {selectedSourceId && (
+                <div className={`mt-2 text-xs rounded-lg px-3 py-2 flex items-center gap-2 ${isFiltered ? "bg-indigo-50 text-indigo-700" : "bg-gray-50 text-gray-500"}`}>
+                  <Filter size={11} />
+                  {isFiltered
+                    ? <span>Using <strong>{filteredRows.length}</strong> filtered rows of {totalRows}. Change filter on the <strong>Data</strong> tab.</span>
+                    : <span>Using all <strong>{totalRows}</strong> rows. Filter by month/period on the <strong>Data</strong> tab first.</span>}
+                </div>
+              )}
             </div>
           )}
-        </StepCard>
-      )}
 
-      {/* Period */}
-      <StepCard step={sourcesWithData.length > 0 ? 2 : 1} title="Report period" hint="Labels the deck and tells the AI what time range to focus on">
-        {(() => {
-          const now = new Date();
-          const month = (offset: number) => {
-            const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
-            return { name: d.toLocaleString("default", { month: "long" }), year: d.getFullYear(), d };
-          };
-          const months = Array.from({ length: 13 }, (_, i) => month(-i)); // current + 12 back
-          const fmt = (m: ReturnType<typeof month>) => `${m.name} ${m.year}`;
+          <div className={sourcesWithData.length > 0 ? "pt-4 border-t border-gray-100" : ""}>
+            <p className="text-xs font-semibold text-gray-600 mb-1.5">Report period</p>
+            {(() => {
+              const now = new Date();
+              const month = (offset: number) => {
+                const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+                return { name: d.toLocaleString("default", { month: "long" }), year: d.getFullYear(), d };
+              };
+              const months = Array.from({ length: 13 }, (_, i) => month(-i)); // current + 12 back
+              const fmt = (m: ReturnType<typeof month>) => `${m.name} ${m.year}`;
 
-          const options: { label: string; value: string }[] = [];
+              const options: { label: string; value: string }[] = [];
 
-          // Individual months (current + 6 back)
-          months.slice(0, 7).forEach(m => options.push({ label: fmt(m), value: fmt(m) }));
+              // Individual months (current + 6 back)
+              months.slice(0, 7).forEach(m => options.push({ label: fmt(m), value: fmt(m) }));
 
-          options.push({ label: "──────────", value: "" }); // divider
+              options.push({ label: "──────────", value: "" }); // divider
 
-          // Rolling 2-month ranges
-          for (let i = 0; i < 6; i++) {
-            const end = months[i], start = months[i + 1];
-            const label = start.year === end.year
-              ? `${start.name} – ${end.name} ${end.year}`
-              : `${start.name} ${start.year} – ${end.name} ${end.year}`;
-            options.push({ label, value: label });
-          }
+              // Rolling 2-month ranges
+              for (let i = 0; i < 6; i++) {
+                const end = months[i], start = months[i + 1];
+                const label = start.year === end.year
+                  ? `${start.name} – ${end.name} ${end.year}`
+                  : `${start.name} ${start.year} – ${end.name} ${end.year}`;
+                options.push({ label, value: label });
+              }
 
-          options.push({ label: "──────────", value: "" }); // divider
+              options.push({ label: "──────────", value: "" }); // divider
 
-          // Rolling 3-month / quarter windows
-          for (let i = 0; i < 4; i++) {
-            const end = months[i], start = months[i + 2];
-            const label = start.year === end.year
-              ? `${start.name} – ${end.name} ${end.year}`
-              : `${start.name} ${start.year} – ${end.name} ${end.year}`;
-            options.push({ label, value: label });
-          }
+              // Rolling 3-month / quarter windows
+              for (let i = 0; i < 4; i++) {
+                const end = months[i], start = months[i + 2];
+                const label = start.year === end.year
+                  ? `${start.name} – ${end.name} ${end.year}`
+                  : `${start.name} ${start.year} – ${end.name} ${end.year}`;
+                options.push({ label, value: label });
+              }
 
-          options.push({ label: "──────────", value: "" }); // divider
+              options.push({ label: "──────────", value: "" }); // divider
 
-          // Named quarters
-          const curQ = Math.floor(now.getMonth() / 3) + 1;
-          for (let q = curQ; q >= 1; q--) {
-            options.push({ label: `Q${q} ${now.getFullYear()}`, value: `Q${q} ${now.getFullYear()}` });
-          }
-          if (curQ > 0) {
-            for (let q = 4; q >= 1; q--) {
-              options.push({ label: `Q${q} ${now.getFullYear() - 1}`, value: `Q${q} ${now.getFullYear() - 1}` });
-            }
-          }
+              // Named quarters
+              const curQ = Math.floor(now.getMonth() / 3) + 1;
+              for (let q = curQ; q >= 1; q--) {
+                options.push({ label: `Q${q} ${now.getFullYear()}`, value: `Q${q} ${now.getFullYear()}` });
+              }
+              if (curQ > 0) {
+                for (let q = 4; q >= 1; q--) {
+                  options.push({ label: `Q${q} ${now.getFullYear() - 1}`, value: `Q${q} ${now.getFullYear() - 1}` });
+                }
+              }
 
-          options.push({ label: "──────────", value: "" }); // divider
-          options.push({ label: "Custom…", value: "__custom__" });
+              options.push({ label: "──────────", value: "" }); // divider
+              options.push({ label: "Custom…", value: "__custom__" });
 
-          return customPeriod ? (
-            <div className="flex gap-2">
-              <input
-                autoFocus
-                value={period}
-                onChange={e => setPeriod(e.target.value)}
-                placeholder="e.g. H1 2026 or Jan – Mar 2026"
-                className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-              />
-              <button onClick={() => setCustomPeriod(false)}
-                className="text-xs text-gray-400 hover:text-gray-600 px-2">← Back</button>
-            </div>
-          ) : (
-            <select
-              value={options.find(o => o.value === period) ? period : "__custom__"}
-              onChange={e => {
-                if (e.target.value === "__custom__") { setCustomPeriod(true); return; }
-                if (!e.target.value) return; // divider
-                setPeriod(e.target.value);
-              }}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
-            >
-              {options.map((o, i) => (
-                <option key={i} value={o.value} disabled={!o.value}>{o.label}</option>
-              ))}
-            </select>
-          );
-        })()}
-        <p className="text-xs text-gray-400 mt-2">Current selection: <span className="font-medium text-gray-600">{period}</span></p>
-      </StepCard>
-
-      {/* Metrik Data sections */}
-      <StepCard
-        step={sourcesWithData.length > 0 ? 3 : 2}
-        title="Include Metrik data"
-        hint="Pull live data from your Metrik workspace into the report"
-        badge={!anyBiosSection && filteredRows.length === 0 ? <span className="text-[11px] text-red-500 font-medium">Select at least one source</span> : undefined}
-      >
-        <div className="space-y-2.5">
-          {([
-            { key: "goals",      label: "Business Goals",       desc: "Active goals, status, targets and timeframes" },
-            { key: "features",   label: "Feature Metrics",       desc: "Logged features and their tracking plans" },
-            { key: "funnelsKpis", label: "KPIs & Metrics",        desc: "Metric definitions and event tracking items" },
-          ] as { key: keyof BiosSections; label: string; desc: string }[]).map(({ key, label, desc }) => (
-            <label key={key} className="flex items-start gap-3 cursor-pointer group">
-              <div className="relative mt-0.5">
-                <input
-                  type="checkbox"
-                  checked={biosSections[key] ?? false}
-                  onChange={e => setBiosSections(prev => ({ ...prev, [key]: e.target.checked }))}
-                  className="sr-only peer"
-                />
-                <div className="w-5 h-5 rounded-md border-2 border-gray-200 peer-checked:border-indigo-500 peer-checked:bg-indigo-500 transition-all flex items-center justify-center">
-                  {biosSections[key] && <CheckCircle2 size={12} className="text-white" strokeWidth={3} />}
+              return customPeriod ? (
+                <div className="flex gap-2">
+                  <input
+                    autoFocus
+                    value={period}
+                    onChange={e => setPeriod(e.target.value)}
+                    placeholder="e.g. H1 2026 or Jan – Mar 2026"
+                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  />
+                  <button onClick={() => setCustomPeriod(false)}
+                    className="text-xs text-gray-400 hover:text-gray-600 px-2">← Back</button>
                 </div>
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-800 group-hover:text-indigo-700 transition-colors">{label}</p>
-                <p className="text-xs text-gray-400">{desc}</p>
-              </div>
-            </label>
-          ))}
-        </div>
-      </StepCard>
+              ) : (
+                <select
+                  value={options.find(o => o.value === period) ? period : "__custom__"}
+                  onChange={e => {
+                    if (e.target.value === "__custom__") { setCustomPeriod(true); return; }
+                    if (!e.target.value) return; // divider
+                    setPeriod(e.target.value);
+                  }}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                >
+                  {options.map((o, i) => (
+                    <option key={i} value={o.value} disabled={!o.value}>{o.label}</option>
+                  ))}
+                </select>
+              );
+            })()}
+            <p className="text-xs text-gray-400 mt-2">Current selection: <span className="font-medium text-gray-600">{period}</span></p>
+          </div>
 
-      {/* Design theme */}
-      <StepCard step={sourcesWithData.length > 0 ? 4 : 3} title="Design theme" hint="Sets the colour treatment used across every slide">
-        <div className="grid grid-cols-3 gap-2">
-          {THEMES.map(t => (
-            <button key={t.id} onClick={() => setTheme(t.id)}
-              className={`p-3 rounded-xl border-2 text-left transition-all ${theme === t.id ? "border-indigo-500 bg-indigo-50" : "border-gray-100 hover:border-gray-200"}`}>
-              <div className={`w-full h-8 rounded-lg mb-2 ${t.preview}`} />
-              <p className="text-xs font-semibold text-gray-800">{t.label}</p>
-              <p className="text-xs text-gray-400 leading-tight mt-0.5">{t.desc}</p>
-            </button>
-          ))}
+          <div className="pt-4 border-t border-gray-100">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-semibold text-gray-600">Include Metrik data</p>
+              {!anyBiosSection && filteredRows.length === 0 && (
+                <span className="text-[11px] text-red-500 font-medium">Select at least one source</span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {([
+                { key: "goals",      label: "Business Goals",  desc: "Active goals, status, targets and timeframes" },
+                { key: "features",   label: "Feature Metrics", desc: "Logged features and their tracking plans" },
+                { key: "funnelsKpis", label: "KPIs & Metrics",  desc: "Metric definitions and event tracking items" },
+              ] as { key: keyof BiosSections; label: string; desc: string }[]).map(({ key, label, desc }) => (
+                <button
+                  key={key}
+                  type="button"
+                  title={desc}
+                  onClick={() => setBiosSections(prev => ({ ...prev, [key]: !prev[key] }))}
+                  className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+                    biosSections[key] ? "bg-indigo-50 border-indigo-200 text-indigo-700" : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+                  }`}
+                >
+                  {biosSections[key] && <CheckCircle2 size={12} />}
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="pt-4 border-t border-gray-100">
+            <p className="text-xs font-semibold text-gray-600 mb-2">Design theme</p>
+            <div className="grid grid-cols-3 gap-2">
+              {THEMES.map(t => (
+                <button key={t.id} onClick={() => setTheme(t.id)}
+                  className={`p-3 rounded-xl border-2 text-left transition-all ${theme === t.id ? "border-indigo-500 bg-indigo-50" : "border-gray-100 hover:border-gray-200"}`}>
+                  <div className={`w-full h-8 rounded-lg mb-2 ${t.preview}`} />
+                  <p className="text-xs font-semibold text-gray-800">{t.label}</p>
+                  <p className="text-xs text-gray-400 leading-tight mt-0.5">{t.desc}</p>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </StepCard>
 
@@ -2986,7 +2995,7 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
       </div>
 
       {/* Templates — horizontal pill tabs */}
-      <StepCard step={sourcesWithData.length > 0 ? 5 : 4} title="Pick a template" hint="Plan with AI, preview the deck, then build it">
+      <StepCard step={2} title="Pick a template" hint="Plan with AI, preview the deck, then build it">
         {templates.length === 0 ? (
           <p className="text-sm text-gray-400">No templates. Add some in Settings.</p>
         ) : (
@@ -3123,7 +3132,7 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
                         ) : (
                           savedInsights.map(ins => {
                             const checked = (selectedInsightIds[t.id] ?? []).includes(ins.id);
-                            const sourceLabel = ins.source === "ai_analyst" ? "AI Analyst" : ins.source === "business_brief" ? "Business Brief" : ins.source === "cohort" ? "Cohort" : ins.source;
+                            const sourceLabel = ins.source === "ai_analyst" ? "AI Analyst" : ins.source === "business_brief" ? "Business Brief" : ins.source === "cohort" ? "Cohort" : ins.source === "funnel" ? "Funnel" : ins.source;
                             return (
                               <label key={ins.id} className={`flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors ${checked ? "border-amber-300 bg-amber-50/60" : "border-gray-100 hover:bg-gray-50"}`}>
                                 <input
@@ -3140,7 +3149,10 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
                                     <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full flex-shrink-0">{sourceLabel}</span>
                                     {ins.context && <span className="text-[10px] text-gray-400 truncate">{ins.context}</span>}
                                   </div>
-                                  <p className="text-xs text-gray-700 leading-relaxed mt-1 line-clamp-3">{ins.content}</p>
+                                  {/* Strip any leftover markdown emphasis/heading/list syntax — this is a
+                                      plain-text preview, not a markdown renderer, so raw "**"/"#"/"-" would
+                                      otherwise show up as literal characters. */}
+                                  <p className="text-xs text-gray-700 leading-relaxed mt-1 line-clamp-3">{ins.content.replace(/\*\*/g, "").replace(/^#+\s*/gm, "").replace(/^[-*]\s+/gm, "")}</p>
                                 </div>
                               </label>
                             );

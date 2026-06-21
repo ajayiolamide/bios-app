@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { X, Plus, Trash2, GripVertical, Loader2, Zap, ChevronDown, Search } from "lucide-react";
-import { createFunnel, type FunnelStep } from "@/app/actions/funnels";
+import { X, Plus, Trash2, GripVertical, Loader2, Zap, ChevronDown, Search, Sparkles } from "lucide-react";
+import { createFunnel, parseFunnelFromPrompt, type FunnelStep } from "@/app/actions/funnels";
 import { getEventNamesWithSource, type EventNameWithSource } from "@/app/actions/events";
 import { getMixpanelSettings, syncMixpanelEventNames } from "@/app/actions/mixpanel";
 
@@ -153,6 +153,26 @@ export function CreateFunnelDialog({ orgId, onCreated, onClose }: Props) {
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState<string | null>(null);
 
+  // Describe the journey in plain English instead of knowing exact event
+  // names up front — matches it onto the org's real events in order, then
+  // fills in the same name/description/steps fields below so it's still
+  // fully editable before creating, not a black box that locks you in.
+  const [promptText, setPromptText]   = useState("");
+  const [parsing, setParsing]         = useState(false);
+  const [parseError, setParseError]   = useState<string | null>(null);
+
+  async function handleGenerateSteps() {
+    if (!promptText.trim() || parsing) return;
+    setParsing(true);
+    setParseError(null);
+    const { draft, error: err } = await parseFunnelFromPrompt(promptText, events.map(e => e.name));
+    setParsing(false);
+    if (err || !draft) { setParseError(err ?? "Couldn't generate steps — try rephrasing."); return; }
+    if (!name.trim()) setName(draft.name);
+    if (!description.trim()) setDescription(draft.description);
+    setSteps(draft.steps);
+  }
+
   // Load events, auto-sync Mixpanel if connected
   useEffect(() => {
     let cancelled = false;
@@ -205,6 +225,36 @@ export function CreateFunnelDialog({ orgId, onCreated, onClose }: Props) {
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-5 overflow-y-auto flex-1">
+
+          {/* Describe it (AI) — matches a plain-English journey onto real
+              event names below, fully editable afterward, not a black box. */}
+          <div className="rounded-xl border border-indigo-100 bg-indigo-50/40 p-3.5 space-y-2.5">
+            <div className="flex items-center gap-1.5">
+              <Sparkles size={13} className="text-indigo-500" />
+              <p className="text-sm font-medium text-gray-800">Describe the journey</p>
+              <span className="text-[11px] text-gray-400">Optional — fills in the steps below</span>
+            </div>
+            <div className="flex gap-2">
+              <input
+                value={promptText}
+                onChange={e => setPromptText(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); handleGenerateSteps(); } }}
+                placeholder="e.g. signup, then first claim, then payment"
+                disabled={syncing}
+                className="flex-1 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400 disabled:opacity-50"
+              />
+              <button
+                type="button"
+                onClick={handleGenerateSteps}
+                disabled={syncing || parsing || !promptText.trim()}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 transition-colors flex-shrink-0"
+              >
+                {parsing ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                {parsing ? "Matching…" : "Generate"}
+              </button>
+            </div>
+            {parseError && <p className="text-xs text-red-500">{parseError}</p>}
+          </div>
 
           {/* Name */}
           <div className="space-y-1.5">

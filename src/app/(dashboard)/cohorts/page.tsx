@@ -675,7 +675,7 @@ function EmptyState({ tab }: { tab: string }) {
 
 // ─── Retention grid ───────────────────────────────────────────────────────────
 
-function RetentionGrid({ data }: { data: CohortData }) {
+function RetentionGrid({ data, qualifyingEvent }: { data: CohortData; qualifyingEvent: string }) {
   if (!data.rows.length) return <EmptyState tab="retention" />;
   const cols = Math.min(data.maxWeeks, 12);
 
@@ -697,10 +697,16 @@ function RetentionGrid({ data }: { data: CohortData }) {
       <table className="w-full text-xs border-separate border-spacing-1 min-w-[600px]">
         <thead>
           <tr>
-            <th className="text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-2 py-1 w-24">Cohort</th>
-            <th className="text-right text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-2 py-1 w-16">Users</th>
+            <th className="text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-2 py-1 w-24" title="Users grouped by the week they first fired the qualifying event">Cohort</th>
+            <th className="text-right text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-2 py-1 w-16" title="Total unique users in that cohort">Users</th>
             {Array.from({ length: cols }, (_, w) => (
-              <th key={w} className="text-center text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-1 py-1 min-w-[52px]">
+              <th
+                key={w}
+                className="text-center text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-1 py-1 min-w-[52px]"
+                title={w === 0
+                  ? "The week each cohort's users first fired the qualifying event — always 100%, by definition"
+                  : `% of each cohort who fired ${qualifyingEvent} again, ${w} week${w > 1 ? "s" : ""} after their first time`}
+              >
                 {w === 0 ? "Wk 0" : `Wk ${w}`}
               </th>
             ))}
@@ -708,11 +714,18 @@ function RetentionGrid({ data }: { data: CohortData }) {
         </thead>
         <tbody>
           <tr>
-            <td className="px-2 py-1 text-[11px] font-bold text-gray-500">Average</td>
+            <td className="px-2 py-1 text-[11px] font-bold text-gray-500" title="Blended across cohorts old enough to have reached that week — newer cohorts that haven't lived that long yet are left out, not counted as 0%">Average</td>
             <td className="px-2 py-1 text-right text-[11px] text-gray-400">—</td>
             {avgByWeek.map((avg, w) => (
               <td key={w} className="px-1 py-1">
-                <div className={`rounded-lg px-1 py-1.5 text-center font-bold text-[11px] ${heatColor(avg, w === 0)}`}>
+                <div
+                  className={`rounded-lg px-1 py-1.5 text-center font-bold text-[11px] ${heatColor(avg, w === 0)}`}
+                  title={w === 0
+                    ? "Always 100% — every cohort starts at its own first week"
+                    : avg > 0
+                      ? `On average, ${avg}% of users came back and fired ${qualifyingEvent} again ${w} week${w > 1 ? "s" : ""} after their first time`
+                      : "No cohort has reached this week yet"}
+                >
                   {avg > 0 ? `${avg}%` : "—"}
                 </div>
               </td>
@@ -721,7 +734,12 @@ function RetentionGrid({ data }: { data: CohortData }) {
           <tr><td colSpan={cols + 2}><div className="h-px bg-gray-100 my-1" /></td></tr>
           {data.rows.map(row => (
             <tr key={row.cohortWeek}>
-              <td className="px-2 py-1 font-medium text-gray-700 whitespace-nowrap">{fmtWeek(row.cohortWeek)}</td>
+              <td
+                className="px-2 py-1 font-medium text-gray-700 whitespace-nowrap"
+                title={`${row.totalUsers.toLocaleString()} users whose first ${qualifyingEvent} happened during the week of ${fmtWeek(row.cohortWeek)}`}
+              >
+                {fmtWeek(row.cohortWeek)}
+              </td>
               <td className="px-2 py-1 text-right font-mono text-gray-500">{row.totalUsers.toLocaleString()}</td>
               {Array.from({ length: cols }, (_, w) => {
                 const n = row.retained[w] ?? 0;
@@ -735,7 +753,11 @@ function RetentionGrid({ data }: { data: CohortData }) {
                   <td key={w} className="px-1 py-1">
                     <div
                       className={`rounded-lg px-1 py-1.5 text-center text-[11px] font-semibold ${noData ? "bg-gray-50 text-gray-200" : heatColor(p, w === 0)}`}
-                      title={noData ? "Future week — hasn't happened yet for this cohort" : `${n.toLocaleString()} users (${p}%)`}
+                      title={noData
+                        ? "Future week — hasn't happened yet for this cohort"
+                        : w === 0
+                          ? `${row.totalUsers.toLocaleString()} users — this is the week they first fired ${qualifyingEvent}`
+                          : `${n.toLocaleString()} of ${row.totalUsers.toLocaleString()} users (${p}%) fired ${qualifyingEvent} again in week ${w}`}
                     >
                       {noData ? "" : w === 0 ? "100%" : `${p}%`}
                     </div>
@@ -767,6 +789,20 @@ function RetentionGrid({ data }: { data: CohortData }) {
 }
 
 // ─── AI Insight ───────────────────────────────────────────────────────────────
+
+// The AI is prompted in plain English, not told to avoid markdown, so it
+// reaches for **bold** to emphasize the key clause of a bullet — which then
+// rendered as literal asterisks since this panel only ever printed raw
+// strings. Parsing just this one inline pattern (no need for a full markdown
+// renderer here) turns it back into actual emphasis.
+function renderInlineBold(text: string): React.ReactNode {
+  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  return parts.map((part, i) =>
+    part.startsWith("**") && part.endsWith("**")
+      ? <strong key={i} className="font-semibold text-gray-900">{part.slice(2, -2)}</strong>
+      : <span key={i}>{part}</span>
+  );
+}
 
 function InsightPanel({ data, weeks, eventName, totalUsers, orgId }: { data: CohortData; weeks: number; eventName: string; totalUsers: number; orgId: string }) {
   const [insight, setInsight] = useState("");
@@ -808,7 +844,7 @@ function InsightPanel({ data, weeks, eventName, totalUsers, orgId }: { data: Coh
             <SaveInsightButton
               orgId={orgId}
               source="cohort"
-              content={points.map((p, i) => `${i + 1}. ${p}`).join("\n")}
+              content={points.map((p, i) => `${i + 1}. ${p.replace(/\*\*/g, "")}`).join("\n")}
               context={`Cohort retention — ${eventName || "all events"}, ${weeks} weeks`}
             />
           )}
@@ -827,7 +863,7 @@ function InsightPanel({ data, weeks, eventName, totalUsers, orgId }: { data: Coh
               <span className="flex-shrink-0 w-5 h-5 rounded-full bg-indigo-50 text-indigo-600 text-[11px] font-semibold flex items-center justify-center mt-0.5">
                 {i + 1}
               </span>
-              <p className="text-sm text-gray-700 leading-relaxed">{line}</p>
+              <p className="text-sm text-gray-700 leading-relaxed">{renderInlineBold(line)}</p>
             </div>
           ))}
         </div>
@@ -1295,9 +1331,12 @@ export default function CohortsPage() {
               <div className="space-y-5">
                 <div>
                   <p className="text-sm font-semibold text-gray-800">Weekly cohort retention</p>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    Each row = users first seen that week. Columns show % who returned in subsequent weeks.
-                    {activeFilter ? <span className="ml-1 text-indigo-500">{activeFilter.description}</span> : eventName ? <span className="ml-1 text-indigo-500">{eventName}</span> : ""}
+                  <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">
+                    Each row is a group of users, sorted by the week they first fired{" "}
+                    <code className="font-mono bg-gray-50 px-1 rounded">{activeFilter?.eventName || eventName || "any event"}</code>.
+                    Wk 0 is always 100% — it's that first week, by definition. Every column after it shows what % of that
+                    same group came back and fired it again, that many weeks later. Hover any cell for the exact numbers.
+                    {activeFilter ? <span className="block mt-1 text-indigo-500">{activeFilter.description}</span> : null}
                   </p>
                   {activeFilter?.secondEventName && (
                     <p className="text-[11px] text-gray-400 mt-1">
@@ -1305,7 +1344,7 @@ export default function CohortsPage() {
                     </p>
                   )}
                 </div>
-                <RetentionGrid data={cohortData} />
+                <RetentionGrid data={cohortData} qualifyingEvent={activeFilter?.eventName || eventName || "the qualifying event"} />
               </div>
             )}
             {tab === "active" && <WeeklyActiveTab data={wauData} />}

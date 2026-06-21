@@ -3,6 +3,7 @@
 import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 import type { Funnel } from "@/types/database";
 import { getMixpanelSettings, fetchMixpanelEventCounts } from "@/app/actions/mixpanel";
+import Anthropic from "@anthropic-ai/sdk";
 
 export type FunnelStep = { event_name: string };
 
@@ -174,4 +175,118 @@ export async function computeFunnel(
       data_source: source,
     };
   });
+}
+
+// ─── Describe a funnel in plain English (AI) ─────────────────────────────────
+//
+// Building a funnel meant knowing the exact event names up front and adding
+// each step one at a time — fine once you already know your event schema,
+// but the whole reason someone reaches for "describe it" instead is that
+// they don't want to go look that up first. This matches a plain-English
+// description of a journey ("signup, then first claim, then payment") onto
+// the org's real event names, in order, the same way Cohorts' prompt mode
+// already does for a single event.
+
+export type FunnelDraft = {
+  name: string;
+  description: string;
+  steps: FunnelStep[];
+};
+
+export async function parseFunnelFromPrompt(
+  prompt: string,
+  availableEvents: string[]
+): Promise<{ draft?: FunnelDraft; error?: string }> {
+  if (!availableEvents.length) {
+    return { error: "No events found yet — import or connect a data source first." };
+  }
+  try {
+    const client = new Anthropic();
+    const evList = availableEvents.slice(0, 200).join(", ");
+
+    const msg = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 400,
+      messages: [{
+        role: "user",
+        content: `You are a product analytics assistant. The user wants to define a conversion funnel — an ORDERED sequence of events a user moves through.
+
+Available events: ${evList}
+
+User description: "${prompt}"
+
+Map their description onto 2-6 of the available events, in the order they'd actually happen. Only use exact event names from the list above — never invent one. If a step in their description doesn't clearly match any available event, leave it out rather than guessing wrong, but keep at least 2 steps if at all possible.
+
+Return JSON only, no prose:
+{
+  "name": "<short funnel name, e.g. 'Signup to first claim'>",
+  "description": "<one sentence describing what this funnel measures>",
+  "steps": ["<exact event name 1>", "<exact event name 2>", ...]
+}`,
+      }],
+    });
+
+    const text = (msg.content[0] as { type: string; text: string }).text.trim();
+    const json = JSON.parse(text.replace(/^```json\n?/, "").replace(/\n?```$/, "")) as {
+      name?: string; description?: string; steps?: string[];
+    };
+
+    const steps = (json.steps ?? []).filter((s): s is string => typeof s === "string" && availableEvents.includes(s));
+    if (steps.length < 2) {
+      return { error: "Couldn't confidently match at least 2 steps from your description to real events — try rephrasing, or switch to Build manually." };
+    }
+
+    return {
+      draft: {
+        name: json.name?.trim() || "Untitled funnel",
+        description: json.description?.trim() || "",
+        steps: steps.map(event_name => ({ event_name })),
+      },
+    };
+  } catch (e) {
+    return { error: (e as Error).message };
+  }
+}
+
+// ─── AI insight on a computed funnel ──────────────────────────────────────────
+//
+// A bare conversion chart still leaves "so what should I do about it" to the
+// reader. This calls out the single biggest leak, whether the data behind
+// it is thin enough to be unreliable, and one concrete next step — same
+// pattern as Cohorts' AI Insight panel.
+
+export async function getFunnelInsight(
+  funnelName: string,
+  results: FunnelStepResult[]
+): Promise<string> {
+  if (!results.length || results.every(r => r.users === 0)) return "";
+
+  try {
+    const client = new Anthropic();
+
+    const stepSummary = results.map(r =>
+      `${r.step}. ${r.event_name} — ${r.users} users (${r.conversion_from_prev}% of previous step, ${r.conversion_from_first}% of step 1, source: ${r.data_source})`
+    ).join("\n");
+
+    const msg = await client.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 350,
+      messages: [{
+        role: "user",
+        content: `Analyze this conversion funnel and give 2-3 sharp, actionable insights. Be specific with numbers.
+
+Funnel: "${funnelName}"
+Steps (last 30 days):
+${stepSummary}
+
+A step with source "none" has zero real tracked occurrences — call that out as a data gap, not a 0% drop-off, since there's no actual evidence either way. A step with source "mixpanel" is an aggregate count, not a sequential per-user journey, so its conversion number is rougher than the others — mention this if it materially affects your read of the funnel. If total users at step 1 is under ~20, say the sample is too small to draw firm conclusions yet, rather than reading too much into the percentages.
+
+Format: 2-3 bullets, each starting with "•", each one or two sentences, no headers or preamble.`,
+      }],
+    });
+
+    return (msg.content[0] as { type: string; text: string }).text.trim();
+  } catch {
+    return "";
+  }
 }
