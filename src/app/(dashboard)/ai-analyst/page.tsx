@@ -32,17 +32,15 @@ const THINKING_STEPS = [
   "Reasoning over the numbers…",
 ];
 
-function timeAgo(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const mins = Math.round(diffMs / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.round(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.round(hours / 24);
-  if (days === 1) return "yesterday";
-  if (days < 7) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+// Relative time ("2h ago") is fine for "is this recent" at a glance, but
+// it's not enough on its own to tell two conversations apart or know
+// exactly when one happened — this gives the precise date and time
+// alongside it.
+function fullDateTime(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    month: "short", day: "numeric", year: "numeric",
+    hour: "numeric", minute: "2-digit",
+  });
 }
 
 // ── Markdown renderer — handles tables, bold, code, lists, line breaks ─────────
@@ -213,13 +211,16 @@ function HistoryPanel({
             >
               <div className="flex-1 min-w-0">
                 <p className="text-sm text-gray-800 truncate">{c.title}</p>
-                <p className="text-xs text-gray-400 mt-0.5">{timeAgo(c.updated_at)} · {c.message_count} message{c.message_count !== 1 ? "s" : ""}</p>
+                <p className="text-xs text-gray-400 mt-0.5" title={fullDateTime(c.updated_at)}>
+                  {fullDateTime(c.updated_at)} · {c.message_count} message{c.message_count !== 1 ? "s" : ""}
+                </p>
               </div>
               <button
                 onClick={(e) => { e.stopPropagation(); onDelete(c.id); }}
-                className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-opacity p-1"
+                title="Delete this conversation"
+                className="text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors p-1.5 flex-shrink-0"
               >
-                <Trash2 size={12} />
+                <Trash2 size={13} />
               </button>
             </div>
           ))}
