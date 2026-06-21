@@ -358,7 +358,7 @@ export type SlideContent =
   | { type: "pie_chart"; title: string; subtitle: string; style: "pie" | "donut"; segments: { label: string; value: number }[]; image_url?: string }
   | { type: "progress_bars"; title: string; items: { label: string; value: number; target: number; unit: string; status: "on_track" | "off_track" | "neutral" }[]; image_url?: string }
   | { type: "kpi_grid"; title: string; kpis: { label: string; value: string; target: string; status: "on_track" | "off_track" | "neutral" }[]; image_url?: string }
-  | { type: "insight"; title: string; body: string; stat: string; stat_label: string; status: "positive" | "negative" | "neutral"; image_url?: string }
+  | { type: "insight"; title: string; body: string; stat: string; stat_label: string; status: "positive" | "negative" | "neutral"; stat_width?: "narrow" | "balanced" | "wide"; image_url?: string }
   | { type: "bullet_list"; title: string; items: string[]; image_url?: string }
   | {
       type: "action_plan";
@@ -1419,32 +1419,43 @@ async function buildPptx(
       addSlideTitle(s, slide.title, undefined, slideNum);
       const accentBorderColor = slide.status === "positive" ? green : slide.status === "negative" ? red : accentColor;
 
+      // How wide the coloured stat panel is, relative to the body text panel
+      // beside it — mirrors the same "narrow / balanced / wide" choice made
+      // in the editor (slide-card.tsx), so what gets downloaded as a .pptx
+      // matches what was previewed instead of always using the old fixed
+      // 3.0in width regardless of that setting.
+      const STAT_WIDTH_IN: Record<string, number> = { narrow: 2.0, balanced: 3.0, wide: 4.2 };
+      const leftW = STAT_WIDTH_IN[slide.stat_width ?? "balanced"] ?? 3.0;
+      const gapIn = 0.15;
+      const rightX = 0.5 + leftW + gapIn;
+      const rightW = 9.0 - leftW - gapIn;
+
       // Left: big stat panel
       s.addShape("rect" as never, {
-        x: 0.5, y: 1.18, w: 3.0, h: 3.75,
+        x: 0.5, y: 1.18, w: leftW, h: 3.75,
         fill: { color: accentBorderColor }, line: { type: "none" },
       });
       s.addText(slide.stat || "", {
-        x: 0.5, y: 1.85, w: 3.0, h: 1.5,
+        x: 0.5, y: 1.85, w: leftW, h: 1.5,
         fontSize: 52, bold: true, color: white, align: "center", fontFace: "Calibri",
       });
       s.addText(slide.stat_label || "", {
-        x: 0.5, y: 3.4, w: 3.0, h: 0.4,
+        x: 0.5, y: 3.4, w: leftW, h: 0.4,
         fontSize: 10, color: white, align: "center", transparency: 20,
       });
 
       // Right: body text panel
       s.addShape("rect" as never, {
-        x: 3.65, y: 1.18, w: 5.85, h: 3.75,
+        x: rightX, y: 1.18, w: rightW, h: 3.75,
         fill: { color: cardBg }, line: { color: borderColor, width: 0.75 },
       });
       const arrow2 = slide.status === "positive" ? "↑" : slide.status === "negative" ? "↓" : "→";
       s.addText(`${arrow2}  ${slide.status === "positive" ? "Positive signal" : slide.status === "negative" ? "Needs attention" : "Neutral observation"}`, {
-        x: 3.85, y: 1.28, w: 5.45, h: 0.32,
+        x: rightX + 0.2, y: 1.28, w: rightW - 0.4, h: 0.32,
         fontSize: 9, bold: true, color: accentBorderColor, charSpacing: 0.5,
       });
       s.addText(slide.body, {
-        x: 3.85, y: 1.68, w: 5.45, h: 3.1,
+        x: rightX + 0.2, y: 1.68, w: rightW - 0.4, h: 3.1,
         fontSize: 13, color: textDark, valign: "top",
         fontFace: "Calibri", lineSpacingMultiple: 1.4,
       });

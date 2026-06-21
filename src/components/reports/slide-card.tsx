@@ -309,10 +309,13 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
   // ── Insight ───────────────────────────────────────────────────────────────────
   if (slide.type === "insight") {
     const ac = slide.status === "positive" ? "#16A34A" : slide.status === "negative" ? "#DC2626" : p;
+    // "Stat box width" in the Edit panel controls this — defaults to the
+    // original fixed w-32 ("balanced") so existing decks look unchanged.
+    const statWidthCls = { narrow: "w-24", balanced: "w-32", wide: "w-48" }[slide.stat_width ?? "balanced"];
     return (
       <W title={slide.title} imgUrl={slideImg}>
         <div className="flex gap-5 h-full overflow-hidden">
-          <div className="flex flex-col items-center justify-center rounded-2xl px-5 flex-shrink-0 w-32" style={{ background: ac }}>
+          <div className={`flex flex-col items-center justify-center rounded-2xl px-5 flex-shrink-0 ${statWidthCls}`} style={{ background: ac }}>
             <p className="text-white font-black leading-tight text-center" style={{ fontSize: "clamp(22px,3.5vw,32px)" }}>{slide.stat}</p>
             <p className="text-white/75 text-xs text-center mt-2 leading-tight">{slide.stat_label}</p>
           </div>

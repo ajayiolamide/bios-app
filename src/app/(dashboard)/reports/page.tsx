@@ -108,7 +108,7 @@ function blankSlide(type: SlideContent["type"]): SlideContent {
   if (type === "pie_chart")     return { type, title: "Breakdown", subtitle: "", style: "pie" as const, segments: [{ label: "Category A", value: 40 }, { label: "Category B", value: 35 }, { label: "Category C", value: 25 }] };
   if (type === "progress_bars") return { type, title: "Progress", items: [{ label: "Goal", value: 50, target: 100, unit: "%", status: "neutral" as const }] };
   if (type === "kpi_grid")      return { type, title: "KPIs", kpis: [{ label: "Metric", value: "—", target: "—", status: "neutral" }] };
-  if (type === "insight")       return { type, title: "Key Insight", stat: "0%", stat_label: "metric", body: "Add your insight here.", status: "neutral" };
+  if (type === "insight")       return { type, title: "Key Insight", stat: "0%", stat_label: "metric", body: "Add your insight here.", status: "neutral", stat_width: "balanced" };
   if (type === "action_plan")   return {
     type, title: "Recommended Next Steps", subtitle: "Based on what this report surfaced",
     items: [{ department: "Product & Growth", recommendation: "Investigate the drop-off step", rationale: "Tied to the funnel decline shown earlier in this deck", priority: "high" }],
@@ -227,6 +227,7 @@ function SlideEditor({ slide, onChange }: { slide: SlideContent; onChange: (s: S
       {field("Stat label", slide.stat_label, "stat_label")}
       {field("Body", slide.body, "body", true)}
       {sel("Status", slide.status, "status", ["positive", "negative", "neutral"])}
+      {sel("Stat box width", slide.stat_width ?? "balanced", "stat_width", ["narrow", "balanced", "wide"])}
     </div>
   );
 
