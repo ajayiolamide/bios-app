@@ -586,7 +586,7 @@ function KpiForm({ orgId, goalId, initial, onSaved, onCancel }: { orgId: string;
         />
         <select
           value={form.aggregation}
-          onChange={(e) => setForm({ ...form, aggregation: e.target.value })}
+          onChange={(e) => setForm({ ...form, aggregation: e.target.value as "count" | "unique_users" | "unique_sessions" })}
           disabled={!!property?.withinHoursEnabled && property.asPercentage}
           title={property?.withinHoursEnabled && property.asPercentage ? "Ignored — time-matched rates always match by user" : undefined}
           className="border border-gray-200 rounded px-2 py-1.5 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-indigo-300 disabled:opacity-40"
