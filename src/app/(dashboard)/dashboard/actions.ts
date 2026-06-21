@@ -45,7 +45,14 @@ export async function getQuickInsight(orgId: string): Promise<{ insight?: string
   }
 
   // Build a concise data summary for the AI
-  const sourcesSummary = (sources ?? []).map(s => {
+  //
+  // Explicit shape here because Supabase's generated query types can
+  // collapse to `never` for this select on certain TypeScript versions —
+  // `next dev` doesn't full-project type-check so it never surfaced
+  // locally, but Vercel's production build does. This annotation matches
+  // exactly what the .select() above actually returns; no behavior change.
+  type SourceRow = { name: string; last_fetched_at: string | null; cached_data: unknown };
+  const sourcesSummary = ((sources ?? []) as SourceRow[]).map(s => {
     const rows = (s.cached_data as Record<string, string>[] | null) ?? [];
     const headers = rows.length ? Object.keys(rows[0]).slice(0, 6).join(", ") : "no data";
     return `- ${s.name}: ${rows.length} rows, columns: ${headers}`;
