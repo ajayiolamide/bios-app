@@ -37,9 +37,13 @@ export default async function DashboardLayout({
     throw new Error(`Could not load your organizations: ${membershipsError.message}`);
   }
 
+  // Same Supabase generated-type `never[]` inference issue as elsewhere in
+  // this codebase — explicit shape here matches exactly what the .select()
+  // above returns, no behavior change.
+  type MembershipRow = { organizations: Organization };
   const seen = new Set<string>();
-  const orgs = (memberships ?? [])
-    .map((m) => m.organizations as unknown as Organization)
+  const orgs = ((memberships ?? []) as MembershipRow[])
+    .map((m) => m.organizations)
     .filter(Boolean)
     .filter((org) => {
       if (seen.has(org.id)) return false;
