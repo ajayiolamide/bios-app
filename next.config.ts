@@ -3,7 +3,13 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
-      allowedOrigins: ["localhost:3000"],
+      // Next.js rejects any Server Action request whose Origin header isn't
+      // in this list — this used to only have localhost, which means every
+      // form/button using a server action (most of this app) would be
+      // silently rejected once deployed to an actual domain instead of
+      // localhost:3000. "*.vercel.app" covers both the production domain
+      // and every preview-deployment URL Vercel generates per branch/PR.
+      allowedOrigins: ["localhost:3000", "*.vercel.app"],
     },
   },
   // Vercel's production build runs a stricter lint pass than `next dev` and
