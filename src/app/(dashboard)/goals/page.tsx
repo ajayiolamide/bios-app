@@ -32,6 +32,7 @@ import {
 } from "@/app/actions/metrics";
 import {
   getCompanyObjectives, createCompanyObjective, setGoalObjective,
+  updateCompanyObjectiveStatus, deleteCompanyObjective,
 } from "@/app/actions/company-objectives";
 import { getReportSources, fetchSheetData } from "@/app/actions/reports";
 import { getSheetRowOptions } from "@/app/actions/manual-kpi";
@@ -1323,15 +1324,150 @@ function ObjectiveForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: (
   );
 }
 
+// Aggregates the linked Product Goals' own KPI progress into one number for
+// the Business Goal — a plain average of each linked goal's progressRatio
+// (same "uncapped, real-over/under-target" philosophy as GoalProgressBar).
+// Goals with no measurable KPI yet are excluded from the average rather than
+// counted as 0%, since "not yet measurable" and "measured at zero" are
+// different things.
+function objectiveProgress(objectiveId: string, goals: BusinessGoal[], goalProgress: Record<string, GoalProgress>) {
+  const linked = goals.filter((g) => g.company_objective_id === objectiveId);
+  const ratios = linked
+    .map((g) => goalProgress[g.id]?.progressRatio)
+    .filter((r): r is number => typeof r === "number");
+  return {
+    goalCount: linked.length,
+    measurableGoalCount: ratios.length,
+    progressRatio: ratios.length > 0 ? ratios.reduce((s, r) => s + r, 0) / ratios.length : null,
+  };
+}
+
+function ObjectiveCard({
+  objective, goals, goalProgress, selected, onSelect, onStatusChange, onDelete,
+}: {
+  objective: CompanyObjective;
+  goals: BusinessGoal[];
+  goalProgress: Record<string, GoalProgress>;
+  selected: boolean;
+  onSelect: () => void;
+  onStatusChange: (status: CompanyObjective["status"]) => void;
+  onDelete: () => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const { goalCount, measurableGoalCount, progressRatio } = objectiveProgress(objective.id, goals, goalProgress);
+  const pct = progressRatio !== null ? Math.round(progressRatio * 100) : null;
+  const overshot = pct !== null && pct > 100;
+  const isMissed = objective.status === "missed";
+
+  return (
+    <div
+      className={cn(
+        "group relative rounded-2xl border bg-white overflow-hidden transition-shadow",
+        selected ? "border-indigo-300 shadow-[0_0_0_2px_rgba(99,102,241,0.25)]" : "border-gray-200 hover:shadow-sm"
+      )}
+    >
+      {/* Top accent band — visually marks this as the tier above Product
+          Goals, without going full dark-card (which read as a different app
+          area rather than just "a level up"). */}
+      <div className="h-1.5 bg-gradient-to-r from-indigo-500 to-violet-500" />
+
+      <button onClick={onSelect} className="w-full text-left p-4 pb-3">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-[10px] font-semibold tracking-widest uppercase text-indigo-400">Business Goal</span>
+          <span
+            role="button"
+            onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
+            className="flex items-center gap-0.5 text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            {STATUS_OPTIONS.find((s) => s.value === objective.status)?.label}
+            <ChevronDown size={10} />
+          </span>
+        </div>
+
+        <p className={`text-[15px] font-semibold leading-snug mb-1 ${isMissed ? "line-through text-gray-300" : "text-gray-900"}`}>
+          {objective.title}
+          {objective.status === "achieved" && <Trophy size={12} className="inline ml-1.5 text-yellow-500" />}
+        </p>
+
+        {objective.description && (
+          <p className="text-xs text-gray-400 leading-relaxed mb-1.5">{objective.description}</p>
+        )}
+
+        <p className="text-xs text-gray-400 mb-2.5">
+          {[objective.target, objective.timeframe].filter(Boolean).join(" · ") || "No target set"}
+        </p>
+
+        {pct === null ? (
+          <p className="text-[11px] text-gray-400">
+            {goalCount === 0
+              ? "No Product Goals linked yet."
+              : `${goalCount} Product Goal${goalCount !== 1 ? "s" : ""} linked — none measurable yet.`}
+          </p>
+        ) : (
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-medium text-gray-500">Rolled up from Product Goals</span>
+              <span className={`text-[11px] font-semibold ${overshot ? "text-emerald-600" : "text-gray-700"}`}>
+                {pct.toLocaleString()}%{overshot ? " — exceeded" : ""}
+              </span>
+            </div>
+            <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+              <div className={`h-full rounded-full ${overshot ? "bg-emerald-500" : "bg-indigo-500"}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+            </div>
+            <p className="text-[10px] text-gray-400 mt-1">
+              Average of {measurableGoalCount}/{goalCount} linked Product Goal{goalCount !== 1 ? "s" : ""} with measurable progress.
+            </p>
+          </div>
+        )}
+      </button>
+
+      <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-100 bg-gray-50/50">
+        <span className="text-[11px] text-gray-400">
+          {goalCount} Product Goal{goalCount !== 1 ? "s" : ""}
+        </span>
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all"
+          title="Delete business goal"
+        >
+          <Trash2 size={12} />
+        </button>
+      </div>
+
+      {menuOpen && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+          <div className="absolute right-4 top-9 z-20 w-36 rounded-lg border border-gray-200 bg-white shadow-md overflow-hidden">
+            {STATUS_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => { onStatusChange(opt.value); setMenuOpen(false); }}
+                className="flex w-full items-center gap-2 px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                {objective.status === opt.value
+                  ? <Check size={11} className="text-indigo-500" />
+                  : <span className="w-[11px]" />}
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function ObjectivesPanel({
   objectives,
   goals,
+  goalProgress,
   filterObjective,
   onFilterChange,
   onSaved,
 }: {
   objectives: CompanyObjective[];
   goals: BusinessGoal[];
+  goalProgress: Record<string, GoalProgress>;
   filterObjective: string;
   onFilterChange: (id: string) => void;
   onSaved: () => void;
@@ -1339,58 +1475,56 @@ function ObjectivesPanel({
   const [showForm, setShowForm] = useState(false);
 
   return (
-    <div className="bg-gray-900 rounded-2xl p-5 space-y-3">
+    <div className="space-y-3">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-[10px] font-semibold tracking-widest uppercase text-gray-400">This quarter / year</p>
-          <p className="text-sm font-bold text-white">Business Goals</p>
+          <p className="text-[10px] font-semibold tracking-widest uppercase text-indigo-500">This quarter / year</p>
+          <p className="text-sm font-bold text-gray-900">Business Goals</p>
         </div>
-        {!showForm && (
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-1.5 text-xs font-medium text-gray-300 hover:text-white transition-colors"
-          >
-            <Plus size={12} /> Add business goal
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {filterObjective !== "all" && (
+            <button onClick={() => onFilterChange("all")} className="text-xs text-indigo-500 hover:underline">
+              Show all Product Goals
+            </button>
+          )}
+          {!showForm && (
+            <button
+              onClick={() => setShowForm(true)}
+              className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-900 transition-colors"
+            >
+              <Plus size={12} /> Add business goal
+            </button>
+          )}
+        </div>
       </div>
 
       {showForm ? (
         <ObjectiveForm onSaved={() => { setShowForm(false); onSaved(); }} onCancel={() => setShowForm(false)} />
       ) : objectives.length === 0 ? (
-        <p className="text-xs text-gray-400">
-          Nothing here yet — this is the one big thing (e.g. &quot;Grow activations &amp; retention this quarter&quot;)
-          that all the Product Goals below should ladder up to.
-        </p>
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 py-10 text-center">
+          <p className="text-sm text-gray-400 max-w-sm">
+            Nothing here yet — this is the one big thing (e.g. &quot;Grow activations &amp; retention this quarter&quot;)
+            that all the Product Goals below should ladder up to.
+          </p>
+        </div>
       ) : (
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => onFilterChange("all")}
-            className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${
-              filterObjective === "all" ? "bg-white text-gray-900" : "bg-white/10 text-gray-300 hover:bg-white/20"
-            }`}
-          >
-            All
-          </button>
-          {objectives.map((o) => {
-            const count = goals.filter((g) => g.company_objective_id === o.id).length;
-            const selected = filterObjective === o.id;
-            return (
-              <button
-                key={o.id}
-                onClick={() => onFilterChange(selected ? "all" : o.id)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${
-                  selected ? "bg-white text-gray-900" : "bg-white/10 text-gray-300 hover:bg-white/20"
-                }`}
-                title={[o.target, o.timeframe].filter(Boolean).join(" · ")}
-              >
-                {o.title}
-                <span className={selected ? "text-gray-400" : "text-gray-500"}>
-                  {count} goal{count !== 1 ? "s" : ""}
-                </span>
-              </button>
-            );
-          })}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {objectives.map((o) => (
+            <ObjectiveCard
+              key={o.id}
+              objective={o}
+              goals={goals}
+              goalProgress={goalProgress}
+              selected={filterObjective === o.id}
+              onSelect={() => onFilterChange(filterObjective === o.id ? "all" : o.id)}
+              onStatusChange={async (status) => { await updateCompanyObjectiveStatus(o.id, status); onSaved(); }}
+              onDelete={async () => {
+                if (!confirm(`Delete "${o.title}"? Linked Product Goals stay — they'll just show as not linked.`)) return;
+                await deleteCompanyObjective(o.id);
+                onSaved();
+              }}
+            />
+          ))}
         </div>
       )}
     </div>
@@ -1710,6 +1844,7 @@ export default function BusinessGoalsPage() {
       <ObjectivesPanel
         objectives={objectives}
         goals={goals}
+        goalProgress={goalProgress}
         filterObjective={filterObjective}
         onFilterChange={setFilterObjective}
         onSaved={load}

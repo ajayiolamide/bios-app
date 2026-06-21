@@ -32,7 +32,7 @@ const nav = [
   {
     section: "Analysis",
     items: [
-      { label: "Business Goals",    href: "/goals",            icon: Trophy,      badge: null },
+      { label: "Goals",              href: "/goals",            icon: Trophy,      badge: null },
       { label: "Feature Metrics",   href: "/feature-metrics",  icon: Lightbulb,   badge: null },
       { label: "User Journeys",     href: "/funnels",          icon: GitBranch,   badge: null },
       { label: "Cohorts",           href: "/cohorts",          icon: Users,       badge: null },
