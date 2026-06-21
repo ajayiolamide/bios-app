@@ -2487,18 +2487,20 @@ function DataSourcesTab({ orgId, onDataReady }: { orgId: string; onDataReady: (s
                     </button>
                   );
                 })()}
-                <a href={source.sheet_url} target="_blank" rel="noreferrer"
-                  className="p-1.5 text-gray-400 hover:text-indigo-600 transition-colors" title="Open sheet">
-                  <ExternalLink size={14} />
-                </a>
-                <button onClick={() => handleSync(source.id)} disabled={syncing === source.id}
-                  className="p-1.5 text-gray-400 hover:text-indigo-600 transition-colors" title="Sync now">
-                  <RefreshCw size={14} className={syncing === source.id ? "animate-spin text-indigo-500" : ""} />
-                </button>
-                <button onClick={async () => { await deleteReportSource(source.id); await load(); }}
-                  className="p-1.5 text-gray-400 hover:text-red-500 transition-colors">
-                  <Trash2 size={14} />
-                </button>
+                <div className="flex items-center gap-0.5 bg-gray-50 rounded-lg p-0.5">
+                  <a href={source.sheet_url} target="_blank" rel="noreferrer"
+                    className="p-1.5 rounded-md text-gray-400 hover:text-indigo-600 hover:bg-white transition-colors" title="Open sheet">
+                    <ExternalLink size={13} />
+                  </a>
+                  <button onClick={() => handleSync(source.id)} disabled={syncing === source.id}
+                    className="p-1.5 rounded-md text-gray-400 hover:text-indigo-600 hover:bg-white transition-colors" title="Sync now">
+                    <RefreshCw size={13} className={syncing === source.id ? "animate-spin text-indigo-500" : ""} />
+                  </button>
+                  <button onClick={async () => { await deleteReportSource(source.id); await load(); }}
+                    className="p-1.5 rounded-md text-gray-400 hover:text-red-500 hover:bg-white transition-colors" title="Delete source">
+                    <Trash2 size={13} />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -3029,10 +3031,10 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
                     </div>
 
                   {/* Pre-plan notes — always-visible section */}
-                  <div className="rounded-xl border border-gray-100 overflow-hidden">
+                  <div className="-mx-4 border-t border-gray-100">
                     <button
                       onClick={() => setExpandedNotes(prev => ({ ...prev, [t.id]: !prev[t.id] }))}
-                      className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-indigo-50 transition-colors group">
+                      className="w-full flex items-center justify-between px-4 py-3 hover:bg-indigo-50/60 transition-colors group">
                       <div className="flex items-center gap-3">
                         <div className="w-7 h-7 rounded-lg bg-indigo-100 group-hover:bg-indigo-200 flex items-center justify-center flex-shrink-0 transition-colors">
                           <BookOpen size={13} className="text-indigo-600" />
@@ -3050,13 +3052,13 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
                       </div>
                     </button>
                     {expandedNotes[t.id] && (
-                      <div className="px-4 py-3 border-t border-gray-100 bg-white">
+                      <div className="px-4 pb-4 border-t border-gray-100">
                         <textarea
                           value={extraNotes[t.id] ?? ""}
                           onChange={e => setExtraNotes(prev => ({ ...prev, [t.id]: e.target.value }))}
                           placeholder={`E.g. "Focus on Q2 churn drivers. Include a slide on new feature adoption. Highlight the 40% DAU drop in Week 3. Executive audience — no jargon."`}
                           rows={3}
-                          className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2.5 text-gray-700 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none leading-relaxed"
+                          className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2.5 mt-3 text-gray-700 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none leading-relaxed"
                         />
                         <p className="text-[11px] text-gray-400 mt-1.5">Sent to the AI alongside your data — does not affect build cost.</p>
                       </div>
@@ -3118,10 +3120,10 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
                     };
 
                     return (
-                      <div className="rounded-xl border border-gray-100 overflow-hidden">
+                      <div className="-mx-4 border-t border-gray-100">
                         <button
                           onClick={handleToggleGuide}
-                          className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-violet-50 transition-colors group">
+                          className="w-full flex items-center justify-between px-4 py-3 hover:bg-violet-50/60 transition-colors group">
                           <div className="flex items-center gap-3">
                             <div className="w-7 h-7 rounded-lg bg-violet-100 group-hover:bg-violet-200 flex items-center justify-center flex-shrink-0 transition-colors">
                               <ListOrdered size={13} className="text-violet-600" />
@@ -3140,7 +3142,7 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
                         </button>
 
                         {expandedGuides[t.id] && (
-                          <div className="px-4 py-3 border-t border-gray-100 bg-white space-y-2.5">
+                          <div className="px-4 pb-3 border-t border-gray-100">
                             {innerSlides === 0 ? (
                               <p className="text-xs text-gray-400 italic">This template only has {t.slide_hint} slides — cover and closing are fixed.</p>
                             ) : (
@@ -3152,79 +3154,75 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
                                 const chartConfig = CHART_CONFIGS.find(c => c.id === selectedChart) ?? CHART_CONFIGS[0];
 
                                 return (
-                                  <div key={slideIndex} className="border border-gray-100 rounded-xl overflow-hidden bg-white">
-                                    {/* Slide header */}
-                                    <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border-b border-gray-100">
-                                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Slide {slideIndex}</span>
-                                    </div>
-                                    <div className="p-3 space-y-3">
-                                      {/* Focus text — pre-filled, editable */}
-                                      <input
-                                        type="text"
-                                        value={guide?.focus ?? ""}
-                                        onChange={e => setGuide(slideIndex, { slideIndex, focus: e.target.value })}
-                                        className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300 text-gray-700"
-                                      />
+                                  <div key={slideIndex} className={`py-3.5 space-y-2.5 ${i > 0 ? "border-t border-gray-100" : ""}`}>
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Slide {slideIndex}</span>
 
-                                      {/* Chart type + preview side by side */}
-                                      <div className="flex gap-3">
-                                        {/* Type buttons */}
-                                        <div className="flex-1">
-                                          <p className="text-[10px] text-gray-400 mb-2 font-semibold uppercase tracking-wider">Chart type</p>
-                                          <div className="flex flex-wrap gap-1.5">
-                                            {CHART_CONFIGS.map(ct => {
-                                              const isSel = selectedChart === ct.id;
-                                              return (
-                                                <button
-                                                  key={ct.id}
-                                                  onClick={() => setGuide(slideIndex, { slideIndex, chartType: ct.id })}
-                                                  className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all ${
-                                                    isSel
-                                                      ? "border-violet-500 bg-violet-600 text-white font-semibold shadow-sm"
-                                                      : "border-gray-200 text-gray-500 hover:border-violet-300 hover:text-violet-600 bg-white"
-                                                  }`}>
-                                                  {ct.label}
-                                                </button>
-                                              );
-                                            })}
-                                          </div>
-                                        </div>
-                                        {/* Preview panel */}
-                                        <div className="w-32 flex-shrink-0">
-                                          <p className="text-[10px] text-gray-400 mb-2 font-semibold uppercase tracking-wider">Preview</p>
-                                          <div className="border border-violet-100 bg-violet-50 rounded-lg p-1.5">
-                                            <div className="w-full">{chartConfig.preview}</div>
-                                            <p className="text-[9px] text-violet-500 text-center mt-1 leading-tight">{chartConfig.desc}</p>
-                                          </div>
+                                    {/* Focus text — pre-filled, editable */}
+                                    <input
+                                      type="text"
+                                      value={guide?.focus ?? ""}
+                                      onChange={e => setGuide(slideIndex, { slideIndex, focus: e.target.value })}
+                                      className="w-full text-xs border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-violet-300 text-gray-700"
+                                    />
+
+                                    {/* Chart type + preview side by side */}
+                                    <div className="flex gap-3">
+                                      {/* Type buttons */}
+                                      <div className="flex-1">
+                                        <p className="text-[10px] text-gray-400 mb-2 font-semibold uppercase tracking-wider">Chart type</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {CHART_CONFIGS.map(ct => {
+                                            const isSel = selectedChart === ct.id;
+                                            return (
+                                              <button
+                                                key={ct.id}
+                                                onClick={() => setGuide(slideIndex, { slideIndex, chartType: ct.id })}
+                                                className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all ${
+                                                  isSel
+                                                    ? "border-violet-500 bg-violet-600 text-white font-semibold shadow-sm"
+                                                    : "border-gray-200 text-gray-500 hover:border-violet-300 hover:text-violet-600 bg-white"
+                                                }`}>
+                                                {ct.label}
+                                              </button>
+                                            );
+                                          })}
                                         </div>
                                       </div>
-
-                                      {/* Must include pills */}
-                                      {allOptions.length > 0 && (
-                                        <div>
-                                          <p className="text-[10px] text-gray-400 mb-1.5 font-semibold uppercase tracking-wider">Must include</p>
-                                          <div className="flex flex-wrap gap-1.5">
-                                            {allOptions.map(opt => {
-                                              const isParam = paramOptions.includes(opt);
-                                              const sel = mustInclude.includes(opt);
-                                              return (
-                                                <button
-                                                  key={opt}
-                                                  onClick={() => toggleMustInclude(slideIndex, opt)}
-                                                  className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border transition-all ${
-                                                    sel
-                                                      ? "border-violet-400 bg-violet-50 text-violet-700 font-medium"
-                                                      : "border-gray-200 text-gray-500 hover:border-violet-300 hover:text-violet-600"
-                                                  }`}>
-                                                  {isParam ? <SlidersHorizontal size={9} /> : <Target size={9} />}
-                                                  {opt.length > 26 ? opt.slice(0, 26) + "…" : opt}
-                                                </button>
-                                              );
-                                            })}
-                                          </div>
+                                      {/* Preview panel */}
+                                      <div className="w-32 flex-shrink-0">
+                                        <p className="text-[10px] text-gray-400 mb-2 font-semibold uppercase tracking-wider">Preview</p>
+                                        <div className="border border-violet-100 bg-violet-50/60 rounded-lg p-1.5">
+                                          <div className="w-full">{chartConfig.preview}</div>
+                                          <p className="text-[9px] text-violet-500 text-center mt-1 leading-tight">{chartConfig.desc}</p>
                                         </div>
-                                      )}
+                                      </div>
                                     </div>
+
+                                    {/* Must include pills */}
+                                    {allOptions.length > 0 && (
+                                      <div>
+                                        <p className="text-[10px] text-gray-400 mb-1.5 font-semibold uppercase tracking-wider">Must include</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {allOptions.map(opt => {
+                                            const isParam = paramOptions.includes(opt);
+                                            const sel = mustInclude.includes(opt);
+                                            return (
+                                              <button
+                                                key={opt}
+                                                onClick={() => toggleMustInclude(slideIndex, opt)}
+                                                className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border transition-all ${
+                                                  sel
+                                                    ? "border-violet-400 bg-violet-50 text-violet-700 font-medium"
+                                                    : "border-gray-200 text-gray-500 hover:border-violet-300 hover:text-violet-600"
+                                                }`}>
+                                                {isParam ? <SlidersHorizontal size={9} /> : <Target size={9} />}
+                                                {opt.length > 26 ? opt.slice(0, 26) + "…" : opt}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
+                                    )}
                                   </div>
                                 );
                               })
