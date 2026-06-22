@@ -1507,10 +1507,24 @@ function GoalCard({
 // single dense card. Splitting it into single-decision steps plus a visible
 // dot trail (StepTrail, defined below WizardShell) is the actual fix for
 // "too much at once," not just bigger text on the same dense screen.
-type ObjectiveWizardStep = "describe" | "title" | "target" | "context";
+// "done" is deliberately NOT in OBJECTIVE_STEPS (the trail) — same as
+// GuidedGoalWizard's "done" step, it's a terminal confirmation screen, not
+// another decision to count toward "step X of Y."
+type ObjectiveWizardStep = "describe" | "title" | "target" | "context" | "done";
 const OBJECTIVE_STEPS: ObjectiveWizardStep[] = ["describe", "title", "target", "context"];
 
-function GuidedObjectiveWizard({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
+function GuidedObjectiveWizard({
+  onSaved, onCancel, hasProductGoals = true, onCreateFirstGoal,
+}: {
+  onSaved: () => void; onCancel: () => void;
+  // When false (no Product Goal exists anywhere yet), saving doesn't just
+  // close the wizard and drop you back on the page — it shows one more
+  // beat offering to keep going straight into creating the first one. This
+  // is the fix for "the moment I finish, guide me to what's next, don't
+  // just drop me." When true, saving behaves exactly as before.
+  hasProductGoals?: boolean;
+  onCreateFirstGoal?: () => void;
+}) {
   const { currentOrg } = useOrg();
   const [step, setStep] = useState<ObjectiveWizardStep>("describe");
   const [description, setDescription] = useState("");
@@ -1543,7 +1557,12 @@ function GuidedObjectiveWizard({ onSaved, onCancel }: { onSaved: () => void; onC
     const result = await createCompanyObjective(currentOrg.id, form);
     setSaving(false);
     if (result.error) { setError(result.error); return; }
-    onSaved();
+    // If there's already at least one Product Goal, this is just "another
+    // business goal" — close out exactly as before. If this was the first
+    // Business Goal and there's nothing underneath it yet, that's the exact
+    // moment someone's most likely to be left wondering what to do next.
+    if (hasProductGoals) { onSaved(); return; }
+    setStep("done");
   }
 
   if (step === "describe") return (
@@ -1649,8 +1668,7 @@ function GuidedObjectiveWizard({ onSaved, onCancel }: { onSaved: () => void; onC
     </WizardShell>
   );
 
-  // step === "context" — last, optional beat, then save
-  return (
+  if (step === "context") return (
     <WizardShell label="Anything else worth noting?" onCancel={onCancel} error={error} step={stepIndex} totalSteps={OBJECTIVE_STEPS.length}>
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1.5">Context <span className="text-gray-400 font-normal">(optional)</span></label>
@@ -1673,6 +1691,35 @@ function GuidedObjectiveWizard({ onSaved, onCancel }: { onSaved: () => void; onC
           Save business goal
         </button>
         <button onClick={() => setStep("target")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">Back</button>
+      </div>
+    </WizardShell>
+  );
+
+  // step === "done" — only reached when there were zero Product Goals
+  // before this Business Goal existed. Saving used to just close the
+  // wizard silently and drop you back on a now-busier page (sync controls,
+  // filters, an empty state below) with no sense of what to do with what
+  // you just created. This keeps the same conversational thread going
+  // instead of going quiet right when it matters most.
+  return (
+    <WizardShell label="Business goal created" onCancel={onCancel} error={error}>
+      <div className="flex items-center gap-2 text-emerald-600">
+        <CheckCircle2 size={16} />
+        <p className="text-sm font-medium">&quot;{form.title}&quot; is set.</p>
+      </div>
+      <p className="text-sm text-gray-400">
+        Next, break it down into a Product Goal — the narrower thing your team will actually build toward.
+      </p>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => { onCreateFirstGoal?.(); onSaved(); }}
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors"
+        >
+          Add my first Product Goal
+        </button>
+        <button onClick={onSaved} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">
+          I&apos;ll do this later
+        </button>
       </div>
     </WizardShell>
   );
@@ -1718,21 +1765,25 @@ function ObjectiveCard({
   void measurableGoalCount;
 
   return (
+    // Light, white card — matching GoalCard (the Product Goal layer right
+    // below it) instead of the earlier dark navy treatment. The hierarchy
+    // reads as one consistent visual language now, not "the top layer gets
+    // a different theme than everything under it."
     <div
       className={cn(
-        "group relative rounded-xl overflow-hidden transition-colors bg-[#0E1116] border border-white/[0.08]",
-        selected ? "ring-1 ring-white/30" : "hover:border-white/[0.16]"
+        "group relative bg-white border border-gray-100 rounded-xl overflow-hidden transition-colors",
+        selected ? "ring-1 ring-indigo-200 border-indigo-100" : "hover:border-gray-200"
       )}
     >
       <button onClick={onSelect} className="relative w-full text-left p-4">
         <div className="flex items-center justify-between mb-2.5">
-          <span className="text-[11px] font-medium text-white/40">Business Goal</span>
+          <span className="text-[11px] font-medium text-gray-400">Business Goal</span>
           <div className="flex items-center gap-3">
-            <SignalChip signal={signal} dark />
+            <SignalChip signal={signal} />
             <span
               role="button"
               onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
-              className="flex items-center gap-0.5 text-[11px] text-white/40 hover:text-white/70 transition-colors"
+              className="flex items-center gap-0.5 text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
             >
               {STATUS_OPTIONS.find((s) => s.value === objective.status)?.label}
               <ChevronDown size={10} />
@@ -1740,20 +1791,20 @@ function ObjectiveCard({
           </div>
         </div>
 
-        <p className={`text-[15px] font-semibold leading-snug mb-1 tracking-tight ${isMissed ? "line-through text-white/40" : "text-white"}`}>
+        <p className={`text-[15px] font-semibold leading-snug mb-1 tracking-tight ${isMissed ? "line-through text-gray-300" : "text-gray-900"}`}>
           {objective.title}
         </p>
 
         {objective.description && (
-          <p className="text-xs text-white/40 leading-relaxed mb-1">{objective.description}</p>
+          <p className="text-xs text-gray-400 leading-relaxed mb-1">{objective.description}</p>
         )}
 
-        <p className="text-xs text-white/40 mb-3">
+        <p className="text-xs text-gray-400 mb-3">
           {[objective.target, objective.timeframe].filter(Boolean).join(" · ") || "No target set"}
         </p>
 
         {pct === null ? (
-          <p className="text-[11px] text-white/30">
+          <p className="text-[11px] text-gray-400">
             {goalCount === 0
               ? `No ${labelPlural} linked yet.`
               : `${goalCount} ${goalCount !== 1 ? labelPlural : label} linked — none measurable yet.`}
@@ -1761,14 +1812,14 @@ function ObjectiveCard({
         ) : (
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[11px] text-white/40">Rolled up from {labelPlural}</span>
-              <span className={`text-[11px] font-semibold ${overshot ? "text-emerald-400" : "text-white/70"}`}>
+              <span className="text-[11px] text-gray-500">Rolled up from {labelPlural}</span>
+              <span className={`text-[11px] font-semibold ${overshot ? "text-emerald-600" : "text-gray-700"}`}>
                 {pct.toLocaleString()}%{overshot ? " — exceeded" : ""}
               </span>
             </div>
-            <div className="h-[3px] rounded-full bg-white/[0.08] overflow-hidden">
+            <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
               <div
-                className={`h-full rounded-full ${overshot ? "bg-emerald-400" : "bg-white/60"}`}
+                className={`h-full rounded-full ${overshot ? "bg-emerald-500" : "bg-indigo-500"}`}
                 style={{ width: `${Math.min(pct, 100)}%` }}
               />
             </div>
@@ -1776,13 +1827,13 @@ function ObjectiveCard({
         )}
       </button>
 
-      <div className="relative flex items-center justify-between px-4 py-2.5 border-t border-white/[0.08]">
-        <span className="text-[11px] text-white/30">
+      <div className="relative flex items-center justify-between px-4 py-2.5 border-t border-gray-100">
+        <span className="text-[11px] text-gray-400">
           {goalCount} {goalCount !== 1 ? labelPlural : label}
         </span>
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className="opacity-0 group-hover:opacity-100 text-white/30 hover:text-red-400 transition-all"
+          className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all"
           title="Delete business goal"
         >
           <Trash2 size={12} />
@@ -1822,6 +1873,7 @@ function ObjectivesPanel({
   label,
   labelPlural,
   isFirstRun,
+  onCreateFirstGoal,
 }: {
   objectives: CompanyObjective[];
   goals: BusinessGoal[];
@@ -1837,12 +1889,21 @@ function ObjectivesPanel({
   // page's starting point — one focused moment, not a small empty box
   // sitting above another, differently-styled empty box below it.
   isFirstRun: boolean;
+  // Opens the Product Goal wizard up in the parent — passed straight
+  // through to GuidedObjectiveWizard so finishing a Business Goal with no
+  // Product Goal yet can offer to keep going instead of dropping you here.
+  onCreateFirstGoal?: () => void;
 }) {
   const [showForm, setShowForm] = useState(false);
 
   if (isFirstRun) {
     return showForm ? (
-      <GuidedObjectiveWizard onSaved={() => { setShowForm(false); onSaved(); }} onCancel={() => setShowForm(false)} />
+      <GuidedObjectiveWizard
+        onSaved={() => { setShowForm(false); onSaved(); }}
+        onCancel={() => setShowForm(false)}
+        hasProductGoals={goals.length > 0}
+        onCreateFirstGoal={onCreateFirstGoal}
+      />
     ) : (
       <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 py-20 text-center">
         <div className="w-11 h-11 rounded-2xl bg-indigo-50 flex items-center justify-center mb-5">
@@ -1891,7 +1952,12 @@ function ObjectivesPanel({
       </div>
 
       {showForm ? (
-        <GuidedObjectiveWizard onSaved={() => { setShowForm(false); onSaved(); }} onCancel={() => setShowForm(false)} />
+        <GuidedObjectiveWizard
+          onSaved={() => { setShowForm(false); onSaved(); }}
+          onCancel={() => setShowForm(false)}
+          hasProductGoals={goals.length > 0}
+          onCreateFirstGoal={onCreateFirstGoal}
+        />
       ) : objectives.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 py-10 text-center">
           <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center mb-3">
@@ -2748,6 +2814,7 @@ export default function BusinessGoalsPage() {
         label={productGoalLabel}
         labelPlural={productGoalLabelPlural}
         isFirstRun={isFirstRun}
+        onCreateFirstGoal={() => setShowForm(true)}
       />
 
       {/* Everything below — header, sync controls, filters, the Product
