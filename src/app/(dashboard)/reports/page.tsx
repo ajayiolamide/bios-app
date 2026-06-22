@@ -173,6 +173,18 @@ function SlideEditor({ slide, onChange }: { slide: SlideContent; onChange: (s: S
     </div>
   );
 
+  // Chart series/segment/item values are real numbers used for bar height,
+  // line position, pie proportion, etc. — typing a thousands-separator
+  // comma straight into one (e.g. "5,923") used to silently wreck it:
+  // parseFloat stops at the first non-numeric character, so "5,923" parsed
+  // as 5, and since the textarea's displayed text is regenerated from that
+  // freshly-parsed (and now wrong) number on every change, it looked like
+  // the comma itself was being rejected. Stripping commas before parsing
+  // means typing them is harmless either way, and the actual chart now
+  // formats values with commas automatically (see slide-card.tsx) so there's
+  // no need to type them by hand at all.
+  const parseNum = (s: string): number => parseFloat(s.replace(/,/g, "")) || 0;
+
   const sel = (label: string, value: string, key: string, opts: string[]) => (
     <div key={key}>
       <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">{label}</label>
@@ -304,7 +316,7 @@ function SlideEditor({ slide, onChange }: { slide: SlideContent; onChange: (s: S
             const series = e.target.value.split("\n").map(line => {
               const [labelPart, ...rest] = line.split(":");
               const [val, tgt] = (rest.join(":")).split("/").map(s => s.trim());
-              return { label: labelPart?.trim() ?? "", value: parseFloat(val) || 0, ...(tgt ? { target: parseFloat(tgt) } : {}) };
+              return { label: labelPart?.trim() ?? "", value: parseNum(val ?? ""), ...(tgt ? { target: parseNum(tgt) } : {}) };
             });
             onChange({ ...slide, series });
           }}
@@ -326,7 +338,7 @@ function SlideEditor({ slide, onChange }: { slide: SlideContent; onChange: (s: S
           onChange={e => {
             const series = e.target.value.split("\n").map(line => {
               const [labelPart, ...rest] = line.split(":");
-              return { label: labelPart?.trim() ?? "", value: parseFloat(rest.join(":").trim()) || 0 };
+              return { label: labelPart?.trim() ?? "", value: parseNum(rest.join(":").trim()) };
             });
             onChange({ ...slide, series });
           }}
@@ -349,7 +361,7 @@ function SlideEditor({ slide, onChange }: { slide: SlideContent; onChange: (s: S
           onChange={e => {
             const segments = e.target.value.split("\n").map(line => {
               const [labelPart, ...rest] = line.split(":");
-              return { label: labelPart?.trim() ?? "", value: parseFloat(rest.join(":").trim()) || 0 };
+              return { label: labelPart?.trim() ?? "", value: parseNum(rest.join(":").trim()) };
             });
             onChange({ ...slide, segments });
           }}
@@ -370,7 +382,7 @@ function SlideEditor({ slide, onChange }: { slide: SlideContent; onChange: (s: S
             const items = e.target.value.split("\n").map(line => {
               const [labelPart, rest] = line.split(":");
               const parts = (rest ?? "").trim().split(/[\s/]+/);
-              return { label: labelPart?.trim() ?? "", value: parseFloat(parts[0]) || 0, target: parseFloat(parts[1]) || 100, unit: parts[2] ?? "%", status: "neutral" as const };
+              return { label: labelPart?.trim() ?? "", value: parseNum(parts[0] ?? ""), target: parts[1] ? parseNum(parts[1]) : 100, unit: parts[2] ?? "%", status: "neutral" as const };
             });
             onChange({ ...slide, items });
           }}

@@ -1188,7 +1188,7 @@ async function buildPptx(
             color: textDark, fontFace: "Calibri",
           });
           // Value (right, accent)
-          s.addText(String(item.value), {
+          s.addText(item.value.toLocaleString(), {
             x: 8.6, y: y + 0.03, w: 0.9, h: rowH * 0.38,
             fontSize: Math.max(8, Math.min(11, 130 / series.length)),
             color: accentColor, bold: true, align: "right",
@@ -1238,7 +1238,7 @@ async function buildPptx(
             fill: { color: accentColor }, line: { type: "none" },
           });
           // Value above bar
-          s.addText(String(item.value), {
+          s.addText(item.value.toLocaleString(), {
             x: x - 0.1, y: barY - 0.26, w: barW + 0.2, h: 0.24,
             fontSize: Math.max(7, Math.min(10, 90 / series.length)),
             color: accentColor, bold: true, align: "center",
@@ -1287,8 +1287,10 @@ async function buildPptx(
             showValue: true,
             dataLabelFontSize: 9,
             dataLabelColor: accentColor,
+            dataLabelFormatCode: "#,##0",
             catAxisLabelFontSize: 9,
             valAxisLabelFontSize: 8,
+            valAxisLabelFormatCode: "#,##0",
             valAxisLineShow: false,
             catAxisLineShow: true,
             lineSmooth: false,
@@ -1349,7 +1351,7 @@ async function buildPptx(
           x: 6.05, y: lyY, w: 3.0, h: 0.3,
           fontSize: 10, color: textDark,
         });
-        s.addText(`${pct}% · ${seg.value}`, {
+        s.addText(`${pct}% · ${seg.value.toLocaleString()}`, {
           x: 6.05, y: lyY + 0.3, w: 3.0, h: 0.22,
           fontSize: 8, color: textMid,
         });
@@ -1382,7 +1384,7 @@ async function buildPptx(
         // Label
         s.addText(item.label, { x: 0.5, y, w: 5.5, h: 0.3, fontSize: 11, color: textDark });
         // Value / target (right-aligned)
-        s.addText(`${item.value}${item.unit} / ${item.target}${item.unit}`, {
+        s.addText(`${item.value.toLocaleString()}${item.unit} / ${item.target.toLocaleString()}${item.unit}`, {
           x: 6.5, y, w: 3, h: 0.3, fontSize: 10, color: accentColor, bold: true, align: "right",
         });
         // Track

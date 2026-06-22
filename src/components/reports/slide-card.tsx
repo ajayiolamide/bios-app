@@ -165,7 +165,7 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
                     {/* Target line */}
                     {tBarW && <rect x={labelW + tBarW - 1} y={y + 6} width={2} height={17} rx={1} fill="#F87171" />}
                     {/* Value */}
-                    <text x={labelW + barAreaW + 6} y={y + 15} fontSize={9} fill={p} fontWeight="bold">{item.value}</text>
+                    <text x={labelW + barAreaW + 6} y={y + 15} fontSize={9} fill={p} fontWeight="bold">{item.value.toLocaleString()}</text>
                   </g>
                 );
               })}
@@ -174,8 +174,8 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
                 <g>
                   <rect x={0} y={totalH - padB + 4} width={W_SVG} height={22} rx={4} fill="#1F2937" />
                   <text x={8} y={totalH - padB + 18} fontSize={10} fill="white" fontWeight="bold">
-                    {series[hovBar].label}:  {series[hovBar].value}
-                    {series[hovBar].target ? `  ·  target ${series[hovBar].target}` : ""}
+                    {series[hovBar].label}:  {series[hovBar].value.toLocaleString()}
+                    {series[hovBar].target ? `  ·  target ${series[hovBar].target!.toLocaleString()}` : ""}
                   </text>
                 </g>
               )}
@@ -204,7 +204,7 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
             return (
               <g key={frac}>
                 <line x1={padL} y1={y} x2={W_SVG - padR} y2={y} stroke="#F3F4F6" strokeWidth={1} />
-                <text x={padL - 3} y={y + 3} fontSize={6} fill="#9CA3AF" textAnchor="end">{Math.round(maxVal * frac)}</text>
+                <text x={padL - 3} y={y + 3} fontSize={6} fill="#9CA3AF" textAnchor="end">{Math.round(maxVal * frac).toLocaleString()}</text>
               </g>
             );
           })}
@@ -228,7 +228,7 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
                 )}
                 {/* Value label above */}
                 <text x={cx} y={by - 3} fontSize={isHov ? 8 : 7} fill={isHov ? p : "#6B7280"} textAnchor="middle" fontWeight={isHov ? "bold" : "normal"}>
-                  {item.value}
+                  {item.value.toLocaleString()}
                 </text>
                 {/* Category label below */}
                 <text x={cx} y={padT + innerH + 11} fontSize={Math.max(6, Math.min(8, 70 / series.length))} fill={isHov ? p : "#9CA3AF"} textAnchor="middle" fontWeight={isHov ? "bold" : "normal"}>
@@ -242,8 +242,8 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
             <g>
               <rect x={padL} y={H_SVG - 26} width={W_SVG - padL - padR} height={22} rx={4} fill="#1F2937" />
               <text x={padL + 8} y={H_SVG - 11} fontSize={10} fill="white" fontWeight="bold">
-                {series[hovBar].label}: {series[hovBar].value}
-                {series[hovBar].target ? `  ·  target ${series[hovBar].target}` : ""}
+                {series[hovBar].label}: {series[hovBar].value.toLocaleString()}
+                {series[hovBar].target ? `  ·  target ${series[hovBar].target!.toLocaleString()}` : ""}
               </text>
             </g>
           )}
@@ -271,8 +271,8 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
                 <div className="flex justify-between items-baseline mb-1.5">
                   <p className="text-sm font-semibold text-gray-800 truncate">{item.label}</p>
                   <div className="flex items-baseline gap-1 ml-3 flex-shrink-0">
-                    <span className="font-black text-sm" style={{ color: barColor }}>{item.value}{item.unit}</span>
-                    <span className="text-xs text-gray-400">/ {item.target}{item.unit}</span>
+                    <span className="font-black text-sm" style={{ color: barColor }}>{item.value.toLocaleString()}{item.unit}</span>
+                    <span className="text-xs text-gray-400">/ {item.target.toLocaleString()}{item.unit}</span>
                   </div>
                 </div>
                 <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
@@ -325,7 +325,14 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
             <p className="text-white/75 text-xs text-center mt-2 leading-tight">{slide.stat_label}</p>
           </div>
           <div className="flex-1 flex flex-col justify-center border border-gray-100 rounded-2xl p-5 overflow-hidden bg-gray-50/50">
-            <p className="text-sm text-gray-700 leading-relaxed line-clamp-6">{slide.body}</p>
+            {/* whitespace-pre-line: a plain <p> collapses every "\n" in the
+                text down to a single space by default, so a body that's a
+                short paragraph followed by a numbered/bulleted list (e.g.
+                "...three root causes:\n1. X\n2. Y\n3. Z") rendered as one
+                run-on sentence with no visible line breaks at all, even
+                though the underlying text did contain them. This preserves
+                real line breaks while still wrapping normally within the box. */}
+            <p className="text-sm text-gray-700 leading-relaxed line-clamp-6 whitespace-pre-line">{slide.body}</p>
           </div>
         </div>
       </W>
@@ -357,7 +364,7 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
               <g key={frac}>
                 <line x1={padL} y1={y} x2={W_SVG - padR} y2={y} stroke="#F3F4F6" strokeWidth={1} />
                 <text x={padL - 3} y={y + 3} fontSize={6} fill="#9CA3AF" textAnchor="end">
-                  {Math.round(minVal + range * frac)}
+                  {Math.round(minVal + range * frac).toLocaleString()}
                 </text>
               </g>
             );
@@ -389,7 +396,7 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
                   style={{ transition: "r 0.1s" }} />
                 {/* Value label (always ≤6 pts, or on hover) */}
                 {(pts.length <= 6 || isHov) && (
-                  <text x={x} y={y - 9} fontSize={isHov ? 8 : 7} fill={p} textAnchor="middle" fontWeight="bold">{pt.value}</text>
+                  <text x={x} y={y - 9} fontSize={isHov ? 8 : 7} fill={p} textAnchor="middle" fontWeight="bold">{pt.value.toLocaleString()}</text>
                 )}
                 {/* X label */}
                 <text x={x} y={padT + innerH + 12} fontSize={Math.max(6, Math.min(8, 72 / pts.length))} fill={isHov ? p : "#9CA3AF"} textAnchor="middle" fontWeight={isHov ? "bold" : "normal"}>
@@ -403,7 +410,7 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
             <g>
               <rect x={padL} y={H_SVG_L - 24} width={W_SVG - padL - padR} height={20} rx={4} fill="#1F2937" />
               <text x={padL + 8} y={H_SVG_L - 10} fontSize={10} fill="white" fontWeight="bold">
-                {pts[hovLine].label}: {pts[hovLine].value}
+                {pts[hovLine].label}: {pts[hovLine].value.toLocaleString()}
               </text>
             </g>
           )}
