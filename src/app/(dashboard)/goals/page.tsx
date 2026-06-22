@@ -651,7 +651,7 @@ function KpiRow({ kpi, featureCount, orgId, onWired, onEdit, onDelete }: {
       ? `matched by ${kpi.match_key_property} — exact, not guessed (occurrences missing this property are excluded, not guessed by person)`
       : "each occurrence checked on its own, so one fast match can't cover the rest of that same person's other claims";
     const caveat = hasWindow && asPercentage
-      ? `% of individual ${kpi.denominator_event_name} occurrences whose own matching ${kpi.event_name} landed within ${kpi.within_hours}h — ${matchedBy}.`
+      ? `% of individual ${kpi.denominator_event_name} occurrences whose own matching ${kpi.event_name} landed within ${kpi.within_hours}h — ${matchedBy}. Still-pending occurrences (no match yet, but within ${kpi.within_hours}h) aren't counted either way until their window runs out.`
       : hasWindow && !asPercentage
       ? `Raw count of times the second event got a matching first event within ${kpi.within_hours}h — ${matchedBy}.`
       : `Plain ratio over this window — two separate headcounts, not a per-record check (it won't verify the two events belong to the same record unless you've added a time window above).`;

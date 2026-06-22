@@ -50,6 +50,47 @@ export type TimedEvent = { timestamp: string; user_id: string | null; match_key?
 // false preserves the original behavior for every KPI that never set a
 // match_key_property at all (those have no match_key on any event, so this
 // distinction never applies to them).
+// A flaky tracking implementation (a confirmation screen firing on every
+// reload, a retry with no de-dupe, a double-bound click handler) can send
+// the SAME real-world event for the SAME claim several times within
+// seconds of each other. Left alone, that inflates one real claim into
+// several in the data. Two fires of the same event sharing the same group
+// key (policy_id, or user_id when no match key is set) within DEDUPE_MS of
+// each other are collapsed to one, keeping only the earliest. Two fires
+// hours or days apart are NOT touched — a policy genuinely can have more
+// than one real claim over its life, and that's a legitimate, separate
+// occurrence, not a duplicate.
+const DEDUPE_MS = 5 * 60 * 1000; // 5 minutes
+
+function dedupeNearFires(
+  events: TimedEvent[],
+  groupKey: (ev: TimedEvent) => string | null
+): TimedEvent[] {
+  const byGroup = new Map<string, TimedEvent[]>();
+  for (const ev of events) {
+    const key = groupKey(ev);
+    if (!key) continue;
+    const list = byGroup.get(key);
+    if (list) list.push(ev); else byGroup.set(key, [ev]);
+  }
+
+  const kept: TimedEvent[] = [];
+  for (const list of byGroup.values()) {
+    list.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    let lastKeptT = -Infinity;
+    for (const ev of list) {
+      const t = new Date(ev.timestamp).getTime();
+      if (t - lastKeptT > DEDUPE_MS) {
+        kept.push(ev);
+        lastKeptT = t;
+      }
+      // else: fired again too soon after the one just kept — same real
+      // event, dropped.
+    }
+  }
+  return kept;
+}
+
 export function matchOccurrences(
   numeratorEvents: TimedEvent[],
   denominatorEvents: TimedEvent[],
@@ -60,8 +101,11 @@ export function matchOccurrences(
   const groupKey = (ev: TimedEvent): string | null =>
     requireMatchKey ? (ev.match_key || null) : (ev.match_key || ev.user_id || null);
 
+  const dedupedNumerator = dedupeNearFires(numeratorEvents, groupKey);
+  const dedupedDenominator = dedupeNearFires(denominatorEvents, groupKey);
+
   const numByGroup = new Map<string, number[]>();
-  for (const ev of numeratorEvents) {
+  for (const ev of dedupedNumerator) {
     const key = groupKey(ev);
     if (!key) continue;
     const t = new Date(ev.timestamp).getTime();
@@ -71,13 +115,20 @@ export function matchOccurrences(
   for (const list of numByGroup.values()) list.sort((a, b) => a - b);
 
   const denomByGroup = new Map<string, { timestamp: string; t: number }[]>();
-  for (const ev of denominatorEvents) {
+  for (const ev of dedupedDenominator) {
     const key = groupKey(ev);
     if (!key) continue;
     const t = new Date(ev.timestamp).getTime();
     const list = denomByGroup.get(key);
     if (list) list.push({ timestamp: ev.timestamp, t }); else denomByGroup.set(key, [{ timestamp: ev.timestamp, t }]);
   }
+
+  // A claim with no payment YET isn't automatically a miss — it might just
+  // not have reached its deadline. Only count it as a genuine failure once
+  // the full window has actually elapsed with nothing landing in time;
+  // before that, it's still in progress and gets left out of the results
+  // entirely (neither a success nor a failure) rather than judged early.
+  const now = Date.now();
 
   const results: { timestamp: string; matched: boolean }[] = [];
   for (const [groupId, denoms] of denomByGroup.entries()) {
@@ -88,9 +139,22 @@ export function matchOccurrences(
       // Skip past any numerator events that happened before this particular
       // claim — they belong to an earlier claim (or to nothing).
       while (cursor < numTimes.length && numTimes[cursor] < d.t) cursor++;
-      const matched = cursor < numTimes.length && numTimes[cursor] - d.t <= windowMs;
-      if (matched) cursor++; // consume it so it can't also match a later claim
-      results.push({ timestamp: d.timestamp, matched });
+
+      if (cursor < numTimes.length && numTimes[cursor] - d.t <= windowMs) {
+        // A payment exists and landed inside the window — fast match.
+        results.push({ timestamp: d.timestamp, matched: true });
+        cursor++; // consume it so it can't also match a later claim
+      } else if (cursor < numTimes.length) {
+        // A payment exists but arrived after the window — a definite,
+        // already-resolved miss. No ambiguity about timing here.
+        results.push({ timestamp: d.timestamp, matched: false });
+      } else if (now - d.t >= windowMs) {
+        // No payment at all, and the full window has already run out —
+        // a genuine miss, not just "not yet."
+        results.push({ timestamp: d.timestamp, matched: false });
+      }
+      // else: no payment yet, and still within its window — pending.
+      // Deliberately not pushed: too early to call it a success or a miss.
     }
   }
   return results;
