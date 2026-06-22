@@ -1723,7 +1723,7 @@ function GuidedObjectiveWizard({
       <div className="flex items-center gap-3">
         <button
           onClick={() => { onCreateFirstGoal?.(); onSaved(); }}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors"
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-10 py-3 rounded-xl transition-colors"
         >
           Add my first Product Goal
         </button>
@@ -1924,26 +1924,26 @@ function ObjectiveStatement({
         <Trophy size={96} style={{ color: palette.accent, opacity: 0.07 }} />
       </div>
 
-      <div className="relative px-6 pt-7 pb-5">
+      <div className="relative px-6 pt-5 pb-4">
         <div className="flex items-start justify-between gap-6">
           <div className="flex-1 min-w-0">
             <p
-              className="text-[10px] font-semibold tracking-widest uppercase mb-2"
+              className="text-[10px] font-semibold tracking-widest uppercase mb-1.5"
               style={{ color: palette.accent }}
             >
               Business Goal · {objective.timeframe || "This quarter / year"}
             </p>
 
-            <p className={`text-xl font-bold tracking-tight mb-1.5 ${isMissed ? "line-through text-gray-300" : "text-gray-900"}`}>
+            <p className={`text-lg font-bold tracking-tight mb-1 ${isMissed ? "line-through text-gray-300" : "text-gray-900"}`}>
               {objective.title}
             </p>
 
             {objective.description && (
-              <p className="text-sm text-gray-500 leading-relaxed mb-2 max-w-2xl">{objective.description}</p>
+              <p className="text-sm text-gray-500 leading-relaxed mb-1.5 max-w-2xl line-clamp-2">{objective.description}</p>
             )}
 
             {(objective.target || objective.timeframe) && (
-              <p className="text-xs text-gray-400 mb-3">
+              <p className="text-xs text-gray-400 mb-2">
                 {[objective.target, objective.timeframe].filter(Boolean).join(" · ")}
               </p>
             )}
@@ -2037,8 +2037,13 @@ function ObjectivesPanel({
   // through to GuidedObjectiveWizard so finishing a Business Goal with no
   // Product Goal yet can offer to keep going instead of dropping you here.
   onCreateFirstGoal?: () => void;
+  // Tells the parent whether this panel's own wizard is currently open,
+  // so the parent can gate Stage 2 and avoid double-rendering both the
+  // wizard's "done" step AND the Stage 2 block simultaneously.
+  onOpenChange?: (open: boolean) => void;
 }) {
-  const [showForm, setShowForm] = useState(false);
+  const [showForm, setShowFormInternal] = useState(false);
+  function setShowForm(v: boolean) { setShowFormInternal(v); onOpenChange?.(v); }
 
   // The wizard takes over completely regardless of how many objectives
   // already exist — "add another" from the statement view below and the
@@ -2269,8 +2274,8 @@ function SuggestionChips({ examples, onPick }: { examples: string[]; onPick: (te
 }
 
 function GuidedGoalWizard({
-  objectives, onSaved, onCancel,
-}: { objectives: CompanyObjective[]; onSaved: () => void; onCancel: () => void }) {
+  objectives, onSaved, onCancel, goalLabel = "Product Goal",
+}: { objectives: CompanyObjective[]; onSaved: () => void; onCancel: () => void; goalLabel?: string }) {
   const { currentOrg } = useOrg();
   const orgId = currentOrg?.id ?? "";
 
@@ -2383,7 +2388,7 @@ function GuidedGoalWizard({
   }
 
   if (step === "goal_describe") return (
-    <WizardShell label="New goal" onCancel={onCancel} error={error} step={stepIndex} totalSteps={goalSteps.length}>
+    <WizardShell label={`New ${goalLabel}`} onCancel={onCancel} error={error} step={stepIndex} totalSteps={goalSteps.length}>
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1.5">
           What are you trying to achieve? Describe it in your own words.
@@ -2782,6 +2787,16 @@ export default function BusinessGoalsPage() {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   // The real, company-wide objectives — see ObjectivesPanel.
   const [objectives, setObjectives] = useState<CompanyObjective[]>([]);
+  // Set to true while ObjectivesPanel's own wizard is open — gates Stage 2
+  // so it never renders alongside the wizard's "done" step simultaneously.
+  const [objectivePanelWizardOpen, setObjectivePanelWizardOpen] = useState(false);
+  // Set true the moment the user clicks "Add my first Product Goal" from the
+  // Business Goal wizard — keeps Stage 2 showing and prevents the first-run
+  // state from flashing while objectives hasn't reloaded yet.
+  const [pendingFirstGoal, setPendingFirstGoal] = useState(false);
+  // Set true while the first Product Goal is saving / page is reloading —
+  // prevents Stage 2 from briefly reappearing while load() is in-flight.
+  const [productGoalJustCreated, setProductGoalJustCreated] = useState(false);
 
   // ── Filters
   const [filterType, setFilterType]     = useState<string>("all");
@@ -2807,6 +2822,7 @@ export default function BusinessGoalsPage() {
     const progressData = await getGoalProgress(currentOrg.id, kpiData);
     setGoals(goalsData);
     setObjectives(objectivesData);
+    setPendingFirstGoal(false); // objectives are now fresh — safe to clear the transition flag
     setHealth(healthData);
     setMpConnected(mpStatus.connected);
     setLastSyncedAt(mpStatus.lastSyncedAt ?? null);
@@ -2981,33 +2997,41 @@ export default function BusinessGoalsPage() {
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
 
-      {/* The real, company-wide Business Goals — separate from the Product
-          Goals below, which ladder up to one of these. */}
-      <ObjectivesPanel
-        objectives={objectives}
-        goals={goals}
-        goalProgress={goalProgress}
-        filterObjective={filterObjective}
-        onFilterChange={setFilterObjective}
-        onSaved={load}
-        label={productGoalLabel}
-        labelPlural={productGoalLabelPlural}
-        isFirstRun={isFirstRun}
-        onCreateFirstGoal={() => setShowForm(true)}
-      />
+      {/* Business Goal panel — hidden during the transition from Business Goal
+          wizard "done" step to Product Goal wizard (pendingFirstGoal=true,
+          objectives still stale) to avoid flashing an orphaned empty state. */}
+      {(!pendingFirstGoal || objectives.length > 0) && (
+        <ObjectivesPanel
+          objectives={objectives}
+          goals={goals}
+          goalProgress={goalProgress}
+          filterObjective={filterObjective}
+          onFilterChange={setFilterObjective}
+          onSaved={load}
+          label={productGoalLabel}
+          labelPlural={productGoalLabelPlural}
+          isFirstRun={isFirstRun}
+          onCreateFirstGoal={() => { setPendingFirstGoal(true); setShowForm(true); }}
+          onOpenChange={setObjectivePanelWizardOpen}
+        />
+      )}
 
-      {/* Stage 2 of setup: a Business Goal exists, but there's still no
-          Product Goal underneath it. This used to fall straight through
-          to the full management page below — header, sync controls,
-          "Pull Mixpanel Data" — none of which means anything before
-          there's an actual Product Goal to manage. Stays just as minimal
-          as ObjectivesPanel's own first-run state above, for exactly as
-          long as there's nothing real to manage yet. */}
-      {objectives.length > 0 && goals.length === 0 && (
+      {/* Stage 2: Business Goal exists, no Product Goal yet.
+          Gates on !objectivePanelWizardOpen so this never renders
+          simultaneously with the Business Goal wizard's own "done" step.
+          Gates on !productGoalJustCreated so it doesn't flash while load()
+          is in-flight after the first Product Goal is saved. */}
+      {(objectives.length > 0 || pendingFirstGoal) && goals.length === 0 && !objectivePanelWizardOpen && !productGoalJustCreated && (
         showForm ? (
           <GuidedGoalWizard
             objectives={objectives}
-            onSaved={async () => { setShowForm(false); await load(); }}
+            goalLabel={productGoalLabel}
+            onSaved={async () => {
+              setProductGoalJustCreated(true);
+              setShowForm(false);
+              await load();
+              setProductGoalJustCreated(false);
+            }}
             onCancel={() => setShowForm(false)}
           />
         ) : (
@@ -3043,11 +3067,10 @@ export default function BusinessGoalsPage() {
         )
       )}
 
-      {/* Full management page — only once there's at least one real
-          Product Goal. Everything here (header, sync controls, filters)
-          used to render the moment a Business Goal existed, before there
-          was anything to actually manage. */}
-      {goals.length > 0 && (
+      {/* Full management page — only once there's at least one real Product Goal.
+          productGoalJustCreated keeps it visible during the brief load() gap
+          so the wizard completion feels instant, not stutter-y. */}
+      {(goals.length > 0 || productGoalJustCreated) && (
       <>
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -3182,6 +3205,7 @@ export default function BusinessGoalsPage() {
       {showForm && (
         <GuidedGoalWizard
           objectives={objectives}
+          goalLabel={productGoalLabel}
           onSaved={async () => { setShowForm(false); await load(); }}
           onCancel={() => setShowForm(false)}
         />
