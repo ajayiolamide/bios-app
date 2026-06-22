@@ -394,7 +394,24 @@ async function attachTrendData(
   }
 
   const admin = createAdminClient();
-  const numeratorEvents = await fetchEventRows(admin, orgId, metric.event_name, since, until);
+
+  // For a time-windowed KPI (within_hours set, e.g. "claim_paid within
+  // 1200h of claim_start_clicked"), a denominator occurrence near the end
+  // of the requested period can have its matching numerator event land
+  // AFTER `until` and still be a perfectly genuine, in-window match — e.g.
+  // a claim lodged on the last day of May, paid 20 days later in June, well
+  // inside a 1200h/50-day window. Clipping the numerator query to the same
+  // `until` as the denominator made that real payment invisible to
+  // matchOccurrences, which then had no choice but to score it a miss
+  // purely because of where the calendar boundary fell — not because the
+  // claim was actually late. Extending ONLY the numerator's upper bound by
+  // the configured window fixes that: the denominator (which occurrences
+  // count for this period at all) still stays scoped to `until`, but the
+  // matcher can now see a late-but-in-window payment when one exists.
+  const numeratorUntil = (until && metric.within_hours)
+    ? new Date(until.getTime() + metric.within_hours * 3600 * 1000)
+    : until;
+  const numeratorEvents = await fetchEventRows(admin, orgId, metric.event_name, since, numeratorUntil);
 
   // KPI "property" (migration 024/026/027) — a reference event changes how
   // event_name's total is computed. Two independent switches decide how:
