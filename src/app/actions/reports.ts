@@ -5,6 +5,7 @@ import { createAdminClient, createServerClient } from "@/lib/supabase/server";
 import type { ReportSource, Report, BusinessGoal, FeatureMetric, Metric } from "@/types/database";
 import { getFeatureImpactSummaries, type FeatureImpactResult } from "./feature-impact";
 import { getFunnels, computeFunnel, type FunnelStepResult } from "./funnels";
+import { getGoalProgress, type GoalProgress } from "./metrics";
 
 // ─── BIOS context types ───────────────────────────────────────────────────────
 
@@ -30,6 +31,15 @@ export type FunnelSummary = {
 
 export type BiosContext = {
   goals?: BusinessGoal[];
+  // Keyed by business_goals.id — same computation the Goals page and
+  // Dashboard already use (getGoalProgress) to show each goal's real
+  // actual-vs-target progress. Without this, the goals fetched above were
+  // only ever passed to the AI as metadata (title/type/target text), with
+  // no live number behind them — meaning a goal with no linked, measurable
+  // KPI had absolutely nothing numeric anywhere in the entire prompt, and
+  // the "every slide needs real numbers" design rule below gave the AI
+  // every reason to quietly drop it rather than write a number-free slide.
+  goalProgress?: Record<string, GoalProgress>;
   features?: FeatureMetric[];
   metrics?: Metric[];
   featureImpact?: FeatureImpactResult[];
@@ -57,6 +67,14 @@ export async function getBiosReportData(
         .neq("status", "dropped")
         .order("created_at", { ascending: false })
         .then(({ data }) => { result.goals = (data ?? []) as BusinessGoal[]; })
+    );
+    // Same real actual-vs-target computation already powering the Goals
+    // page and Dashboard — see the BiosContext.goalProgress comment above
+    // for why this was missing before.
+    promises.push(
+      getGoalProgress(orgId)
+        .then((progress) => { result.goalProgress = progress; })
+        .catch(() => { result.goalProgress = {}; })
     );
   }
 
@@ -505,10 +523,16 @@ export async function planReport(
     const parts: string[] = [];
 
     if (biosContext.goals && biosContext.goals.length > 0) {
-      parts.push(`BUSINESS GOALS (${biosContext.goals.length}):\n` +
-        biosContext.goals.slice(0, 20).map(g =>
-          `- [${(g.status ?? "active").toUpperCase()}] ${g.title} | Type: ${g.type} | Target: ${g.target ?? "not set"} | Timeframe: ${g.timeframe ?? "not set"}`
-        ).join("\n")
+      parts.push(`BUSINESS GOALS (${biosContext.goals.length} — EVERY one of these MUST be mentioned somewhere in the deck, even briefly. A goal with no measurable KPI yet is still real content — say so plainly (e.g. group it with others into one kpi_grid/bullet_list slide titled something like "Goal tracking status") instead of silently leaving it out just because it has no chart-able number of its own):\n` +
+        biosContext.goals.slice(0, 20).map(g => {
+          const gp = biosContext.goalProgress?.[g.id];
+          const progressStr = gp && gp.progressRatio != null
+            ? `${Math.round(gp.progressRatio * 100)}% of target (avg across ${gp.measurableKpiCount} measurable KPI${gp.measurableKpiCount === 1 ? "" : "s"})`
+            : gp && gp.totalKpiCount > 0
+            ? `not yet measurable — ${gp.totalKpiCount} KPI${gp.totalKpiCount === 1 ? "" : "s"} attached but none has both a real event/value AND a numeric target set`
+            : `not yet measurable — no KPI attached to this goal yet`;
+          return `- [${(g.status ?? "active").toUpperCase()}] ${g.title} | Type: ${g.type} | Progress: ${progressStr} | Target: ${g.target ?? "not set"} | Timeframe: ${g.timeframe ?? "not set"}`;
+        }).join("\n")
       );
     }
 
