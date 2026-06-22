@@ -1100,19 +1100,19 @@ function progressSignal(
   return { label: "Falling behind", tone: "bad" };
 }
 
+// Minimal status read: a single coloured dot + quiet text, no pill, no
+// background, no border, no icon. The earlier version (coloured background +
+// border + sparkle icon) read as a loud SaaS-template badge rather than
+// something premium — a plain dot is how Linear/Vercel-style dashboards
+// signal status without adding visual noise to every card.
 function SignalChip({ signal, dark }: { signal: { label: string; tone: "good" | "warn" | "bad" | "neutral" }; dark?: boolean }) {
-  const palette = {
-    good:    dark ? { bg: "rgba(16,185,129,0.15)", text: "#6ee7b7", border: "rgba(16,185,129,0.35)" } : { bg: "#ecfdf5", text: "#059669", border: "#a7f3d0" },
-    warn:    dark ? { bg: "rgba(245,158,11,0.15)", text: "#fcd34d", border: "rgba(245,158,11,0.35)" } : { bg: "#fffbeb", text: "#b45309", border: "#fde68a" },
-    bad:     dark ? { bg: "rgba(244,63,94,0.15)", text: "#fda4af", border: "rgba(244,63,94,0.35)" } : { bg: "#fef2f2", text: "#dc2626", border: "#fecaca" },
-    neutral: dark ? { bg: "rgba(255,255,255,0.06)", text: "#94a3b8", border: "rgba(255,255,255,0.12)" } : { bg: "#f8fafc", text: "#64748b", border: "#e2e8f0" },
+  const dot = {
+    good: "#10b981", warn: "#d97706", bad: "#e11d48",
+    neutral: dark ? "#64748b" : "#9ca3af",
   }[signal.tone];
   return (
-    <span
-      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap"
-      style={{ background: palette.bg, color: palette.text, border: `1px solid ${palette.border}` }}
-    >
-      <Sparkles size={9} />
+    <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium whitespace-nowrap ${dark ? "text-white/60" : "text-gray-500"}`}>
+      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: dot }} />
       {signal.label}
     </span>
   );
@@ -1198,7 +1198,6 @@ function GoalCard({
     onDatesUpdated?.();
   }
   const cfg = typeConfig(goal.type);
-  const Icon = cfg.icon;
   const isMissed = goal.status === "missed";
   const health = goalHealthStatus(features, eventCounts);
   const signal = progressSignal(goalProgress?.progressRatio ?? null, goalProgress?.totalKpiCount ?? 0);
@@ -1232,7 +1231,7 @@ function GoalCard({
   return (
     <div
       className={cn(
-        "group relative bg-white border border-gray-100 rounded-2xl shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200",
+        "group relative bg-white border border-gray-100 rounded-xl hover:border-gray-200 transition-colors",
         // Collapsed cards sit in the 2/3-column grid like everything else.
         // Expanded ones carry a full KPI list + inline forms + features —
         // cramming that into a single grid column looks broken (cut-off
@@ -1241,22 +1240,14 @@ function GoalCard({
         expanded && "sm:col-span-2 lg:col-span-3"
       )}
     >
-      {/* Top accent — tints each card by goal type instead of every card
-          looking identical except for a small uppercase label. */}
-      <div className="absolute top-0 left-0 right-0 h-[3px] rounded-t-2xl" style={{ background: `linear-gradient(90deg, ${cfg.accent}, ${cfg.accent}00)` }} />
-
       <div className="p-4">
         {/* Type + AI signal + status + delete row */}
-        <div className="flex items-center justify-between mb-2 gap-2">
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wide"
-            style={{ background: cfg.light, color: cfg.accent, border: `1px solid ${cfg.border}` }}
-          >
-            <Icon size={10} />
+        <div className="flex items-center justify-between mb-2.5 gap-2">
+          <span className="text-[11px] font-medium text-gray-400">
             {cfg.label}
           </span>
 
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-3 flex-shrink-0">
             <SignalChip signal={signal} />
             {/* Status dropdown */}
             <div className="relative">
@@ -1291,7 +1282,7 @@ function GoalCard({
         </div>
 
         {/* Title */}
-        <p className={`text-base font-bold leading-snug tracking-tight mb-1 ${isMissed ? "line-through text-gray-300" : "text-gray-900"}`}>
+        <p className={`text-[15px] font-semibold leading-snug tracking-tight mb-1 ${isMissed ? "line-through text-gray-300" : "text-gray-900"}`}>
           {goal.title}
           {goal.status === "achieved" && <Trophy size={12} className="inline ml-1.5 text-yellow-500" />}
         </p>
@@ -1682,26 +1673,19 @@ function ObjectiveCard({
   return (
     <div
       className={cn(
-        "group relative rounded-2xl overflow-hidden transition-all bg-gradient-to-br from-slate-900 via-[#161B33] to-slate-900 border border-white/[0.06] shadow-lg shadow-slate-950/30",
-        selected ? "ring-2 ring-offset-2 ring-amber-400/60" : "hover:shadow-xl hover:shadow-slate-950/40"
+        "group relative rounded-xl overflow-hidden transition-colors bg-[#0E1116] border border-white/[0.08]",
+        selected ? "ring-1 ring-white/30" : "hover:border-white/[0.16]"
       )}
     >
-      {/* Soft violet glow in the corner — a quiet "something intelligent is
-          computing this" signal, distinct from the amber progress accent,
-          rather than just another flat dark card. */}
-      <div className="pointer-events-none absolute -top-10 -right-10 w-40 h-40 rounded-full opacity-[0.15] blur-2xl" style={{ background: "radial-gradient(circle, #818cf8, transparent 70%)" }} />
-
       <button onClick={onSelect} className="relative w-full text-left p-4">
         <div className="flex items-center justify-between mb-2.5">
-          <span className="flex items-center gap-1.5 text-[10px] font-semibold tracking-widest uppercase text-amber-300/80">
-            <Trophy size={10} className="text-amber-300/80" /> Business Goal
-          </span>
-          <div className="flex items-center gap-2">
+          <span className="text-[11px] font-medium text-white/40">Business Goal</span>
+          <div className="flex items-center gap-3">
             <SignalChip signal={signal} dark />
             <span
               role="button"
               onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
-              className="flex items-center gap-0.5 text-[11px] text-slate-400 hover:text-slate-200 transition-colors"
+              className="flex items-center gap-0.5 text-[11px] text-white/40 hover:text-white/70 transition-colors"
             >
               {STATUS_OPTIONS.find((s) => s.value === objective.status)?.label}
               <ChevronDown size={10} />
@@ -1709,20 +1693,20 @@ function ObjectiveCard({
           </div>
         </div>
 
-        <p className={`text-base font-semibold leading-snug mb-1 tracking-tight ${isMissed ? "line-through text-white/40" : "text-white"}`}>
+        <p className={`text-[15px] font-semibold leading-snug mb-1 tracking-tight ${isMissed ? "line-through text-white/40" : "text-white"}`}>
           {objective.title}
         </p>
 
         {objective.description && (
-          <p className="text-xs text-slate-400 leading-relaxed mb-1">{objective.description}</p>
+          <p className="text-xs text-white/40 leading-relaxed mb-1">{objective.description}</p>
         )}
 
-        <p className="text-xs text-slate-400 mb-3">
+        <p className="text-xs text-white/40 mb-3">
           {[objective.target, objective.timeframe].filter(Boolean).join(" · ") || "No target set"}
         </p>
 
         {pct === null ? (
-          <p className="text-[11px] text-slate-500">
+          <p className="text-[11px] text-white/30">
             {goalCount === 0
               ? `No ${labelPlural} linked yet.`
               : `${goalCount} ${goalCount !== 1 ? labelPlural : label} linked — none measurable yet.`}
@@ -1730,14 +1714,14 @@ function ObjectiveCard({
         ) : (
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[11px] text-slate-400">Rolled up from {labelPlural}</span>
-              <span className={`text-[11px] font-semibold ${overshot ? "text-emerald-400" : "text-amber-200"}`}>
+              <span className="text-[11px] text-white/40">Rolled up from {labelPlural}</span>
+              <span className={`text-[11px] font-semibold ${overshot ? "text-emerald-400" : "text-white/70"}`}>
                 {pct.toLocaleString()}%{overshot ? " — exceeded" : ""}
               </span>
             </div>
             <div className="h-[3px] rounded-full bg-white/[0.08] overflow-hidden">
               <div
-                className={`h-full rounded-full ${overshot ? "bg-emerald-400" : "bg-gradient-to-r from-amber-300 to-amber-100"}`}
+                className={`h-full rounded-full ${overshot ? "bg-emerald-400" : "bg-white/60"}`}
                 style={{ width: `${Math.min(pct, 100)}%` }}
               />
             </div>
@@ -1745,13 +1729,13 @@ function ObjectiveCard({
         )}
       </button>
 
-      <div className="relative flex items-center justify-between px-4 py-2.5 border-t border-white/[0.06]">
-        <span className="text-[11px] text-slate-500">
+      <div className="relative flex items-center justify-between px-4 py-2.5 border-t border-white/[0.08]">
+        <span className="text-[11px] text-white/30">
           {goalCount} {goalCount !== 1 ? labelPlural : label}
         </span>
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 transition-all"
+          className="opacity-0 group-hover:opacity-100 text-white/30 hover:text-red-400 transition-all"
           title="Delete business goal"
         >
           <Trash2 size={12} />
