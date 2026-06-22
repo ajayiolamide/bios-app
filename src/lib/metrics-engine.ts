@@ -39,13 +39,26 @@ export type TimedEvent = { timestamp: string; user_id: string | null; match_key?
 // rate. Matching one numerator event to at most one denominator event
 // (consumed in chronological order, per group) fixes that: a single payment
 // can no longer count as a fast match for several different claims.
+// `requireMatchKey`: when a KPI has match_key_property configured, an event
+// that's missing that property isn't a weaker version of a match — it's
+// unverifiable, and should be left out rather than quietly falling back to
+// the same-person guess. Concretely: if claim_start_clicked/claim_paid carry
+// policy_id for auto claims but not for, say, travel claims (no per-claim ID
+// at that level), a travel claim with no policy_id would otherwise still
+// get grouped by user_id and could falsely match — exactly the kind of
+// cross-claim contamination policy_id matching exists to prevent. Default
+// false preserves the original behavior for every KPI that never set a
+// match_key_property at all (those have no match_key on any event, so this
+// distinction never applies to them).
 export function matchOccurrences(
   numeratorEvents: TimedEvent[],
   denominatorEvents: TimedEvent[],
-  withinHours: number
+  withinHours: number,
+  requireMatchKey: boolean = false
 ): { timestamp: string; matched: boolean }[] {
   const windowMs = withinHours * 3600 * 1000;
-  const groupKey = (ev: TimedEvent): string | null => ev.match_key || ev.user_id || null;
+  const groupKey = (ev: TimedEvent): string | null =>
+    requireMatchKey ? (ev.match_key || null) : (ev.match_key || ev.user_id || null);
 
   const numByGroup = new Map<string, number[]>();
   for (const ev of numeratorEvents) {
@@ -118,9 +131,10 @@ export function computeTimeWindowedRate(
   denominatorEvents: TimedEvent[],
   withinHours: number,
   since: Date,
-  days: number = 30
+  days: number = 30,
+  requireMatchKey: boolean = false
 ): { total: number; trend: MetricDataPoint[] } {
-  const matches = matchOccurrences(numeratorEvents, denominatorEvents, withinHours);
+  const matches = matchOccurrences(numeratorEvents, denominatorEvents, withinHours, requireMatchKey);
   const { dayTotals, daySuccesses } = bucketByDay(matches, since, days);
 
   const totalClaims = matches.length;

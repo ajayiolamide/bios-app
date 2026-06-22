@@ -648,7 +648,7 @@ function KpiRow({ kpi, featureCount, orgId, onWired, onEdit, onDelete }: {
     // is exact (same policy_id, or whatever property was named), not a
     // same-person-in-order guess.
     const matchedBy = kpi.match_key_property
-      ? `matched by ${kpi.match_key_property} — exact, not guessed`
+      ? `matched by ${kpi.match_key_property} — exact, not guessed (occurrences missing this property are excluded, not guessed by person)`
       : "each occurrence checked on its own, so one fast match can't cover the rest of that same person's other claims";
     const caveat = hasWindow && asPercentage
       ? `% of individual ${kpi.denominator_event_name} occurrences whose own matching ${kpi.event_name} landed within ${kpi.within_hours}h — ${matchedBy}.`

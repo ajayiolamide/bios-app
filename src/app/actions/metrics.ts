@@ -407,16 +407,22 @@ async function attachTrendData(
     const hasWindow = !!metric.within_hours && metric.within_hours > 0;
     const asPercentage = metric.rate_as_percentage !== false;
 
+    // When match_key_property is set, an event missing that property isn't
+    // a fuzzy match candidate — it's unverifiable and gets excluded rather
+    // than silently falling back to same-person guessing. See the comment
+    // on matchOccurrences in metrics-engine.ts.
+    const requireMatchKey = !!metric.match_key_property;
+
     if (hasWindow && asPercentage) {
       // % of reference-event occurrences whose event_name landed in time.
-      const { total, trend } = computeTimeWindowedRate(numeratorEvents, denominatorEvents, metric.within_hours as number, since, days);
+      const { total, trend } = computeTimeWindowedRate(numeratorEvents, denominatorEvents, metric.within_hours as number, since, days, requireMatchKey);
       return { ...metric, total, trend };
     }
 
     if (hasWindow && !asPercentage) {
       // Raw count of reference-event occurrences that got a timely match —
       // e.g. "1,000 claims paid within 24h" as a volume target.
-      const { total, trend } = computeTimeWindowedCount(numeratorEvents, denominatorEvents, metric.within_hours as number, since, days);
+      const { total, trend } = computeTimeWindowedCount(numeratorEvents, denominatorEvents, metric.within_hours as number, since, days, requireMatchKey);
       return { ...metric, total, trend };
     }
 
@@ -522,13 +528,14 @@ export async function getKpiForRange(
 // COUNT target instead of a percentage — e.g. "1,000 claims paid within
 // 24h" as a volume goal.
 function computeTimeWindowedCount(
-  numeratorEvents: { timestamp: string; user_id: string | null }[],
-  denominatorEvents: { timestamp: string; user_id: string | null }[],
+  numeratorEvents: { timestamp: string; user_id: string | null; match_key?: string | null }[],
+  denominatorEvents: { timestamp: string; user_id: string | null; match_key?: string | null }[],
   withinHours: number,
   since: Date,
-  days: number = 30
+  days: number = 30,
+  requireMatchKey: boolean = false
 ): { total: number; trend: MetricDataPoint[] } {
-  const matches = matchOccurrences(numeratorEvents, denominatorEvents, withinHours);
+  const matches = matchOccurrences(numeratorEvents, denominatorEvents, withinHours, requireMatchKey);
 
   const dayCounts: Record<string, number> = {};
   for (let i = 0; i < days; i++) {
