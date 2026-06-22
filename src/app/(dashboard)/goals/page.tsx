@@ -1862,9 +1862,38 @@ export default function BusinessGoalsPage() {
         } should cover the gap.`;
 
   if (loading) {
+    // Same reasoning as the Dashboard's skeleton: a lone spinner on an
+    // otherwise blank page gives no sense that anything is actually
+    // progressing during a multi-second load. This shapes itself like the
+    // real page below (header text is real — it only depends on the org's
+    // own label setting, not the data fetch — plus placeholder cards in
+    // roughly the shape goal cards actually render in).
     return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 size={20} className="animate-spin text-gray-300" />
+      <div className="p-6 max-w-5xl mx-auto space-y-6 animate-pulse">
+        <div className="bg-white border border-gray-100 rounded-2xl p-6 h-28" />
+
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">{productGoalLabelPlural}</h1>
+            <p className="text-sm text-gray-400 mt-1">
+              The narrower goals product owns to move the Business Goal(s) above — broken into KPIs (key results), then tracked against the features built to move them.
+            </p>
+          </div>
+          <div className="h-9 w-40 bg-gray-100 rounded-xl flex-shrink-0" />
+        </div>
+
+        <div className="space-y-3">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="bg-white border border-gray-100 rounded-2xl p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="h-3.5 w-1/4 bg-gray-100 rounded" />
+                <div className="h-5 w-16 bg-gray-100 rounded-full" />
+              </div>
+              <div className="h-2 w-2/3 bg-gray-50 rounded" />
+              <div className="h-2 w-1/2 bg-gray-50 rounded" />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

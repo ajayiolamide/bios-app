@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   Zap, LayoutTemplate, BrainCircuit, Trophy,
   ArrowRight, Clock, CheckCircle2, AlertCircle,
-  Lightbulb, FileText, Plus, Loader2,
+  Lightbulb, FileText, Plus,
 } from "lucide-react";
 import { useOrg } from "@/contexts/org-context";
 import { createClient } from "@/lib/supabase/client";
@@ -212,9 +212,52 @@ export default function DashboardPage() {
   }, [currentOrg]);
 
   if (loading || !data) {
+    // A bare spinner on an otherwise blank page makes a ~5s load feel like
+    // dead time — there's nothing to look at, so it's not obvious anything
+    // is actually happening. This mirrors the real layout below (same
+    // header, same card shapes) with pulsing placeholders instead, so the
+    // page looks like it's already assembling itself rather than stalled.
+    // The header text itself is real, not a placeholder — greeting/date
+    // never depend on the data fetch, so there's no reason to fake it.
     return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 size={20} className="animate-spin text-gray-300" />
+      <div className="p-6 max-w-6xl mx-auto space-y-7 animate-pulse">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">{greeting}, {firstName} 👋</h1>
+            <p className="text-sm text-gray-400 mt-1">{today}</p>
+          </div>
+          <div className="h-9 w-32 bg-gray-100 rounded-xl" />
+        </div>
+
+        <div className="bg-white border border-gray-100 rounded-2xl p-6 space-y-1">
+          <div className="h-2.5 w-40 bg-gray-100 rounded mb-4" />
+          {[...Array(2)].map((_, i) => (
+            <div key={i} className="flex gap-4 py-3">
+              <div className="w-12 h-12 rounded-full bg-gray-100 flex-shrink-0" />
+              <div className="flex-1 space-y-2 pt-1">
+                <div className="h-3 w-1/3 bg-gray-100 rounded" />
+                <div className="h-2 w-2/3 bg-gray-50 rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 bg-white border border-gray-100 rounded-2xl h-40" />
+          <div className="space-y-5">
+            <div className="bg-white border border-gray-100 rounded-2xl p-5 space-y-3.5">
+              <div className="h-2.5 w-24 bg-gray-100 rounded mb-1" />
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-gray-100 flex-shrink-0" />
+                  <div className="h-2.5 flex-1 bg-gray-50 rounded" />
+                  <div className="h-2.5 w-8 bg-gray-100 rounded flex-shrink-0" />
+                </div>
+              ))}
+            </div>
+            <div className="bg-white border border-gray-100 rounded-2xl h-32" />
+          </div>
+        </div>
       </div>
     );
   }

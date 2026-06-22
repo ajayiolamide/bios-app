@@ -1215,9 +1215,21 @@ export default function FeatureMetricsPage() {
         </div>
       )}
 
+      {/* A bare spinner here left this whole region blank for several
+          seconds with nothing to suggest progress. These mirror the shape
+          SavedPlanCard actually renders in, so the page looks like it's
+          assembling the real list rather than stuck. */}
       {loading && (
-        <div className="flex items-center justify-center py-16">
-          <Loader2 size={20} className="animate-spin text-gray-300" />
+        <div className="space-y-3 animate-pulse">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="bg-white border border-gray-100 rounded-2xl p-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="h-3.5 w-1/3 bg-gray-100 rounded" />
+                <div className="h-5 w-20 bg-gray-100 rounded-full" />
+              </div>
+              <div className="h-2 w-2/3 bg-gray-50 rounded" />
+            </div>
+          ))}
         </div>
       )}
     </div>
