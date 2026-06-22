@@ -36,6 +36,7 @@ import type { MetricDataPoint } from "@/lib/metrics-engine";
 import {
   getCompanyObjectives, createCompanyObjective, setGoalObjective,
   updateCompanyObjectiveStatus, deleteCompanyObjective,
+  proposeObjectiveFromDescription,
 } from "@/app/actions/company-objectives";
 import { getReportSources, fetchSheetData } from "@/app/actions/reports";
 import { getSheetRowOptions } from "@/app/actions/manual-kpi";
@@ -1077,6 +1078,46 @@ function KpiForm({ orgId, goalId, initial, onSaved, onCancel }: { orgId: string;
 
 // ─── Goal Card ────────────────────────────────────────────────────────────────
 
+// A short, computed "how's this actually going" read — not just restating
+// the raw percentage already shown in the bar below it, but translating it
+// into the kind of plain-English judgment call a person would otherwise have
+// to make themselves. Deliberately deterministic, not a per-card AI call —
+// this page can render dozens of these at once, and the lesson from the
+// reports/dashboard work earlier was that anything that has to always be
+// right and always be fast shouldn't depend on a model call. It's still
+// framed and shown as an intelligent read (see SignalChip), just computed
+// from the real progress numbers rather than guessed.
+function progressSignal(
+  progressRatio: number | null,
+  totalCount: number
+): { label: string; tone: "good" | "warn" | "bad" | "neutral" } {
+  if (totalCount === 0) return { label: "Just getting started", tone: "neutral" };
+  if (progressRatio === null) return { label: "Not yet measurable", tone: "neutral" };
+  const pct = progressRatio * 100;
+  if (pct >= 100) return { label: "Exceeding target", tone: "good" };
+  if (pct >= 70) return { label: "On track", tone: "good" };
+  if (pct >= 40) return { label: "Needs attention", tone: "warn" };
+  return { label: "Falling behind", tone: "bad" };
+}
+
+function SignalChip({ signal, dark }: { signal: { label: string; tone: "good" | "warn" | "bad" | "neutral" }; dark?: boolean }) {
+  const palette = {
+    good:    dark ? { bg: "rgba(16,185,129,0.15)", text: "#6ee7b7", border: "rgba(16,185,129,0.35)" } : { bg: "#ecfdf5", text: "#059669", border: "#a7f3d0" },
+    warn:    dark ? { bg: "rgba(245,158,11,0.15)", text: "#fcd34d", border: "rgba(245,158,11,0.35)" } : { bg: "#fffbeb", text: "#b45309", border: "#fde68a" },
+    bad:     dark ? { bg: "rgba(244,63,94,0.15)", text: "#fda4af", border: "rgba(244,63,94,0.35)" } : { bg: "#fef2f2", text: "#dc2626", border: "#fecaca" },
+    neutral: dark ? { bg: "rgba(255,255,255,0.06)", text: "#94a3b8", border: "rgba(255,255,255,0.12)" } : { bg: "#f8fafc", text: "#64748b", border: "#e2e8f0" },
+  }[signal.tone];
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap"
+      style={{ background: palette.bg, color: palette.text, border: `1px solid ${palette.border}` }}
+    >
+      <Sparkles size={9} />
+      {signal.label}
+    </span>
+  );
+}
+
 function GoalProgressBar({ progress }: { progress?: GoalProgress }) {
   if (!progress || progress.totalKpiCount === 0) return null;
   if (progress.progressRatio === null) {
@@ -1160,6 +1201,7 @@ function GoalCard({
   const Icon = cfg.icon;
   const isMissed = goal.status === "missed";
   const health = goalHealthStatus(features, eventCounts);
+  const signal = progressSignal(goalProgress?.progressRatio ?? null, goalProgress?.totalKpiCount ?? 0);
 
   // The date window is a commitment ("we're judging this goal over May"),
   // not just a label — nothing previously flagged when that window had
@@ -1190,7 +1232,7 @@ function GoalCard({
   return (
     <div
       className={cn(
-        "group bg-white border border-gray-200 rounded-lg hover:bg-gray-50/60 transition-colors",
+        "group relative bg-white border border-gray-100 rounded-2xl shadow-sm hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200",
         // Collapsed cards sit in the 2/3-column grid like everything else.
         // Expanded ones carry a full KPI list + inline forms + features —
         // cramming that into a single grid column looks broken (cut-off
@@ -1199,14 +1241,23 @@ function GoalCard({
         expanded && "sm:col-span-2 lg:col-span-3"
       )}
     >
+      {/* Top accent — tints each card by goal type instead of every card
+          looking identical except for a small uppercase label. */}
+      <div className="absolute top-0 left-0 right-0 h-[3px] rounded-t-2xl" style={{ background: `linear-gradient(90deg, ${cfg.accent}, ${cfg.accent}00)` }} />
+
       <div className="p-4">
-        {/* Type + status + delete row */}
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-[10px] font-semibold tracking-widest uppercase text-gray-400">
+        {/* Type + AI signal + status + delete row */}
+        <div className="flex items-center justify-between mb-2 gap-2">
+          <span
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold tracking-wide"
+            style={{ background: cfg.light, color: cfg.accent, border: `1px solid ${cfg.border}` }}
+          >
+            <Icon size={10} />
             {cfg.label}
           </span>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <SignalChip signal={signal} />
             {/* Status dropdown */}
             <div className="relative">
               <button
@@ -1240,7 +1291,7 @@ function GoalCard({
         </div>
 
         {/* Title */}
-        <p className={`text-[15px] font-semibold leading-snug mb-1 ${isMissed ? "line-through text-gray-300" : "text-gray-900"}`}>
+        <p className={`text-base font-bold leading-snug tracking-tight mb-1 ${isMissed ? "line-through text-gray-300" : "text-gray-900"}`}>
           {goal.title}
           {goal.status === "achieved" && <Trophy size={12} className="inline ml-1.5 text-yellow-500" />}
         </p>
@@ -1456,11 +1507,35 @@ function GoalCard({
 // is actually the narrower Product Goal layer that ladders up to one of
 // these via the picker in GuidedGoalWizard/GoalCard.
 
-function ObjectiveForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
+// Same guided, AI-assisted pattern as GuidedGoalWizard (Product Goals) one
+// level up, so the whole hierarchy is one consistent creation experience
+// instead of a polished flow at one layer and a blank form at another.
+// Reuses WizardShell — defined once, used everywhere in this hierarchy.
+type ObjectiveWizardStep = "describe" | "confirm";
+
+function GuidedObjectiveWizard({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
   const { currentOrg } = useOrg();
+  const [step, setStep] = useState<ObjectiveWizardStep>("describe");
+  const [description, setDescription] = useState("");
+  const [proposing, setProposing] = useState(false);
   const [form, setForm] = useState({ title: "", description: "", target: "", timeframe: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  async function handlePropose() {
+    if (!description.trim()) { setError("Describe the one big thing you're trying to achieve first."); return; }
+    setError("");
+    setProposing(true);
+    const res = await proposeObjectiveFromDescription(description);
+    setProposing(false);
+    if (res.error || !res.title) {
+      setForm({ title: description.trim().slice(0, 90), description: "", target: "", timeframe: TIMEFRAMES[0] });
+      if (res.error) setError(res.error);
+    } else {
+      setForm({ title: res.title, description: res.description || "", target: res.target || "", timeframe: res.timeframe || TIMEFRAMES[0] });
+    }
+    setStep("confirm");
+  }
 
   async function handleSave() {
     if (!currentOrg || !form.title.trim()) { setError("Title is required."); return; }
@@ -1472,18 +1547,50 @@ function ObjectiveForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: (
     onSaved();
   }
 
-  return (
-    <div className="bg-white border border-gray-100 rounded-2xl p-5 space-y-4">
-      <p className="text-sm font-bold text-gray-800">New business goal</p>
+  if (step === "describe") return (
+    <WizardShell label="New business goal — step 1 of 2" onCancel={onCancel} error={error}>
       <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1.5">The one big thing — what is the company trying to achieve? *</label>
+        <label className="block text-xs font-medium text-gray-500 mb-1.5">
+          The one big thing — what is the company trying to achieve? Describe it in your own words.
+        </label>
+        <textarea
+          autoFocus
+          rows={3}
+          placeholder="e.g. We need to grow policy activations and keep more customers renewing this quarter — too many sign up and never finish onboarding."
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+        />
+      </div>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={handlePropose}
+          disabled={proposing}
+          className="flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors disabled:opacity-50"
+        >
+          {proposing ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+          {proposing ? "Thinking…" : "Suggest a business goal"}
+        </button>
+        <button
+          onClick={() => { setForm({ title: "", description: "", target: "", timeframe: TIMEFRAMES[0] }); setStep("confirm"); }}
+          className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+        >
+          Skip — I&apos;ll fill it in myself
+        </button>
+      </div>
+    </WizardShell>
+  );
+
+  return (
+    <WizardShell label="New business goal — step 2 of 2" onCancel={onCancel} error={error}>
+      <p className="text-xs text-gray-400 -mt-2">Here&apos;s what we&apos;ve put together — change anything that&apos;s not quite right.</p>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1.5">Title</label>
         <input
           autoFocus
           type="text"
-          placeholder="e.g. Grow policy activations & retention this quarter"
           value={form.title}
           onChange={(e) => setForm({ ...form, title: e.target.value })}
-          onKeyDown={(e) => e.key === "Enter" && handleSave()}
           className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
         />
       </div>
@@ -1492,7 +1599,6 @@ function ObjectiveForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: (
           <label className="block text-xs font-medium text-gray-500 mb-1.5">Target</label>
           <input
             type="text"
-            placeholder="e.g. 98% activation, NPS 58+"
             value={form.target}
             onChange={(e) => setForm({ ...form, target: e.target.value })}
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
@@ -1511,18 +1617,14 @@ function ObjectiveForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: (
         </div>
       </div>
       <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1.5">
-          Context <span className="text-gray-400 font-normal">(optional)</span>
-        </label>
+        <label className="block text-xs font-medium text-gray-500 mb-1.5">Context <span className="text-gray-400 font-normal">(optional)</span></label>
         <textarea
-          placeholder="Why this matters this quarter/year…"
+          rows={2}
           value={form.description}
           onChange={(e) => setForm({ ...form, description: e.target.value })}
-          rows={2}
           className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
         />
       </div>
-      {error && <p className="text-xs text-red-500">{error}</p>}
       <div className="flex items-center gap-3 pt-1">
         <button
           onClick={handleSave}
@@ -1532,11 +1634,9 @@ function ObjectiveForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: (
           {saving && <Loader2 size={13} className="animate-spin" />}
           Save business goal
         </button>
-        <button onClick={onCancel} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">
-          Cancel
-        </button>
+        <button onClick={() => setStep("describe")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">Back</button>
       </div>
-    </div>
+    </WizardShell>
   );
 }
 
@@ -1576,6 +1676,8 @@ function ObjectiveCard({
   const pct = progressRatio !== null ? Math.round(progressRatio * 100) : null;
   const overshot = pct !== null && pct > 100;
   const isMissed = objective.status === "missed";
+  const signal = progressSignal(progressRatio, goalCount);
+  void measurableGoalCount;
 
   return (
     <div
@@ -1584,19 +1686,27 @@ function ObjectiveCard({
         selected ? "ring-2 ring-offset-2 ring-amber-400/60" : "hover:shadow-xl hover:shadow-slate-950/40"
       )}
     >
+      {/* Soft violet glow in the corner — a quiet "something intelligent is
+          computing this" signal, distinct from the amber progress accent,
+          rather than just another flat dark card. */}
+      <div className="pointer-events-none absolute -top-10 -right-10 w-40 h-40 rounded-full opacity-[0.15] blur-2xl" style={{ background: "radial-gradient(circle, #818cf8, transparent 70%)" }} />
+
       <button onClick={onSelect} className="relative w-full text-left p-4">
         <div className="flex items-center justify-between mb-2.5">
           <span className="flex items-center gap-1.5 text-[10px] font-semibold tracking-widest uppercase text-amber-300/80">
             <Trophy size={10} className="text-amber-300/80" /> Business Goal
           </span>
-          <span
-            role="button"
-            onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
-            className="flex items-center gap-0.5 text-[11px] text-slate-400 hover:text-slate-200 transition-colors"
-          >
-            {STATUS_OPTIONS.find((s) => s.value === objective.status)?.label}
-            <ChevronDown size={10} />
-          </span>
+          <div className="flex items-center gap-2">
+            <SignalChip signal={signal} dark />
+            <span
+              role="button"
+              onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
+              className="flex items-center gap-0.5 text-[11px] text-slate-400 hover:text-slate-200 transition-colors"
+            >
+              {STATUS_OPTIONS.find((s) => s.value === objective.status)?.label}
+              <ChevronDown size={10} />
+            </span>
+          </div>
         </div>
 
         <p className={`text-base font-semibold leading-snug mb-1 tracking-tight ${isMissed ? "line-through text-white/40" : "text-white"}`}>
@@ -1717,7 +1827,7 @@ function ObjectivesPanel({
       </div>
 
       {showForm ? (
-        <ObjectiveForm onSaved={() => { setShowForm(false); onSaved(); }} onCancel={() => setShowForm(false)} />
+        <GuidedObjectiveWizard onSaved={() => { setShowForm(false); onSaved(); }} onCancel={() => setShowForm(false)} />
       ) : objectives.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 py-10 text-center">
           <p className="text-sm text-gray-400 max-w-sm">
@@ -1764,6 +1874,32 @@ function ObjectivesPanel({
 // edit icon on the created KPI (KpiForm, above) — this wizard is meant to
 // nail the common case quickly, not replace every capability up front.
 type GoalWizardStep = "goal_describe" | "goal_confirm" | "kpi_describe" | "kpi_confirm" | "done";
+
+// Shared chrome around whichever wizard step is active. This MUST be a
+// top-level component, not one defined inline inside GuidedGoalWizard's
+// render body — a component defined inside another component's body gets a
+// brand-new function identity on every render, which made React treat each
+// re-render as a different component type and remount the whole subtree
+// (including the live textarea) on every keystroke. Remounting a
+// `autoFocus` textarea resets the cursor to position 0, so each new
+// character got inserted at the start instead of where you were typing —
+// the exact "text is writing backwards" bug. Hoisting this out fixes it at
+// the root: a stable component identity means React only updates the DOM
+// that actually changed, never tears down the input.
+function WizardShell({
+  label, onCancel, error, children,
+}: { label: string; onCancel: () => void; error: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-white border border-gray-100 rounded-2xl p-6 space-y-5">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-bold text-gray-800">{label}</p>
+        <button onClick={onCancel} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">Cancel</button>
+      </div>
+      {children}
+      {error && <p className="text-xs text-red-500">{error}</p>}
+    </div>
+  );
+}
 
 function GuidedGoalWizard({
   objectives, onSaved, onCancel,
@@ -1867,21 +2003,8 @@ function GuidedGoalWizard({
     setStep("kpi_describe");
   }
 
-  // Shared chrome around whichever step is active, so this reads as one
-  // flow rather than several separate screens bolted together.
-  const Shell = ({ label, children }: { label: string; children: React.ReactNode }) => (
-    <div className="bg-white border border-gray-100 rounded-2xl p-6 space-y-5">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-bold text-gray-800">{label}</p>
-        <button onClick={onCancel} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">Cancel</button>
-      </div>
-      {children}
-      {error && <p className="text-xs text-red-500">{error}</p>}
-    </div>
-  );
-
   if (step === "goal_describe") return (
-    <Shell label="New goal — step 1 of 2">
+    <WizardShell label="New goal — step 1 of 2" onCancel={onCancel} error={error}>
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1.5">
           What are you trying to achieve? Describe it in your own words.
@@ -1911,11 +2034,11 @@ function GuidedGoalWizard({
           Skip — I&apos;ll fill it in myself
         </button>
       </div>
-    </Shell>
+    </WizardShell>
   );
 
   if (step === "goal_confirm") return (
-    <Shell label="New goal — step 2 of 2">
+    <WizardShell label="New goal — step 2 of 2" onCancel={onCancel} error={error}>
       <p className="text-xs text-gray-400 -mt-2">Here&apos;s what we&apos;ve put together — change anything that&apos;s not quite right.</p>
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1.5">Goal title</label>
@@ -2003,11 +2126,11 @@ function GuidedGoalWizard({
         </button>
         <button onClick={() => setStep("goal_describe")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">Back</button>
       </div>
-    </Shell>
+    </WizardShell>
   );
 
   if (step === "kpi_describe") return (
-    <Shell label={`KPI for "${createdGoal?.title}" — step 1 of 2`}>
+    <WizardShell label={`KPI for "${createdGoal?.title}" — step 1 of 2`} onCancel={onCancel} error={error}>
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1.5">
           How will you know this is actually moving? Describe the one thing you&apos;d look at.
@@ -2034,11 +2157,11 @@ function GuidedGoalWizard({
           Skip — I&apos;ll add this later
         </button>
       </div>
-    </Shell>
+    </WizardShell>
   );
 
   if (step === "kpi_confirm") return (
-    <Shell label={`KPI for "${createdGoal?.title}" — step 2 of 2`}>
+    <WizardShell label={`KPI for "${createdGoal?.title}" — step 2 of 2`} onCancel={onCancel} error={error}>
       <p className="text-xs text-gray-400 -mt-2">Here&apos;s the KPI we&apos;ve put together — change anything that&apos;s not quite right.</p>
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1.5">KPI name</label>
@@ -2113,12 +2236,12 @@ function GuidedGoalWizard({
         </button>
         <button onClick={() => setStep("kpi_describe")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">Back</button>
       </div>
-    </Shell>
+    </WizardShell>
   );
 
   // step === "done"
   return (
-    <Shell label="All set">
+    <WizardShell label="All set" onCancel={onCancel} error={error}>
       <div className="flex items-center gap-2 text-emerald-600">
         <CheckCircle2 size={16} />
         <p className="text-sm font-medium">
@@ -2139,7 +2262,7 @@ function GuidedGoalWizard({
           Done
         </button>
       </div>
-    </Shell>
+    </WizardShell>
   );
 }
 
