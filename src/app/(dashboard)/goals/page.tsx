@@ -5,7 +5,7 @@ import {
   Plus, Target, TrendingUp, Users, Settings, Package, Globe,
   Trash2, Loader2, Trophy, CheckCircle2, ChevronDown, Check,
   ChevronRight, Lightbulb, Zap, AlertCircle, Activity, RefreshCw,
-  Calendar, ShieldAlert, Pencil, FileSpreadsheet,
+  Calendar, ShieldAlert, Pencil, FileSpreadsheet, Sparkles,
 } from "lucide-react";
 import { useOrg } from "@/contexts/org-context";
 import { cn } from "@/lib/utils";
@@ -19,6 +19,8 @@ import {
   permanentlyDeleteBusinessGoal,
   getGoalHealthData,
   updateGoalDates,
+  proposeGoalFromDescription,
+  proposeKpiFromDescription,
   type GoalHealthData,
   type FeatureHealthItem,
 } from "@/app/actions/business-goals";
@@ -1452,7 +1454,7 @@ function GoalCard({
 // The real, company-wide objectives (one big thing for the quarter/year).
 // Everything below this panel — what the rest of the page calls "goals" —
 // is actually the narrower Product Goal layer that ladders up to one of
-// these via the picker in AddGoalForm/GoalCard.
+// these via the picker in GuidedGoalWizard/GoalCard.
 
 function ObjectiveForm({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
   const { currentOrg } = useOrg();
@@ -1749,52 +1751,190 @@ function ObjectivesPanel({
   );
 }
 
-// ─── Add Goal Form ────────────────────────────────────────────────────────────
+// ─── Guided goal + KPI creation wizard ────────────────────────────────────────
+//
+// Replaces the old single blank-form "Add goal" experience end to end, per
+// direct feedback: someone landing on this page for the first time doesn't
+// already know what a "goal type" or "KPI" should look like, and shouldn't
+// have to figure that out alone. This walks them through it one question at
+// a time — describe the outcome in plain words, AI proposes the structured
+// goal, confirm/edit, then the same pattern one level down for the KPI that
+// proves it's moving. Advanced KPI options (reference-event matching, time
+// windows, match keys, manual/sheet values) stay available afterward via the
+// edit icon on the created KPI (KpiForm, above) — this wizard is meant to
+// nail the common case quickly, not replace every capability up front.
+type GoalWizardStep = "goal_describe" | "goal_confirm" | "kpi_describe" | "kpi_confirm" | "done";
 
-function AddGoalForm({ objectives, onSaved, onCancel }: { objectives: CompanyObjective[]; onSaved: () => void; onCancel: () => void }) {
+function GuidedGoalWizard({
+  objectives, onSaved, onCancel,
+}: { objectives: CompanyObjective[]; onSaved: () => void; onCancel: () => void }) {
   const { currentOrg } = useOrg();
-  const [form, setForm] = useState({ title: "", description: "", type: "growth", target: "", timeframe: "", company_objective_id: "" });
-  const [saving, setSaving] = useState(false);
+  const orgId = currentOrg?.id ?? "";
+
+  const [step, setStep] = useState<GoalWizardStep>("goal_describe");
   const [error, setError] = useState("");
 
-  async function handleSave() {
-    if (!currentOrg || !form.title.trim()) { setError("Goal title is required."); return; }
-    setSaving(true);
+  // ── Goal ──
+  const [goalDescription, setGoalDescription] = useState("");
+  const [proposingGoal, setProposingGoal] = useState(false);
+  const [goalForm, setGoalForm] = useState({
+    title: "", type: "growth", target: "", timeframe: "", description: "", company_objective_id: "",
+  });
+  const [savingGoal, setSavingGoal] = useState(false);
+  const [createdGoal, setCreatedGoal] = useState<{ id: string; title: string } | null>(null);
+
+  // ── KPI ──
+  const [eventNames, setEventNames] = useState<string[]>([]);
+  useEffect(() => { if (orgId) getDistinctEventNames(orgId).then(setEventNames); }, [orgId]);
+  const [kpiDescription, setKpiDescription] = useState("");
+  const [proposingKpi, setProposingKpi] = useState(false);
+  const [kpiForm, setKpiForm] = useState({ name: "", target: "", target_value: "", event_name: "", aggregation: "unique_users" });
+  const [savingKpi, setSavingKpi] = useState(false);
+  const [kpisCreated, setKpisCreated] = useState<string[]>([]);
+
+  async function handleProposeGoal() {
+    if (!goalDescription.trim()) { setError("Describe what you're trying to achieve first."); return; }
     setError("");
-    const result = await createBusinessGoal(currentOrg.id, {
-      ...form,
-      company_objective_id: form.company_objective_id || null,
-    });
-    setSaving(false);
-    if (result.error) { setError(result.error); return; }
-    onSaved();
+    setProposingGoal(true);
+    const res = await proposeGoalFromDescription(goalDescription);
+    setProposingGoal(false);
+    // Never a dead end — fall back to a sensible manual starting point so an
+    // AI hiccup doesn't block someone from creating the goal at all.
+    if (res.error || !res.title) {
+      setGoalForm({ title: goalDescription.trim().slice(0, 80), type: "growth", target: "", timeframe: TIMEFRAMES[0], description: "", company_objective_id: "" });
+      if (res.error) setError(res.error);
+    } else {
+      setGoalForm({
+        title: res.title, type: res.type || "growth", target: res.target || "",
+        timeframe: res.timeframe || TIMEFRAMES[0], description: res.description || "", company_objective_id: "",
+      });
+    }
+    setStep("goal_confirm");
   }
 
-  return (
-    <div className="bg-white border border-gray-100 rounded-2xl p-6 space-y-5">
-      <p className="text-sm font-bold text-gray-800">New product goal</p>
+  async function handleSaveGoal() {
+    if (!orgId || !goalForm.title.trim()) { setError("Goal title is required."); return; }
+    setSavingGoal(true);
+    setError("");
+    const result = await createBusinessGoal(orgId, { ...goalForm, company_objective_id: goalForm.company_objective_id || null });
+    setSavingGoal(false);
+    if (result.error || !result.id) { setError(result.error || "Couldn't save the goal."); return; }
+    setCreatedGoal({ id: result.id, title: goalForm.title });
+    setStep("kpi_describe");
+  }
 
+  async function handleProposeKpi() {
+    if (!kpiDescription.trim()) { setError("Describe what you'd measure first."); return; }
+    setError("");
+    setProposingKpi(true);
+    const res = await proposeKpiFromDescription(createdGoal?.title ?? "", kpiDescription, eventNames);
+    setProposingKpi(false);
+    if (res.error || !res.name) {
+      setKpiForm({ name: kpiDescription.trim().slice(0, 60), target: "", target_value: "", event_name: "", aggregation: "unique_users" });
+      if (res.error) setError(res.error);
+    } else {
+      setKpiForm({
+        name: res.name, target: res.target || "",
+        target_value: res.target_value != null ? String(res.target_value) : "",
+        event_name: res.matched_event_name || "", aggregation: res.aggregation || "unique_users",
+      });
+    }
+    setStep("kpi_confirm");
+  }
+
+  async function handleSaveKpi() {
+    if (!createdGoal || !kpiForm.name.trim()) { setError("KPI name is required."); return; }
+    setSavingKpi(true);
+    setError("");
+    const result = await createGoalKpi(orgId, createdGoal.id, {
+      name: kpiForm.name,
+      description: "",
+      event_name: kpiForm.event_name.trim() || null,
+      aggregation: kpiForm.aggregation,
+      target: kpiForm.target,
+      target_value: kpiForm.target_value.trim() ? Number(kpiForm.target_value) : null,
+    });
+    setSavingKpi(false);
+    if (result.error) { setError(result.error); return; }
+    setKpisCreated((prev) => [...prev, kpiForm.name]);
+    setStep("done");
+  }
+
+  function handleAddAnotherKpi() {
+    setKpiDescription("");
+    setKpiForm({ name: "", target: "", target_value: "", event_name: "", aggregation: "unique_users" });
+    setError("");
+    setStep("kpi_describe");
+  }
+
+  // Shared chrome around whichever step is active, so this reads as one
+  // flow rather than several separate screens bolted together.
+  const Shell = ({ label, children }: { label: string; children: React.ReactNode }) => (
+    <div className="bg-white border border-gray-100 rounded-2xl p-6 space-y-5">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-bold text-gray-800">{label}</p>
+        <button onClick={onCancel} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">Cancel</button>
+      </div>
+      {children}
+      {error && <p className="text-xs text-red-500">{error}</p>}
+    </div>
+  );
+
+  if (step === "goal_describe") return (
+    <Shell label="New goal — step 1 of 2">
       <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1.5">What&apos;s the goal? *</label>
+        <label className="block text-xs font-medium text-gray-500 mb-1.5">
+          What are you trying to achieve? Describe it in your own words.
+        </label>
+        <textarea
+          autoFocus
+          rows={3}
+          placeholder="e.g. We want claims to get paid out faster this quarter — right now people wait too long and it's hurting renewals."
+          value={goalDescription}
+          onChange={(e) => setGoalDescription(e.target.value)}
+          className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+        />
+      </div>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={handleProposeGoal}
+          disabled={proposingGoal}
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors disabled:opacity-50"
+        >
+          {proposingGoal ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+          {proposingGoal ? "Thinking…" : "Suggest a goal"}
+        </button>
+        <button
+          onClick={() => { setGoalForm({ title: "", type: "growth", target: "", timeframe: TIMEFRAMES[0], description: "", company_objective_id: "" }); setStep("goal_confirm"); }}
+          className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+        >
+          Skip — I&apos;ll fill it in myself
+        </button>
+      </div>
+    </Shell>
+  );
+
+  if (step === "goal_confirm") return (
+    <Shell label="New goal — step 2 of 2">
+      <p className="text-xs text-gray-400 -mt-2">Here&apos;s what we&apos;ve put together — change anything that&apos;s not quite right.</p>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1.5">Goal title</label>
         <input
           autoFocus
           type="text"
-          placeholder="e.g. Improve onboarding CSAT to 4.5"
-          value={form.title}
-          onChange={(e) => setForm({ ...form, title: e.target.value })}
-          onKeyDown={(e) => e.key === "Enter" && handleSave()}
+          value={goalForm.title}
+          onChange={(e) => setGoalForm({ ...goalForm, title: e.target.value })}
           className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
         />
       </div>
-
       {objectives.length > 0 && (
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1.5">
-            Which business goal does this move? <span className="text-gray-400 font-normal">(optional, can set later)</span>
+            Which business goal does this move? <span className="text-gray-400 font-normal">(optional)</span>
           </label>
           <select
-            value={form.company_objective_id}
-            onChange={(e) => setForm({ ...form, company_objective_id: e.target.value })}
+            value={goalForm.company_objective_id}
+            onChange={(e) => setGoalForm({ ...goalForm, company_objective_id: e.target.value })}
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
           >
             <option value="">Not linked yet</option>
@@ -1802,21 +1942,18 @@ function AddGoalForm({ objectives, onSaved, onCancel }: { objectives: CompanyObj
           </select>
         </div>
       )}
-
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-2">Type</label>
         <div className="flex flex-wrap gap-2">
           {GOAL_TYPES.map((t) => {
             const Icon = t.icon;
-            const selected = form.type === t.value;
+            const selected = goalForm.type === t.value;
             return (
               <button
                 key={t.value}
-                onClick={() => setForm({ ...form, type: t.value })}
+                onClick={() => setGoalForm({ ...goalForm, type: t.value })}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-all"
-                style={selected
-                  ? { background: t.light, borderColor: t.border, color: t.accent }
-                  : { background: "white", borderColor: "#e5e7eb", color: "#6b7280" }}
+                style={selected ? { background: t.light, borderColor: t.border, color: t.accent } : { background: "white", borderColor: "#e5e7eb", color: "#6b7280" }}
               >
                 <Icon size={11} />{t.label}
               </button>
@@ -1824,23 +1961,21 @@ function AddGoalForm({ objectives, onSaved, onCancel }: { objectives: CompanyObj
           })}
         </div>
       </div>
-
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1.5">Target</label>
           <input
             type="text"
-            placeholder="e.g. £2M ARR"
-            value={form.target}
-            onChange={(e) => setForm({ ...form, target: e.target.value })}
+            value={goalForm.target}
+            onChange={(e) => setGoalForm({ ...goalForm, target: e.target.value })}
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
           />
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1.5">Timeframe</label>
           <select
-            value={form.timeframe}
-            onChange={(e) => setForm({ ...form, timeframe: e.target.value })}
+            value={goalForm.timeframe}
+            onChange={(e) => setGoalForm({ ...goalForm, timeframe: e.target.value })}
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
           >
             <option value="">Select…</option>
@@ -1848,36 +1983,163 @@ function AddGoalForm({ objectives, onSaved, onCancel }: { objectives: CompanyObj
           </select>
         </div>
       </div>
-
       <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1.5">
-          Context <span className="text-gray-400 font-normal">(optional)</span>
-        </label>
+        <label className="block text-xs font-medium text-gray-500 mb-1.5">Context <span className="text-gray-400 font-normal">(optional)</span></label>
         <textarea
-          placeholder="Why this goal matters, what achieving it unlocks…"
-          value={form.description}
-          onChange={(e) => setForm({ ...form, description: e.target.value })}
           rows={2}
+          value={goalForm.description}
+          onChange={(e) => setGoalForm({ ...goalForm, description: e.target.value })}
           className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
         />
       </div>
-
-      {error && <p className="text-xs text-red-500">{error}</p>}
-
       <div className="flex items-center gap-3 pt-1">
         <button
-          onClick={handleSave}
-          disabled={saving}
+          onClick={handleSaveGoal}
+          disabled={savingGoal}
           className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors disabled:opacity-50"
         >
-          {saving && <Loader2 size={13} className="animate-spin" />}
-          Save goal
+          {savingGoal && <Loader2 size={13} className="animate-spin" />}
+          Create goal — next, the KPI
         </button>
-        <button onClick={onCancel} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">
-          Cancel
+        <button onClick={() => setStep("goal_describe")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">Back</button>
+      </div>
+    </Shell>
+  );
+
+  if (step === "kpi_describe") return (
+    <Shell label={`KPI for "${createdGoal?.title}" — step 1 of 2`}>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1.5">
+          How will you know this is actually moving? Describe the one thing you&apos;d look at.
+        </label>
+        <textarea
+          autoFocus
+          rows={3}
+          placeholder="e.g. The percentage of claims that get paid within 24 hours of being lodged."
+          value={kpiDescription}
+          onChange={(e) => setKpiDescription(e.target.value)}
+          className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+        />
+      </div>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={handleProposeKpi}
+          disabled={proposingKpi}
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors disabled:opacity-50"
+        >
+          {proposingKpi ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+          {proposingKpi ? "Thinking…" : "Suggest a KPI"}
+        </button>
+        <button onClick={() => setStep("done")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">
+          Skip — I&apos;ll add this later
         </button>
       </div>
-    </div>
+    </Shell>
+  );
+
+  if (step === "kpi_confirm") return (
+    <Shell label={`KPI for "${createdGoal?.title}" — step 2 of 2`}>
+      <p className="text-xs text-gray-400 -mt-2">Here&apos;s the KPI we&apos;ve put together — change anything that&apos;s not quite right.</p>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1.5">KPI name</label>
+        <input
+          autoFocus
+          type="text"
+          value={kpiForm.name}
+          onChange={(e) => setKpiForm({ ...kpiForm, name: e.target.value })}
+          className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+        />
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-500 mb-1.5">
+          Which event tracks this? <span className="text-gray-400 font-normal">(optional — you can wire this up later)</span>
+        </label>
+        {kpiForm.event_name && (
+          <p className="text-[11px] text-emerald-600 mb-1.5">
+            ✓ Matched to an event you already track: <span className="font-mono">{kpiForm.event_name}</span>
+          </p>
+        )}
+        <div className="flex items-center gap-1.5">
+          <EventCombobox
+            value={kpiForm.event_name}
+            onChange={(v) => setKpiForm({ ...kpiForm, event_name: v })}
+            options={eventNames}
+            placeholder={eventNames.length > 0 ? "Search events…" : "event_name (optional)"}
+            className="flex-1"
+          />
+          <select
+            value={kpiForm.aggregation}
+            onChange={(e) => setKpiForm({ ...kpiForm, aggregation: e.target.value })}
+            className="border border-gray-200 rounded-xl px-2.5 py-2 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          >
+            <option value="unique_users">Unique users</option>
+            <option value="count">Event count</option>
+            <option value="unique_sessions">Unique sessions</option>
+          </select>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1.5">Target</label>
+          <input
+            type="text"
+            placeholder="e.g. 95%"
+            value={kpiForm.target}
+            onChange={(e) => setKpiForm({ ...kpiForm, target: e.target.value })}
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1.5">Target number <span className="text-gray-400 font-normal">(optional)</span></label>
+          <input
+            type="number"
+            value={kpiForm.target_value}
+            onChange={(e) => setKpiForm({ ...kpiForm, target_value: e.target.value })}
+            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+          />
+        </div>
+      </div>
+      <p className="text-[11px] text-gray-400">
+        Need something more specific — like comparing two events, or a time window? You can add that from the KPI&apos;s edit icon once it&apos;s created.
+      </p>
+      <div className="flex items-center gap-3 pt-1">
+        <button
+          onClick={handleSaveKpi}
+          disabled={savingKpi}
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors disabled:opacity-50"
+        >
+          {savingKpi && <Loader2 size={13} className="animate-spin" />}
+          Save KPI
+        </button>
+        <button onClick={() => setStep("kpi_describe")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">Back</button>
+      </div>
+    </Shell>
+  );
+
+  // step === "done"
+  return (
+    <Shell label="All set">
+      <div className="flex items-center gap-2 text-emerald-600">
+        <CheckCircle2 size={16} />
+        <p className="text-sm font-medium">
+          &quot;{createdGoal?.title}&quot; is created{kpisCreated.length > 0 ? ` with ${kpisCreated.length} KPI${kpisCreated.length > 1 ? "s" : ""}` : ""}.
+        </p>
+      </div>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={handleAddAnotherKpi}
+          className="flex items-center gap-2 border border-gray-200 hover:border-indigo-300 text-gray-600 hover:text-indigo-600 text-sm font-medium px-4 py-2 rounded-xl transition-colors"
+        >
+          <Plus size={13} /> Add another KPI
+        </button>
+        <button
+          onClick={onSaved}
+          className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors"
+        >
+          Done
+        </button>
+      </div>
+    </Shell>
   );
 }
 
@@ -2259,7 +2521,7 @@ export default function BusinessGoalsPage() {
 
       {/* Form */}
       {showForm && (
-        <AddGoalForm
+        <GuidedGoalWizard
           objectives={objectives}
           onSaved={async () => { setShowForm(false); await load(); }}
           onCancel={() => setShowForm(false)}
