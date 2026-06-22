@@ -1,0 +1,15 @@
+-- Time-windowed rate/count KPIs (migrations 026/027) match a denominator
+-- event to its numerator event per-USER, in chronological order — a
+-- reasonable proxy when there's no real shared identifier, but it's still a
+-- guess (e.g. if one person has two claims open at once, it could pair the
+-- wrong payment to the wrong claim).
+--
+-- When the two events actually carry the same real-world identifier (e.g.
+-- claim_start_clicked and claim_paid both carrying the same `policy_id`),
+-- matching can be exact instead of guessed: same identifier + soonest
+-- timestamp after, instead of same person + soonest timestamp after.
+--
+-- match_key_property names the property to use for that exact match (e.g.
+-- "policy_id"). Left null, a KPI keeps the existing per-user behaviour
+-- unchanged — this is purely additive, opt-in per KPI.
+alter table public.metrics add column if not exists match_key_property text default null;

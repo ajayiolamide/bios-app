@@ -145,6 +145,11 @@ export async function createGoalKpi(
     denominator_event_name?: string | null;
     within_hours?: number | null;
     rate_as_percentage?: boolean;
+    // Migration 034 — name of a property shared by event_name and
+    // denominator_event_name (e.g. "policy_id") that uniquely ties one
+    // occurrence of each together. When set, matching uses that real
+    // identifier instead of guessing "same user, next one in order."
+    match_key_property?: string | null;
     aggregation: string;
     target: string;
     target_value?: number | null;
@@ -172,6 +177,7 @@ export async function createGoalKpi(
       denominator_event_name: payload.denominator_event_name?.trim() || null,
       within_hours: payload.within_hours ?? null,
       rate_as_percentage: payload.rate_as_percentage ?? true,
+      match_key_property: payload.match_key_property?.trim() || null,
       aggregation: payload.aggregation as Metric["aggregation"],
       business_goal_id: businessGoalId,
       target: payload.target.trim() || null,
@@ -230,6 +236,7 @@ export async function updateGoalKpi(
     denominator_event_name?: string | null;
     within_hours?: number | null;
     rate_as_percentage?: boolean;
+    match_key_property?: string | null;
     aggregation?: string;
     target?: string | null;
     target_value?: number | null;
@@ -246,6 +253,7 @@ export async function updateGoalKpi(
   if (payload.denominator_event_name !== undefined) update.denominator_event_name = payload.denominator_event_name?.trim() || null;
   if (payload.within_hours !== undefined) update.within_hours = payload.within_hours;
   if (payload.rate_as_percentage !== undefined) update.rate_as_percentage = payload.rate_as_percentage;
+  if (payload.match_key_property !== undefined) update.match_key_property = payload.match_key_property?.trim() || null;
   if (payload.aggregation !== undefined) update.aggregation = payload.aggregation;
   if (payload.target !== undefined) update.target = payload.target?.trim() || null;
   if (payload.target_value !== undefined) update.target_value = payload.target_value;
@@ -439,10 +447,10 @@ export async function fetchEventRows(
   eventName: string,
   since: Date,
   until?: Date
-): Promise<{ timestamp: string; user_id: string | null; session_id: string | null }[]> {
+): Promise<{ timestamp: string; user_id: string | null; session_id: string | null; match_key: string | null }[]> {
   let query = admin
     .from("events")
-    .select("timestamp, user_id, session_id")
+    .select("timestamp, user_id, session_id, properties")
     .eq("organization_id", orgId)
     .eq("name", eventName)
     .gte("timestamp", since.toISOString())
@@ -454,7 +462,17 @@ export async function fetchEventRows(
   // e.g. a calendar month shouldn't pick up next month's events too.
   if (until) query = query.lt("timestamp", until.toISOString());
   const { data } = await query;
-  return data ?? [];
+  // `match_key` (migration 034) is saved into `properties.match_key` at sync
+  // time, only for events whose KPI named a match_key_property — see
+  // syncMixpanelRawEvents in mixpanel.ts. Pulled out here so callers (the
+  // per-occurrence matchers in metrics-engine.ts) get a flat field instead
+  // of having to reach into properties themselves.
+  return (data ?? []).map((row) => ({
+    timestamp: row.timestamp as string,
+    user_id: row.user_id as string | null,
+    session_id: row.session_id as string | null,
+    match_key: ((row.properties as Record<string, unknown> | null)?.match_key as string | undefined) ?? null,
+  }));
 }
 
 // ─── KPI value for an arbitrary date range (month-on-month) ──────────────────

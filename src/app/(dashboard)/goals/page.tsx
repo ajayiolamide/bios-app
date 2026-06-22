@@ -592,10 +592,16 @@ function KpiRow({ kpi, featureCount, orgId, onWired, onEdit, onDelete }: {
     const asPercentage = kpi.rate_as_percentage !== false;
 
     const relation = hasWindow ? `within ${kpi.within_hours}h of` : "÷";
+    // Migration 034 — when set, the wording should say so plainly: matching
+    // is exact (same policy_id, or whatever property was named), not a
+    // same-person-in-order guess.
+    const matchedBy = kpi.match_key_property
+      ? `matched by ${kpi.match_key_property} — exact, not guessed`
+      : "each occurrence checked on its own, so one fast match can't cover the rest of that same person's other claims";
     const caveat = hasWindow && asPercentage
-      ? `% of individual ${kpi.denominator_event_name} occurrences whose own matching ${kpi.event_name} landed within ${kpi.within_hours}h — each occurrence checked on its own, so one fast match can't cover the rest of that same person's other claims.`
+      ? `% of individual ${kpi.denominator_event_name} occurrences whose own matching ${kpi.event_name} landed within ${kpi.within_hours}h — ${matchedBy}.`
       : hasWindow && !asPercentage
-      ? `Raw count of times the second event got a matching first event within ${kpi.within_hours}h — counted per occurrence, not per user.`
+      ? `Raw count of times the second event got a matching first event within ${kpi.within_hours}h — ${matchedBy}.`
       : `Plain ratio over this window — two separate headcounts, not a per-record check (it won't verify the two events belong to the same record unless you've added a time window above).`;
 
     return (
@@ -727,6 +733,10 @@ function KpiForm({ orgId, goalId, initial, onSaved, onCancel }: { orgId: string;
     asPercentage: boolean;
     withinHoursEnabled: boolean;
     withinHours: string;
+    // Migration 034 — name of a property both events share (e.g. "policy_id")
+    // that ties one occurrence of each together exactly. Optional: blank
+    // keeps the existing same-user-in-order matching.
+    matchKeyProperty: string;
   }>(
     initial?.denominator_event_name
       ? {
@@ -734,6 +744,7 @@ function KpiForm({ orgId, goalId, initial, onSaved, onCancel }: { orgId: string;
           asPercentage: initial.rate_as_percentage !== false,
           withinHoursEnabled: typeof initial.within_hours === "number" && initial.within_hours > 0,
           withinHours: typeof initial.within_hours === "number" ? String(initial.within_hours) : "",
+          matchKeyProperty: initial.match_key_property ?? "",
         }
       : null
   );
@@ -772,6 +783,7 @@ function KpiForm({ orgId, goalId, initial, onSaved, onCancel }: { orgId: string;
       denominator_event_name: sourceMode === "event" && property ? property.referenceEvent.trim() || null : null,
       within_hours: sourceMode === "event" && property?.withinHoursEnabled && property.withinHours.trim() ? Number(property.withinHours) : null,
       rate_as_percentage: sourceMode === "event" && property ? property.asPercentage : true,
+      match_key_property: sourceMode === "event" && property?.withinHoursEnabled && property.matchKeyProperty.trim() ? property.matchKeyProperty.trim() : null,
       target_value: form.target_value.trim() ? Number(form.target_value) : null,
       source_report_id: sourceMode === "manual" ? manual.reportSourceId : null,
       source_label_column: sourceMode === "manual" ? manual.labelColumn : null,
@@ -918,7 +930,7 @@ function KpiForm({ orgId, goalId, initial, onSaved, onCancel }: { orgId: string;
         property === null ? (
           <button
             type="button"
-            onClick={() => setProperty({ referenceEvent: "", asPercentage: false, withinHoursEnabled: false, withinHours: "" })}
+            onClick={() => setProperty({ referenceEvent: "", asPercentage: false, withinHoursEnabled: false, withinHours: "", matchKeyProperty: "" })}
             className="text-[11px] font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
           >
             + Add property
@@ -964,7 +976,7 @@ function KpiForm({ orgId, goalId, initial, onSaved, onCancel }: { orgId: string;
               <span>Only count it within a number of hours of the reference event — matched per user, not as two separate headcounts</span>
             </label>
             {property.withinHoursEnabled && (
-              <div className="pl-5">
+              <div className="pl-5 space-y-2">
                 <input
                   type="number"
                   min={1}
@@ -973,6 +985,18 @@ function KpiForm({ orgId, goalId, initial, onSaved, onCancel }: { orgId: string;
                   onChange={(e) => setProperty({ ...property, withinHours: e.target.value })}
                   className="w-32 border border-gray-200 rounded px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300"
                 />
+                <div>
+                  <input
+                    type="text"
+                    placeholder="Match by property (optional), e.g. policy_id"
+                    value={property.matchKeyProperty}
+                    onChange={(e) => setProperty({ ...property, matchKeyProperty: e.target.value })}
+                    className="w-64 border border-gray-200 rounded px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300"
+                  />
+                  <p className="text-[10px] text-gray-400 mt-0.5">
+                    If both events carry the same value for this property (e.g. both fire with the same policy_id), matching uses it directly instead of guessing by person and order. Leave blank to keep matching by same user.
+                  </p>
+                </div>
               </div>
             )}
           </div>

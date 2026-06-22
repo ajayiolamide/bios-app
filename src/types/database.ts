@@ -96,6 +96,11 @@ export interface Database {
           denominator_event_name: string | null;
           within_hours: number | null;
           rate_as_percentage: boolean;
+          // Migration 034 — when set (e.g. "policy_id"), the numerator and
+          // denominator events for this KPI are matched by that property's
+          // value instead of by same-person-in-order. Null keeps the
+          // existing per-user heuristic.
+          match_key_property: string | null;
           aggregation: "count" | "unique_users" | "unique_sessions";
           business_goal_id: string | null;
           feature_metric_id: string | null;
@@ -121,6 +126,7 @@ export interface Database {
           denominator_event_name?: string | null;
           within_hours?: number | null;
           rate_as_percentage?: boolean;
+          match_key_property?: string | null;
           aggregation?: "count" | "unique_users" | "unique_sessions";
           business_goal_id?: string | null;
           feature_metric_id?: string | null;
@@ -141,6 +147,7 @@ export interface Database {
           denominator_event_name?: string | null;
           within_hours?: number | null;
           rate_as_percentage?: boolean;
+          match_key_property?: string | null;
           aggregation?: "count" | "unique_users" | "unique_sessions";
           business_goal_id?: string | null;
           feature_metric_id?: string | null;

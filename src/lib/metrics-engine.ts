@@ -14,51 +14,63 @@
 // were fast enough (total > 0, matched: 0) — both render as `value: 0`
 // otherwise, which looks identical on the line but means very different things.
 export type MetricDataPoint = { date: string; value: number; matched?: number; total?: number };
-export type TimedEvent = { timestamp: string; user_id: string | null };
+// `match_key` is the value of a KPI's configured match_key_property (e.g.
+// the policy_id on a claim_paid/claim_start_clicked pair) — when present,
+// it's used to group events instead of user_id (see matchOccurrences below).
+export type TimedEvent = { timestamp: string; user_id: string | null; match_key?: string | null };
 
 // Per-OCCURRENCE time-window matching: for each individual denominator-event
 // instance (e.g. each claim lodged, not each person who lodged one), check
-// whether that same user's next not-yet-used numerator event (e.g. that
-// claim's payment) lands within `withinHours` hours after it.
+// whether the next not-yet-used numerator event in the SAME group (e.g.
+// that claim's payment) lands within `withinHours` hours after it.
 //
-// This used to match per USER instead of per occurrence — it grouped a
-// user's denominator events together and counted the whole user as a
-// success if ANY of their instances had a matching numerator event in time.
-// For someone with one claim that's harmless, but for a user with 10 claims
-// where only 1 paid out fast, that read as a 100% match for all 10 — wildly
-// overstating the real rate. Matching one numerator event to at most one
-// denominator event (consumed in chronological order, per user) fixes that:
-// a single payment can no longer count as a fast match for several
-// different claims from the same person.
+// The group is the real-world record when one is available (`match_key` —
+// e.g. policy_id, shared by both events for the same claim) and otherwise
+// falls back to the same-user heuristic this always used. match_key is
+// strictly more precise: two events on the same policy are definitely the
+// same claim, where two events from the same user are only PROBABLY the
+// same claim (a person could have two claims open at once).
+//
+// This used to match per USER only — it grouped a user's denominator events
+// together and counted the whole user as a success if ANY of their
+// instances had a matching numerator event in time. For someone with one
+// claim that's harmless, but for a user with 10 claims where only 1 paid out
+// fast, that read as a 100% match for all 10 — wildly overstating the real
+// rate. Matching one numerator event to at most one denominator event
+// (consumed in chronological order, per group) fixes that: a single payment
+// can no longer count as a fast match for several different claims.
 export function matchOccurrences(
   numeratorEvents: TimedEvent[],
   denominatorEvents: TimedEvent[],
   withinHours: number
 ): { timestamp: string; matched: boolean }[] {
   const windowMs = withinHours * 3600 * 1000;
+  const groupKey = (ev: TimedEvent): string | null => ev.match_key || ev.user_id || null;
 
-  const numByUser = new Map<string, number[]>();
+  const numByGroup = new Map<string, number[]>();
   for (const ev of numeratorEvents) {
-    if (!ev.user_id) continue;
+    const key = groupKey(ev);
+    if (!key) continue;
     const t = new Date(ev.timestamp).getTime();
-    const list = numByUser.get(ev.user_id);
-    if (list) list.push(t); else numByUser.set(ev.user_id, [t]);
+    const list = numByGroup.get(key);
+    if (list) list.push(t); else numByGroup.set(key, [t]);
   }
-  for (const list of numByUser.values()) list.sort((a, b) => a - b);
+  for (const list of numByGroup.values()) list.sort((a, b) => a - b);
 
-  const denomByUser = new Map<string, { timestamp: string; t: number }[]>();
+  const denomByGroup = new Map<string, { timestamp: string; t: number }[]>();
   for (const ev of denominatorEvents) {
-    if (!ev.user_id) continue;
+    const key = groupKey(ev);
+    if (!key) continue;
     const t = new Date(ev.timestamp).getTime();
-    const list = denomByUser.get(ev.user_id);
-    if (list) list.push({ timestamp: ev.timestamp, t }); else denomByUser.set(ev.user_id, [{ timestamp: ev.timestamp, t }]);
+    const list = denomByGroup.get(key);
+    if (list) list.push({ timestamp: ev.timestamp, t }); else denomByGroup.set(key, [{ timestamp: ev.timestamp, t }]);
   }
 
   const results: { timestamp: string; matched: boolean }[] = [];
-  for (const [userId, denoms] of denomByUser.entries()) {
+  for (const [groupId, denoms] of denomByGroup.entries()) {
     denoms.sort((a, b) => a.t - b.t);
-    const numTimes = numByUser.get(userId) ?? [];
-    let cursor = 0; // how far into this user's sorted numerator events we've already consumed
+    const numTimes = numByGroup.get(groupId) ?? [];
+    let cursor = 0; // how far into this group's sorted numerator events we've already consumed
     for (const d of denoms) {
       // Skip past any numerator events that happened before this particular
       // claim — they belong to an earlier claim (or to nothing).

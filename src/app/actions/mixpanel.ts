@@ -356,6 +356,29 @@ export async function syncMixpanelRawEvents(
 
   const admin = createAdminClient();
 
+  // A KPI can name a match_key_property (migration 034) on either its main
+  // event or its denominator event — e.g. claim_paid/claim_start_clicked
+  // both naming "policy_id" so matching can be exact instead of guessed by
+  // person+order. Look up which of the event names being synced right now
+  // have one configured, so the parsing loop below knows which single
+  // property to pull out and save (never the whole payload — see the
+  // comment further down on why that's deliberately avoided).
+  // A handful of rows per org at most — filtering in JS instead of building
+  // a raw PostgREST .or() string keeps this simple and avoids any quoting
+  // mistakes with event names that contain special characters.
+  const matchKeyByEvent = new Map<string, string>();
+  const { data: configuredMetrics } = await admin
+    .from("metrics")
+    .select("event_name, denominator_event_name, match_key_property")
+    .eq("organization_id", orgId)
+    .not("match_key_property", "is", null);
+  for (const m of configuredMetrics ?? []) {
+    const prop = m.match_key_property as string | null;
+    if (!prop) continue;
+    if (m.event_name && eventNames.includes(m.event_name)) matchKeyByEvent.set(m.event_name, prop);
+    if (m.denominator_event_name && eventNames.includes(m.denominator_event_name)) matchKeyByEvent.set(m.denominator_event_name, prop);
+  }
+
   const cappedDays = Math.min(days, 90);
   const earliestAllowedMs = Date.now() - cappedDays * 864e5;
   // This used to start from a single org-wide watermark
@@ -422,18 +445,26 @@ export async function syncMixpanelRawEvents(
         const timeSec = typeof props.time === "number" ? props.time : Math.floor(Date.now() / 1000);
         // Mixpanel's raw export properties payload includes device, browser,
         // city, screen size, library version, etc. — every field it ships
-        // with. Nothing in this app ever reads any of that back out; the
-        // only two keys anything checks are `source` and `is_placeholder`
-        // (see isRealEventName usage and the is_placeholder filters in
-        // cohorts.ts/events.ts). Storing the full payload was pure waste —
-        // at ~590k rows it alone accounted for the bulk of the database
-        // hitting its disk-space cap and going read-only. Only `distinct_id`
-        // and `time` are ever used, and those are already pulled out into
+        // with. Nothing in this app ever reads any of that back out by
+        // default; storing the full payload was pure waste — at ~590k rows
+        // it alone accounted for the bulk of the database hitting its
+        // disk-space cap and going read-only. Only `distinct_id` and `time`
+        // are ever used generically, and those are already pulled out into
         // their own user_id/timestamp columns above.
+        //
+        // The ONE exception (migration 034): if a KPI explicitly named this
+        // event's match_key_property (e.g. "policy_id"), pull just that one
+        // value out and keep it — a single short string per row, only for
+        // events actually configured for it, never the rest of the payload.
+        const properties: Record<string, unknown> = { source: "mixpanel" };
+        const matchKeyProp = matchKeyByEvent.get(parsed.event);
+        if (matchKeyProp && typeof props[matchKeyProp] === "string") {
+          properties.match_key = props[matchKeyProp];
+        }
         rows.push({
           organization_id: orgId,
           name: parsed.event,
-          properties: { source: "mixpanel" },
+          properties,
           user_id: typeof props.distinct_id === "string" ? props.distinct_id : null,
           session_id: null,
           timestamp: new Date(timeSec * 1000).toISOString(),
