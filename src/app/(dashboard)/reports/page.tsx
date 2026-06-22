@@ -15,6 +15,7 @@ import {
 } from "@/app/actions/review";
 import type { SlideComment } from "@/app/actions/review";
 import { getReportTemplates } from "@/app/actions/settings";
+import { getCohortConversion, getCohortRetention, type CohortFilter } from "@/app/actions/cohorts";
 import type { ReportSource, Report, ReportTemplate, BrandSettings } from "@/types/database";
 import type { SlidesDeck, SlideContent, DesignTheme } from "@/app/actions/reports";
 import { SlideCard } from "@/components/reports/slide-card";
@@ -723,6 +724,15 @@ function PreviewModal({
   const [reviewId, setReviewId] = useState<string | null>(initialReviewId ?? null);
   const [comments, setComments] = useState<SlideComment[]>([]);
   const [replanningSlide, setReplanningSlide] = useState(false);
+  // Freeform "ask AI to change this slide" box in the Edit panel — e.g. typing
+  // "use a chart here instead of a card" and having the AI actually swap the
+  // slide type, which the manual field-by-field SlideEditor below can't do
+  // (it only edits values within whatever type the slide already is). This
+  // reuses the exact same replanSlide action that "Replan this slide" (under
+  // reviewer comments) already calls — same capability, just reachable
+  // directly from the editor instead of needing a published review link
+  // and a reviewer comment first.
+  const [aiEditText, setAiEditText] = useState("");
 
   const slides = deck?.slides ?? [];
   const total = slides.length;
@@ -972,6 +982,7 @@ function PreviewModal({
     setReplanningSlide(false);
     if (res.slide) {
       updateSlide(res.slide);
+      setAiEditText("");
     }
   };
 
@@ -1433,6 +1444,27 @@ function PreviewModal({
                   <p className="text-xs text-gray-400 mt-0.5 capitalize">{slide.type.replace("_", " ")} slide</p>
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                  <div className="border border-indigo-100 bg-indigo-50/60 rounded-xl p-3">
+                    <p className="text-xs font-semibold text-indigo-800 flex items-center gap-1.5">
+                      <Sparkles size={12} /> Ask AI to change this slide
+                    </p>
+                    <p className="text-[11px] text-indigo-400 mt-0.5 mb-2">
+                      e.g. &quot;use a chart here instead of a card&quot; — it can swap the slide type, not just edit text.
+                    </p>
+                    <textarea
+                      value={aiEditText}
+                      onChange={e => setAiEditText(e.target.value)}
+                      placeholder="Type what you want changed…"
+                      rows={2}
+                      className="w-full border border-indigo-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white resize-none"
+                    />
+                    <button
+                      onClick={() => handleReplanSlide(aiEditText)}
+                      disabled={replanningSlide || !aiEditText.trim()}
+                      className="mt-2 w-full flex items-center justify-center gap-1.5 text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 px-3 py-1.5 rounded-lg disabled:opacity-50 transition-colors">
+                      {replanningSlide ? <><Loader2 size={11} className="animate-spin" /> Applying…</> : <><RotateCcw size={11} /> Apply</>}
+                    </button>
+                  </div>
                   <SlideEditor slide={slide} onChange={updateSlide} />
                 </div>
               </>
@@ -2727,6 +2759,15 @@ function StepCard({
   );
 }
 
+// Mirrors the exact shape Cohort Builder saves under `bios_cohorts_<orgId>` —
+// saved cohorts live only in this browser's local storage (never written to
+// the database), so this is the only way a report can see them at all.
+type SavedCohort = { id: string; name: string; filter: CohortFilter; createdAt: string };
+function loadSavedCohorts(orgId: string): SavedCohort[] {
+  try { return JSON.parse(localStorage.getItem(`bios_cohorts_${orgId}`) ?? "[]"); }
+  catch { return []; }
+}
+
 function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; sourcesWithData: SourceWithData[]; onGenerated: () => void }) {
   const [templates, setTemplates] = useState<ReportTemplate[]>([]);
   const [selectedSourceId, setSelectedSourceId] = useState("");
@@ -2741,7 +2782,7 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
 
   // BIOS data sections
   const [biosSections, setBiosSections] = useState<BiosSections>({ goals: true, features: true, funnelsKpis: true });
-  const anyBiosSection = biosSections.goals || biosSections.features || biosSections.funnelsKpis;
+  const anyBiosSection = biosSections.goals || biosSections.features || biosSections.funnelsKpis || biosSections.funnels;
 
   // Per-template planning state
   type PlanState = { status: "idle" | "planning" | "ready" | "error"; deck?: SlidesDeck; tokensUsed?: number; error?: string };
@@ -2755,6 +2796,9 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
   const [savedInsights, setSavedInsights] = useState<SavedInsight[]>([]);
   const [selectedInsightIds, setSelectedInsightIds] = useState<Record<string, string[]>>({});
   const [expandedInsights, setExpandedInsights] = useState<Record<string, boolean>>({});
+  // Saved cohorts (Cohort Builder, local-storage only — see loadSavedCohorts above)
+  const [savedCohorts, setSavedCohorts] = useState<SavedCohort[]>([]);
+  const [selectedCohortIds, setSelectedCohortIds] = useState<string[]>([]);
   // Guided deck: per-template, per-slide guide
   const [slideGuides, setSlideGuides] = useState<Record<string, SlideGuide[]>>({});
   const [expandedGuides, setExpandedGuides] = useState<Record<string, boolean>>({});
@@ -2764,6 +2808,7 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
   useEffect(() => {
     getReportTemplates(orgId).then(t => { setTemplates(t); if (t.length > 0) setSelectedTemplateId(t[0].id); });
     getSavedInsights(orgId).then(setSavedInsights);
+    setSavedCohorts(loadSavedCohorts(orgId));
     // Get brand colors
     import("@/app/actions/settings").then(({ getBrandSettings }) =>
       getBrandSettings(orgId).then(b => {
@@ -2786,8 +2831,14 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
   const totalRows = selected?.rows.length ?? 0;
   const isFiltered = filteredRows.length !== totalRows && totalRows > 0;
 
+  // A report can now be built from a saved cohort alone (no Goals/Features/
+  // Funnels toggled and no sheet rows) — without this, picking only a cohort
+  // would silently hit the same "nothing to report" gate that's meant for
+  // when truly nothing is selected.
+  const hasAnyDataSource = anyBiosSection || filteredRows.length > 0 || selectedCohortIds.length > 0;
+
   const handlePlan = async (template: ReportTemplate) => {
-    if (!anyBiosSection && filteredRows.length === 0) return;
+    if (!hasAnyDataSource) return;
     setPlanStates(prev => ({ ...prev, [template.id]: { status: "planning" } }));
     try {
       // Build source config from ONLY the currently selected source — not
@@ -2822,7 +2873,36 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
         ? "Specifically include these previously-saved insights:\n" +
           pickedInsights.map(i => `- ${i.content}${i.context ? ` (${i.context})` : ""}`).join("\n")
         : "";
-      const combinedNotes = [extraNotes[template.id], insightsBlock].filter(Boolean).join("\n\n");
+
+      // Saved cohorts only exist in this browser's local storage, so they
+      // have to be computed here (client-side, where localStorage is
+      // reachable) rather than inside planReport itself. Computed fresh on
+      // every plan — this is the cohort's CURRENT state, not a stale snapshot
+      // from whenever it was saved. Folded into the same free-text channel as
+      // insights above, so planReport doesn't need to know cohorts exist.
+      const pickedCohorts = savedCohorts.filter(c => selectedCohortIds.includes(c.id));
+      const cohortLines = await Promise.all(pickedCohorts.map(async (c) => {
+        const f = c.filter;
+        if (f.eventName && f.secondEventName) {
+          const res = await getCohortConversion(orgId, f);
+          if (res.error) return `- "${c.name}": ${res.error}`;
+          return `- "${c.name}": of ${res.firstEventUsers} users who did ${res.eventName}, ${res.convertedPct}% also did ${res.secondEventName} within ${res.withinDays} days.`;
+        }
+        if (f.eventName) {
+          const data = await getCohortRetention(orgId, { eventName: f.eventName });
+          const latest = data.rows[data.rows.length - 1];
+          if (!latest) return `- "${c.name}": no current data for "${f.eventName}".`;
+          const week1 = latest.retained[1] ?? 0;
+          const pct = latest.totalUsers > 0 ? Math.round((week1 / latest.totalUsers) * 1000) / 10 : 0;
+          return `- "${c.name}" (users who did "${f.eventName}"): most recent cohort week ${latest.cohortWeek}, ${latest.totalUsers} users, ${pct}% still active 1 week later.`;
+        }
+        return `- "${c.name}": ${f.description}`;
+      }));
+      const cohortsBlock = cohortLines.length > 0
+        ? "Current state of these saved cohorts (real computed data, not a guess):\n" + cohortLines.join("\n")
+        : "";
+
+      const combinedNotes = [extraNotes[template.id], insightsBlock, cohortsBlock].filter(Boolean).join("\n\n");
 
       const res = await planReport(
         orgId,
@@ -2987,7 +3067,7 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
           <div className="pt-4 border-t border-gray-100">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-semibold text-gray-600">Include Metrik data</p>
-              {!anyBiosSection && filteredRows.length === 0 && (
+              {!hasAnyDataSource && (
                 <span className="text-[11px] text-red-500 font-medium">Select at least one source</span>
               )}
             </div>
@@ -2996,6 +3076,7 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
                 { key: "goals",      label: "Business Goals",  desc: "Active goals, status, targets and timeframes" },
                 { key: "features",   label: "Feature Metrics", desc: "Logged features and their tracking plans" },
                 { key: "funnelsKpis", label: "KPIs & Metrics",  desc: "Metric definitions and event tracking items" },
+                { key: "funnels",    label: "User Journey",    desc: "Real step-by-step funnel conversion, current data" },
               ] as { key: keyof BiosSections; label: string; desc: string }[]).map(({ key, label, desc }) => (
                 <button
                   key={key}
@@ -3012,6 +3093,39 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
               ))}
             </div>
           </div>
+
+          {/* Saved cohorts — these live only in this browser's local storage
+              (Cohort Builder never persisted them to the database), so they
+              can't be fetched server-side like Goals/Features/Funnels above.
+              Each selected cohort's CURRENT result is computed here on the
+              client when a report is planned, then folded into the same
+              free-text briefing-notes channel saved AI insights already use
+              below — no separate plumbing needed in planReport itself. */}
+          {savedCohorts.length > 0 && (
+            <div className="pt-4 border-t border-gray-100">
+              <p className="text-xs font-semibold text-gray-600 mb-2">Include saved cohorts (current state)</p>
+              <div className="flex flex-wrap gap-2">
+                {savedCohorts.map(c => {
+                  const checked = selectedCohortIds.includes(c.id);
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      title={c.filter.description}
+                      onClick={() => setSelectedCohortIds(prev => checked ? prev.filter(id => id !== c.id) : [...prev, c.id])}
+                      className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+                        checked ? "bg-indigo-50 border-indigo-200 text-indigo-700" : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+                      }`}
+                    >
+                      {checked && <CheckCircle2 size={12} />}
+                      <Bookmark size={11} />
+                      {c.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
         </div>
       </StepCard>
@@ -3071,7 +3185,7 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
                           <Eye size={12} /> Preview slides
                         </button>
                       )}
-                      <button onClick={() => handlePlan(t)} disabled={ps.status === "planning" || (!anyBiosSection && filteredRows.length === 0)}
+                      <button onClick={() => handlePlan(t)} disabled={ps.status === "planning" || !hasAnyDataSource}
                         className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 ${
                           ps.status === "ready" ? "text-gray-500 bg-gray-50 hover:bg-gray-100" : "text-white bg-indigo-600 hover:bg-indigo-700"
                         }`}>

@@ -4,6 +4,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createAdminClient, createServerClient } from "@/lib/supabase/server";
 import type { ReportSource, Report, BusinessGoal, FeatureMetric, Metric } from "@/types/database";
 import { getFeatureImpactSummaries, type FeatureImpactResult } from "./feature-impact";
+import { getFunnels, computeFunnel, type FunnelStepResult } from "./funnels";
 
 // ─── BIOS context types ───────────────────────────────────────────────────────
 
@@ -11,6 +12,20 @@ export type BiosSections = {
   goals?: boolean;
   features?: boolean;
   funnelsKpis?: boolean;
+  // "User Journey" in the UI — the real Funnels table (sequential step
+  // conversion), distinct from `funnelsKpis` above which (despite its name)
+  // only ever pulled the `metrics` table, never actual funnels. Kept as a
+  // separate flag rather than folding into funnelsKpis so existing reports
+  // that already had that box checked don't suddenly start including a new
+  // section they never asked for.
+  funnels?: boolean;
+};
+
+export type FunnelSummary = {
+  name: string;
+  description: string | null;
+  lookbackDays: number;
+  steps: FunnelStepResult[];
 };
 
 export type BiosContext = {
@@ -18,6 +33,7 @@ export type BiosContext = {
   features?: FeatureMetric[];
   metrics?: Metric[];
   featureImpact?: FeatureImpactResult[];
+  funnels?: FunnelSummary[];
 };
 
 export async function getBiosReportData(
@@ -71,6 +87,25 @@ export async function getBiosReportData(
         .eq("organization_id", orgId)
         .order("created_at", { ascending: false })
         .then(({ data }) => { result.metrics = (data ?? []) as Metric[]; })
+    );
+  }
+
+  if (sections.funnels) {
+    // Real sequential-step funnels (the "User Journey" data) — distinct from
+    // funnelsKpis above. Computed live, same as opening the Funnels page —
+    // each funnel's current step-by-step conversion, not a stored snapshot.
+    promises.push(
+      getFunnels(orgId).then(async (funnels) => {
+        const computed = await Promise.all(
+          funnels.map(async (f) => {
+            const steps = await computeFunnel(orgId, f.steps, f.lookback_days).catch(() => []);
+            return { name: f.name, description: f.description, lookbackDays: f.lookback_days, steps };
+          })
+        );
+        // Skip funnels that resolved to no data at all rather than padding
+        // the report with empty step lists.
+        result.funnels = computed.filter((f) => f.steps.length > 0);
+      }).catch(() => { result.funnels = []; })
     );
   }
 
@@ -452,7 +487,8 @@ export async function planReport(
     (biosContext.goals?.length ?? 0) > 0 ||
     (biosContext.features?.length ?? 0) > 0 ||
     (biosContext.metrics?.length ?? 0) > 0 ||
-    (biosContext.featureImpact?.length ?? 0) > 0
+    (biosContext.featureImpact?.length ?? 0) > 0 ||
+    (biosContext.funnels?.length ?? 0) > 0
   );
   if (!hasSheetData && !hasBiosData) {
     return {
@@ -504,6 +540,18 @@ export async function planReport(
         biosContext.metrics.slice(0, 20).map(m =>
           `- ${m.name} | Event: ${m.event_name ?? "n/a"} | Aggregation: ${m.aggregation}`
         ).join("\n")
+      );
+    }
+
+    if (biosContext.funnels && biosContext.funnels.length > 0) {
+      parts.push(`USER JOURNEY / FUNNELS (${biosContext.funnels.length}) — real step-by-step conversion, current data:\n` +
+        biosContext.funnels.slice(0, 8).map(f => {
+          const lines: string[] = [`- ${f.name}${f.description ? ` — ${f.description}` : ""} (last ${f.lookbackDays} days):`];
+          f.steps.forEach(s => {
+            lines.push(`    Step ${s.step} (${s.event_name}): ${s.users} users | ${s.conversion_from_prev}% vs previous step | ${s.conversion_from_first}% vs step 1`);
+          });
+          return lines.join("\n");
+        }).join("\n")
       );
     }
 
@@ -620,6 +668,9 @@ REPORT: ${template.name}
 PERIOD: ${period}
 SLIDES: ${template.slide_hint}
 AUDIENCE: ${template.instructions}
+STRICT PERIOD RULE: This report is explicitly for ${period} — not today's date, not the most recent date in any data below.
+Never name, imply, or compute a stat for any month/quarter/date other than ${period} anywhere in the deck (titles, narration, chart labels, captions).
+The data below was not necessarily pre-filtered to ${period} and may include other dates — if so, silently treat it as the closest available stand-in for ${period} rather than calling out the month it actually came from.
 ${biosBlock}${sourceConfigBlock}${biggestMoversBlock}${slideGuidesBlock}
 SHEET DATA (${filteredRows.length} rows)${filteredRows.length === 0 ? " — no sheet data provided, use internal Metrik data above" : ""}:
 ${filteredRows.length > 0 ? `Headers: ${headers}\n---\n${csvPreview}\n---` : "(none)"}

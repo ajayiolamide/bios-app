@@ -334,7 +334,20 @@ export default function SettingsPage() {
     setLogoError(null);
     const supabase = createClient();
     const ext = file.name.split(".").pop();
-    const path = `${currentOrg.id}/logo.${ext}`;
+    // A fixed path (e.g. "<org>/logo.png") reused on every upload keeps the
+    // exact same public URL forever, with `upsert: true` swapping the bytes
+    // underneath it. Supabase Storage serves that URL through a CDN with its
+    // own cache lifetime, so re-uploading a logo doesn't reliably invalidate
+    // copies already cached at that URL — the browser preview here, the
+    // Reports preview, and pptxgenjs's own server-side fetch when building a
+    // deck can all keep serving the OLD image bytes for a while even though
+    // the upload itself succeeded. A query-string cache-buster would fix the
+    // browser cases but breaks pptxgenjs (it reads the image type off the
+    // literal end of the URL). Using a unique filename per upload sidesteps
+    // all of that at once: every upload gets a brand-new URL, so there's
+    // nothing stale to ever be served, anywhere — without needing any
+    // cache-busting trick at all.
+    const path = `${currentOrg.id}/logo-${Date.now()}.${ext}`;
     const { error } = await supabase.storage.from("logos").upload(path, file, { upsert: true });
     if (error) {
       setLogoError(

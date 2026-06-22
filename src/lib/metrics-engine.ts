@@ -101,10 +101,17 @@ export function matchOccurrences(
   // A payment landing within an hour of the claim being lodged isn't a
   // believably fast real resolution — claims actually take real review
   // time. Same-second/same-minute pairs are the signature of test or
-  // scripted events firing both at once, not genuine processing. Anything
-  // closer than this gets discarded as junk rather than counted as a win
-  // (see the inner skip-loop below).
-  const MIN_ELAPSED_MS = 60 * 60 * 1000; // 1 hour
+  // scripted events firing both at once, not genuine processing.
+  //
+  // This is a claims-specific business judgment, NOT a universal truth —
+  // this same function is also used by Cohort Builder's generic "did user
+  // fire A then B" check (cohorts.ts), where a FAST conversion (e.g.
+  // activating a plan minutes after purchasing) is a good, completely
+  // real outcome, not a sign of fake data. Gating this on requireMatchKey
+  // (only true for KPIs that explicitly opted into policy-style matching,
+  // i.e. only this claims use case) keeps it from leaking into every other
+  // two-event check that happens to share this engine.
+  const MIN_ELAPSED_MS = requireMatchKey ? 60 * 60 * 1000 : 0; // 1 hour, claims-matching only
   const groupKey = (ev: TimedEvent): string | null =>
     requireMatchKey ? (ev.match_key || null) : (ev.match_key || ev.user_id || null);
 
