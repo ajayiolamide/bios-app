@@ -1514,7 +1514,7 @@ type ObjectiveWizardStep = "describe" | "title" | "target" | "context" | "done";
 const OBJECTIVE_STEPS: ObjectiveWizardStep[] = ["describe", "title", "target", "context"];
 
 function GuidedObjectiveWizard({
-  onSaved, onCancel, hasProductGoals = true, onCreateFirstGoal,
+  onSaved, onCancel, hasProductGoals = true, onCreateFirstGoal, onObjectiveSaved,
 }: {
   onSaved: () => void; onCancel: () => void;
   // When false (no Product Goal exists anywhere yet), saving doesn't just
@@ -1524,6 +1524,11 @@ function GuidedObjectiveWizard({
   // just drop me." When true, saving behaves exactly as before.
   hasProductGoals?: boolean;
   onCreateFirstGoal?: () => void;
+  // Called immediately when the objective is saved to DB, without closing
+  // the wizard — triggers a background reload so that by the time the user
+  // clicks the "done" step's next button, the page state is already fresh
+  // and there's no flash of a stale first-run state.
+  onObjectiveSaved?: () => void;
 }) {
   const { currentOrg } = useOrg();
   const [step, setStep] = useState<ObjectiveWizardStep>("describe");
@@ -1562,6 +1567,11 @@ function GuidedObjectiveWizard({
     // Business Goal and there's nothing underneath it yet, that's the exact
     // moment someone's most likely to be left wondering what to do next.
     if (hasProductGoals) { onSaved(); return; }
+    // Trigger a background page reload immediately so the objectives array
+    // is up-to-date by the time the user clicks either button on the "done"
+    // step — eliminates the flash of the first-run state that appeared while
+    // load() was still in-flight after they clicked "Add my first Product Goal."
+    onObjectiveSaved?.();
     setStep("done");
   }
 
@@ -1863,10 +1873,11 @@ function ObjectiveCard({
   );
 }
 
-// The plain-text rendering of a single Business Goal — no border, no
-// header row, no footer divider. It's "the one big thing," not a list
-// item, so it shouldn't borrow card/grid furniture that only earns its
-// keep once there's more than one of these to compare side by side.
+// Premium card for a single Business Goal. Rectangle with a soft pastel
+// blue background, a 2px gradient line along the top, and a box-shadow
+// glow whose colour drifts with progress — indigo when on-track, amber
+// when at risk, rose when falling behind. A ghost Trophy icon adds
+// texture without adding visual weight.
 function ObjectiveStatement({
   objective, goals, goalProgress, labelPlural, onStatusChange, onDelete, onAddAnother,
 }: {
@@ -1885,60 +1896,112 @@ function ObjectiveStatement({
   const isMissed = objective.status === "missed";
   const signal = progressSignal(progressRatio, goalCount);
 
+  // Colour palette keyed by signal — the glow and gradient shift with progress
+  // so the card quietly communicates health without a separate status badge.
+  const palette = {
+    good:    { bg: "#f3f4ff", border: "rgba(99,102,241,0.28)",  glow: "rgba(99,102,241,0.14)", accent: "#6366f1", gradFrom: "#818cf8", gradTo: "#a78bfa" },
+    warn:    { bg: "#fffbf0", border: "rgba(217,119,6,0.25)",   glow: "rgba(217,119,6,0.12)",  accent: "#d97706", gradFrom: "#fbbf24", gradTo: "#fb923c" },
+    bad:     { bg: "#fff5f5", border: "rgba(225,29,72,0.25)",   glow: "rgba(225,29,72,0.12)",  accent: "#e11d48", gradFrom: "#fb7185", gradTo: "#f87171" },
+    neutral: { bg: "#f5f7ff", border: "rgba(99,102,241,0.18)",  glow: "rgba(99,102,241,0.08)", accent: "#818cf8", gradFrom: "#a5b4fc", gradTo: "#93c5fd" },
+  }[signal.tone];
+
   return (
-    <div className="flex items-start justify-between gap-6 pb-6 border-b border-gray-100">
-      <div className="flex-1 min-w-0">
-        <p className="text-[10px] font-semibold tracking-widest uppercase text-indigo-500 mb-1.5">This quarter / year</p>
-        <p className={`text-xl font-bold tracking-tight mb-1.5 ${isMissed ? "line-through text-gray-300" : "text-gray-900"}`}>
-          {objective.title}
-        </p>
-        {objective.description && (
-          <p className="text-sm text-gray-400 leading-relaxed mb-1.5 max-w-2xl">{objective.description}</p>
-        )}
-        <p className="text-sm text-gray-400 mb-2.5">
-          {[objective.target, objective.timeframe].filter(Boolean).join(" · ") || "No target set"}
-        </p>
-        <div className="flex items-center gap-3">
-          <SignalChip signal={signal} />
-          <span className="text-xs text-gray-400">
-            {pct !== null
-              ? `${pct.toLocaleString()}% rolled up from ${labelPlural.toLowerCase()}${overshot ? " — exceeded" : ""}`
-              : goalCount === 0
-              ? `No ${labelPlural.toLowerCase()} linked yet`
-              : `${goalCount} ${labelPlural.toLowerCase()} linked — none measurable yet`}
-          </span>
-        </div>
+    <div
+      className="relative rounded-2xl overflow-hidden"
+      style={{
+        background: palette.bg,
+        boxShadow: `0 0 0 1.5px ${palette.border}, 0 8px 32px -8px ${palette.glow}`,
+      }}
+    >
+      {/* 2px gradient accent along the top — the "gradient line" the card needed */}
+      <div
+        className="absolute inset-x-0 top-0 h-[2px]"
+        style={{ background: `linear-gradient(90deg, ${palette.gradFrom}, ${palette.gradTo})` }}
+      />
+
+      {/* Ghost Trophy — large enough to add texture, faint enough to not compete */}
+      <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none select-none">
+        <Trophy size={96} style={{ color: palette.accent, opacity: 0.07 }} />
       </div>
-      <div className="flex items-center gap-3 flex-shrink-0">
-        <div className="relative">
-          <button onClick={() => setMenuOpen(!menuOpen)} className="flex items-center gap-0.5 text-xs text-gray-400 hover:text-gray-600 transition-colors">
-            {STATUS_OPTIONS.find((s) => s.value === objective.status)?.label}
-            <ChevronDown size={11} />
-          </button>
-          {menuOpen && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-              <div className="absolute right-0 top-6 z-20 w-36 rounded-lg border border-gray-200 bg-white shadow-md overflow-hidden">
-                {STATUS_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => { onStatusChange(opt.value); setMenuOpen(false); }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
-                  >
-                    {objective.status === opt.value ? <Check size={11} className="text-indigo-500" /> : <span className="w-[11px]" />}
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
+
+      <div className="relative px-6 pt-7 pb-5">
+        <div className="flex items-start justify-between gap-6">
+          <div className="flex-1 min-w-0">
+            <p
+              className="text-[10px] font-semibold tracking-widest uppercase mb-2"
+              style={{ color: palette.accent }}
+            >
+              Business Goal · {objective.timeframe || "This quarter / year"}
+            </p>
+
+            <p className={`text-xl font-bold tracking-tight mb-1.5 ${isMissed ? "line-through text-gray-300" : "text-gray-900"}`}>
+              {objective.title}
+            </p>
+
+            {objective.description && (
+              <p className="text-sm text-gray-500 leading-relaxed mb-2 max-w-2xl">{objective.description}</p>
+            )}
+
+            {(objective.target || objective.timeframe) && (
+              <p className="text-xs text-gray-400 mb-3">
+                {[objective.target, objective.timeframe].filter(Boolean).join(" · ")}
+              </p>
+            )}
+
+            <div className="flex items-center gap-3 flex-wrap">
+              <SignalChip signal={signal} />
+              <span className="text-xs text-gray-400">
+                {pct !== null
+                  ? `${pct.toLocaleString()}% toward target${overshot ? " — exceeded" : ""}`
+                  : goalCount === 0
+                  ? `No ${labelPlural.toLowerCase()} linked yet`
+                  : `${goalCount} ${labelPlural.toLowerCase()} linked — none measurable yet`}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5 flex-shrink-0 pt-0.5">
+            <div className="relative">
+              <button
+                onClick={() => setMenuOpen(!menuOpen)}
+                className="flex items-center gap-0.5 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                {STATUS_OPTIONS.find((s) => s.value === objective.status)?.label}
+                <ChevronDown size={10} />
+              </button>
+              {menuOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+                  <div className="absolute right-0 top-6 z-20 w-36 rounded-lg border border-gray-200 bg-white shadow-md overflow-hidden">
+                    {STATUS_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        onClick={() => { onStatusChange(opt.value); setMenuOpen(false); }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
+                      >
+                        {objective.status === opt.value ? <Check size={11} className="text-indigo-500" /> : <span className="w-[11px]" />}
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+            <button
+              onClick={onAddAnother}
+              className="text-xs font-medium text-gray-400 hover:text-gray-700 transition-colors whitespace-nowrap"
+            >
+              + Add another
+            </button>
+            <button
+              onClick={onDelete}
+              className="text-gray-300 hover:text-red-500 transition-colors"
+              title="Delete business goal"
+            >
+              <Trash2 size={13} />
+            </button>
+          </div>
         </div>
-        <button onClick={onAddAnother} className="text-xs font-medium text-gray-400 hover:text-gray-700 transition-colors whitespace-nowrap">
-          + Add another
-        </button>
-        <button onClick={onDelete} className="text-gray-300 hover:text-red-500 transition-colors" title="Delete business goal">
-          <Trash2 size={13} />
-        </button>
       </div>
     </div>
   );
@@ -1988,6 +2051,7 @@ function ObjectivesPanel({
         onCancel={() => setShowForm(false)}
         hasProductGoals={goals.length > 0}
         onCreateFirstGoal={onCreateFirstGoal}
+        onObjectiveSaved={onSaved}
       />
     );
   }
@@ -2503,10 +2567,17 @@ function GuidedGoalWizard({
   );
 
   if (step === "kpi_describe") return (
-    <WizardShell label={`How will you know "${createdGoal?.title}" is moving?`} onCancel={onCancel} error={error} step={stepIndex} totalSteps={goalSteps.length}>
+    <WizardShell label={`How will you measure "${createdGoal?.title}"?`} onCancel={onCancel} error={error} step={stepIndex} totalSteps={goalSteps.length}>
+      {/* Explicit phase-transition beat — the user just saved their Product
+          Goal and the wizard is now moving into KPI territory. Without this,
+          the step swap felt like an abrupt context switch with no explanation. */}
+      <div className="flex items-center gap-2 -mt-2">
+        <CheckCircle2 size={14} className="text-emerald-500 flex-shrink-0" />
+        <p className="text-xs text-emerald-600 font-medium">Goal saved — now define how you&apos;ll track it.</p>
+      </div>
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1.5">
-          Describe the one thing you&apos;d look at.
+          What&apos;s the one number you&apos;d look at to know this goal is moving?
         </label>
         <textarea
           autoFocus
@@ -2940,19 +3011,33 @@ export default function BusinessGoalsPage() {
             onCancel={() => setShowForm(false)}
           />
         ) : (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 py-20 text-center">
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 py-20 text-center px-8">
             <div className="w-11 h-11 rounded-2xl bg-indigo-50 flex items-center justify-center mb-5">
               <Target size={18} className="text-indigo-500" />
             </div>
-            <h3 className="text-2xl font-bold text-gray-900 tracking-tight mb-2">Now break it down.</h3>
-            <p className="text-sm text-gray-400 max-w-sm mb-6">
-              Log the first {productGoalLabel.toLowerCase()} your team owns to move that Business Goal forward.
+
+            {/* Reassure: their Business Goal is done */}
+            <div className="flex items-center gap-2 mb-4">
+              <CheckCircle2 size={14} className="text-emerald-500" />
+              <p className="text-xs text-emerald-600 font-medium">Business Goal set</p>
+            </div>
+
+            <h3 className="text-2xl font-bold text-gray-900 tracking-tight mb-3">Now, break it down.</h3>
+
+            {/* Explain what a Product Goal is before asking them to create one */}
+            <p className="text-sm text-gray-500 max-w-md mb-2">
+              A <strong className="text-gray-700">{productGoalLabel}</strong> is the specific, team-owned outcome that moves your Business Goal forward —
+              like &quot;Reduce claims processing time&quot; or &quot;Improve signup completion rate.&quot;
             </p>
+            <p className="text-sm text-gray-400 max-w-sm mb-8">
+              You&apos;ll define a KPI to measure it and link the features your team is building to move that number.
+            </p>
+
             <button
               onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors"
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-10 py-3 rounded-xl transition-colors"
             >
-              <Plus size={14} /> Add {productGoalLabel.toLowerCase()}
+              <Plus size={14} /> Add my first {productGoalLabel.toLowerCase()}
             </button>
           </div>
         )
