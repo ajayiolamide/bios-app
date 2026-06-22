@@ -799,7 +799,7 @@ RULES:
 - Prefer 1-2 big_stat slides for the most critical headline metrics.
 - Return ONLY valid JSON. No markdown. No explanation.${extraNotes ? `
 
-EXTRA INSTRUCTIONS FROM THE PRESENTER (must be incorporated):
+EXTRA INSTRUCTIONS FROM THE PRESENTER — fold these in ADDITIONALLY, they do not replace or deprioritize anything mandatory above (every Business Goal still needs a mention, the period rule still applies, etc.):
 ${extraNotes}` : ""}`;
 
   try {
