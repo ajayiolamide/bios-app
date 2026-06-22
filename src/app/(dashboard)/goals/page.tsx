@@ -27,9 +27,10 @@ import { getFeatureImpactSummaries, type FeatureImpactResult } from "@/app/actio
 import { addGuardrailToFeature } from "@/app/actions/feature-metrics";
 import {
   getKpisByGoal, createGoalKpi, updateGoalKpi, deleteGoalKpi,
-  getDistinctEventNames, attachEventToKpi,
+  getDistinctEventNames, attachEventToKpi, getKpiForRange,
   getGoalProgress, type MetricWithData, type GoalProgress,
 } from "@/app/actions/metrics";
+import type { MetricDataPoint } from "@/lib/metrics-engine";
 import {
   getCompanyObjectives, createCompanyObjective, setGoalObjective,
   updateCompanyObjectiveStatus, deleteCompanyObjective,
@@ -364,6 +365,97 @@ function WireEventForm({ kpi, orgId, onDone }: { kpi: MetricWithData; orgId: str
   );
 }
 
+// Last 6 calendar months (current month-to-date, then 5 full months back) —
+// used by the KPI row's range picker so a goal like "95% paid within 24h"
+// can be checked month by month instead of only ever "the trailing 30 days
+// as of right now."
+function getMonthOptions(): { label: string; since: string; until: string }[] {
+  const now = new Date();
+  const opts: { label: string; since: string; until: string }[] = [];
+  for (let i = 0; i < 6; i++) {
+    const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+    opts.push({
+      label: monthStart.toLocaleDateString(undefined, { month: "long", year: "numeric" }),
+      since: monthStart.toISOString(),
+      until: monthEnd.toISOString(),
+    });
+  }
+  return opts;
+}
+
+// Shared by both KpiRow variants below (the rate/count-with-reference-event
+// one and the plain volume one) — lets either swap its "last 30 days"
+// number for a specific calendar month on demand, without changing what
+// anything else on the page sees by default.
+function RangePicker({
+  metricId, defaultTotal, defaultTrend, asPercentage, unit, onResult,
+}: {
+  metricId: string;
+  defaultTotal: number;
+  defaultTrend: MetricDataPoint[];
+  asPercentage: boolean;
+  unit: string;
+  onResult?: (trend: MetricDataPoint[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [picked, setPicked] = useState<{ label: string; since: string; until: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{ total: number; trend: MetricDataPoint[] } | null>(null);
+
+  async function pick(opt: { label: string; since: string; until: string } | null) {
+    setOpen(false);
+    setPicked(opt);
+    if (!opt) { setResult(null); onResult?.(defaultTrend); return; }
+    setLoading(true);
+    const res = await getKpiForRange(metricId, opt.since, opt.until);
+    setLoading(false);
+    if (!res.error) { setResult(res); onResult?.(res.trend); }
+  }
+
+  const shownTotal = picked ? (result?.total ?? null) : defaultTotal;
+  const shownLabel = picked ? picked.label : "30d";
+
+  return (
+    <div className="text-right flex-shrink-0 relative">
+      <p className="text-sm font-bold text-gray-900 tabular-nums">
+        {loading ? <Loader2 size={13} className="animate-spin inline text-gray-300" /> : shownTotal === null ? "—" : asPercentage ? `${shownTotal}%` : shownTotal.toLocaleString()}
+      </p>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-0.5 text-[10px] text-gray-400 hover:text-indigo-600 transition-colors ml-auto"
+      >
+        {picked ? shownLabel : `${unit} · ${shownLabel}`}
+        <ChevronDown size={9} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-9 z-20 w-44 bg-white border border-gray-100 rounded-xl shadow-lg py-1">
+            <button
+              onClick={() => pick(null)}
+              className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 transition-colors ${!picked ? "text-indigo-600 font-semibold" : "text-gray-600"}`}
+            >
+              Last 30 days
+            </button>
+            <div className="h-px bg-gray-100 my-1" />
+            {getMonthOptions().map((opt) => (
+              <button
+                key={opt.label}
+                onClick={() => pick(opt)}
+                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 transition-colors ${picked?.label === opt.label ? "text-indigo-600 font-semibold" : "text-gray-600"}`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function KpiRow({ kpi, featureCount, orgId, onWired, onEdit, onDelete }: {
   kpi: MetricWithData; featureCount: number; orgId: string; onWired: () => void;
   onEdit: () => void; onDelete: () => void;
@@ -463,10 +555,10 @@ function KpiRow({ kpi, featureCount, orgId, onWired, onEdit, onDelete }: {
 
     const relation = hasWindow ? `within ${kpi.within_hours}h of` : "÷";
     const caveat = hasWindow && asPercentage
-      ? `% of users who fired the second event whose first event also landed within ${kpi.within_hours}h — matched per user, so one fast match covers that whole user if they had more than one in this window.`
+      ? `% of individual ${kpi.denominator_event_name} occurrences whose own matching ${kpi.event_name} landed within ${kpi.within_hours}h — each occurrence checked on its own, so one fast match can't cover the rest of that same person's other claims.`
       : hasWindow && !asPercentage
       ? `Raw count of times the second event got a matching first event within ${kpi.within_hours}h — counted per occurrence, not per user.`
-      : `Plain ratio over the last 30 days — two separate headcounts, not a per-record check (it won't verify the two events belong to the same record unless you've added a time window above).`;
+      : `Plain ratio over this window — two separate headcounts, not a per-record check (it won't verify the two events belong to the same record unless you've added a time window above).`;
 
     return (
       <div className="group">
@@ -484,12 +576,13 @@ function KpiRow({ kpi, featureCount, orgId, onWired, onEdit, onDelete }: {
             </p>
             <p className="text-[10px] text-gray-400 italic mt-0.5">{caveat}</p>
           </div>
-          <div className="text-right flex-shrink-0">
-            <p className="text-sm font-bold text-gray-900 tabular-nums">
-              {asPercentage ? `${kpi.total}%` : kpi.total.toLocaleString()}
-            </p>
-            <p className="text-[10px] text-gray-400">{asPercentage ? "rate" : "matched"} · 30d</p>
-          </div>
+          <RangePicker
+            metricId={kpi.id}
+            defaultTotal={kpi.total}
+            defaultTrend={kpi.trend}
+            asPercentage={asPercentage}
+            unit={asPercentage ? "rate" : "matched"}
+          />
           {RowActions}
           <span className="text-[10px] text-gray-400 flex-shrink-0 w-16 text-right">
             {featureCount} feature{featureCount !== 1 ? "s" : ""}
@@ -511,10 +604,13 @@ function KpiRow({ kpi, featureCount, orgId, onWired, onEdit, onDelete }: {
             {typeof kpi.target_value === "number" && <span> · Goal: {kpi.target_value.toLocaleString()} {unit}</span>}
           </p>
         </div>
-        <div className="text-right flex-shrink-0">
-          <p className="text-sm font-bold text-gray-900 tabular-nums">{kpi.total.toLocaleString()}</p>
-          <p className="text-[10px] text-gray-400">{unit} · 30d</p>
-        </div>
+        <RangePicker
+          metricId={kpi.id}
+          defaultTotal={kpi.total}
+          defaultTrend={kpi.trend}
+          asPercentage={false}
+          unit={unit}
+        />
         {RowActions}
         <span className="text-[10px] text-gray-400 flex-shrink-0 w-16 text-right">
           {featureCount} feature{featureCount !== 1 ? "s" : ""}

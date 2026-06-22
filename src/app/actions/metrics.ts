@@ -2,7 +2,7 @@
 
 import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 import type { Metric } from "@/types/database";
-import { computeTimeWindowedRate } from "@/lib/metrics-engine";
+import { computeTimeWindowedRate, matchOccurrences } from "@/lib/metrics-engine";
 import type { MetricDataPoint } from "@/lib/metrics-engine";
 import { getManualKpiValue } from "./manual-kpi";
 import { getDistinctEventNames as getDistinctEventNamesFast } from "./events";
@@ -344,10 +344,31 @@ export async function deleteMetric(metricId: string): Promise<{ error: string | 
 
 // ─── Trend data ──────────────────────────────────────────────────────────────
 
-async function attachTrendData(metric: Metric, orgId: string): Promise<MetricWithData> {
-  const since = new Date();
-  since.setDate(since.getDate() - 29); // last 30 days
-  since.setHours(0, 0, 0, 0);
+// `range` is optional — every existing caller (getMetrics, used by the
+// Goals/Feature Metrics/Dashboard pages) omits it and keeps getting the
+// historical trailing-30-days-from-now window. Passing one in (see
+// getKpiForRange below) recomputes the exact same KPI over an arbitrary
+// window instead — a specific calendar month, for month-on-month tracking,
+// rather than always "the last 30 days as of whenever you happen to load
+// the page."
+async function attachTrendData(
+  metric: Metric,
+  orgId: string,
+  range?: { since: Date; until: Date }
+): Promise<MetricWithData> {
+  const since = range?.since ?? (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 29); // last 30 days
+    d.setHours(0, 0, 0, 0);
+    return d;
+  })();
+  const until = range?.until;
+  // Inclusive day count spanning since→until (or the historical fixed 30
+  // when no range was given) — this is how many day-buckets the trend line
+  // and the day-count loops below need to cover.
+  const days = until
+    ? Math.max(1, Math.round((until.getTime() - since.getTime()) / 86400000))
+    : 30;
 
   // A KPI can be defined before any event is wired to it (see migration 019).
   // No event_name means there's nothing to query — UNLESS it's set up to
@@ -361,11 +382,11 @@ async function attachTrendData(metric: Metric, orgId: string): Promise<MetricWit
       // chart" rather than a misleading flat line.
       return { ...metric, total: manual.value ?? 0, trend: [] };
     }
-    return { ...metric, total: 0, trend: buildTrend([], metric.aggregation, since) };
+    return { ...metric, total: 0, trend: buildTrend([], metric.aggregation, since, days) };
   }
 
   const admin = createAdminClient();
-  const numeratorEvents = await fetchEventRows(admin, orgId, metric.event_name, since);
+  const numeratorEvents = await fetchEventRows(admin, orgId, metric.event_name, since, until);
 
   // KPI "property" (migration 024/026/027) — a reference event changes how
   // event_name's total is computed. Two independent switches decide how:
@@ -374,20 +395,20 @@ async function attachTrendData(metric: Metric, orgId: string): Promise<MetricWit
   // reference event, instead of treating the two as independent
   // headcounts). See createGoalKpi's comment for the full combination table.
   if (metric.denominator_event_name) {
-    const denominatorEvents = await fetchEventRows(admin, orgId, metric.denominator_event_name, since);
+    const denominatorEvents = await fetchEventRows(admin, orgId, metric.denominator_event_name, since, until);
     const hasWindow = !!metric.within_hours && metric.within_hours > 0;
     const asPercentage = metric.rate_as_percentage !== false;
 
     if (hasWindow && asPercentage) {
-      // % of reference-event users whose event_name landed in time.
-      const { total, trend } = computeTimeWindowedRate(numeratorEvents, denominatorEvents, metric.within_hours as number, since);
+      // % of reference-event occurrences whose event_name landed in time.
+      const { total, trend } = computeTimeWindowedRate(numeratorEvents, denominatorEvents, metric.within_hours as number, since, days);
       return { ...metric, total, trend };
     }
 
     if (hasWindow && !asPercentage) {
       // Raw count of reference-event occurrences that got a timely match —
       // e.g. "1,000 claims paid within 24h" as a volume target.
-      const { total, trend } = computeTimeWindowedCount(numeratorEvents, denominatorEvents, metric.within_hours as number, since);
+      const { total, trend } = computeTimeWindowedCount(numeratorEvents, denominatorEvents, metric.within_hours as number, since, days);
       return { ...metric, total, trend };
     }
 
@@ -395,7 +416,7 @@ async function attachTrendData(metric: Metric, orgId: string): Promise<MetricWit
       // Plain ratio — two independent headcounts in the same window. Does
       // NOT check that any individual record in the numerator corresponds
       // to one in the denominator.
-      const trend = buildRateTrend(numeratorEvents, denominatorEvents, metric.aggregation, since);
+      const trend = buildRateTrend(numeratorEvents, denominatorEvents, metric.aggregation, since, days);
       const numTotal = computeTotal(numeratorEvents, metric.aggregation);
       const denTotal = computeTotal(denominatorEvents, metric.aggregation);
       const total = denTotal > 0 ? Math.round((numTotal / denTotal) * 1000) / 10 : 0;
@@ -406,7 +427,7 @@ async function attachTrendData(metric: Metric, orgId: string): Promise<MetricWit
     // through to a plain volume KPI on event_name alone, ignoring it.
   }
 
-  const trend = buildTrend(numeratorEvents, metric.aggregation, since);
+  const trend = buildTrend(numeratorEvents, metric.aggregation, since, days);
   const total = computeTotal(numeratorEvents, metric.aggregation);
 
   return { ...metric, total, trend };
@@ -416,9 +437,10 @@ export async function fetchEventRows(
   admin: ReturnType<typeof createAdminClient>,
   orgId: string,
   eventName: string,
-  since: Date
+  since: Date,
+  until?: Date
 ): Promise<{ timestamp: string; user_id: string | null; session_id: string | null }[]> {
-  const { data } = await admin
+  let query = admin
     .from("events")
     .select("timestamp, user_id, session_id")
     .eq("organization_id", orgId)
@@ -428,66 +450,81 @@ export async function fetchEventRows(
     // not real Mixpanel-sourced occurrences synced via Pull Mixpanel Data,
     // which share the same source tag but are real data and should count.
     .or("properties->>is_placeholder.is.null,properties->>is_placeholder.neq.true");
+  // Open-ended (no upper bound) unless a specific window's end was given —
+  // e.g. a calendar month shouldn't pick up next month's events too.
+  if (until) query = query.lt("timestamp", until.toISOString());
+  const { data } = await query;
   return data ?? [];
 }
 
-// Per-user time-windowed matching (migration 026) — for each user who fired
-// the denominator event, check whether THAT SAME user also fired the
-// numerator event within `withinHours` hours afterward. Always matches by
-// user_id regardless of the KPI's aggregation setting, since "did this
-// specific person convert in time" inherently needs an actor identity —
-// raw event counts or session ids don't carry that across two different
-// event streams the way a user_id does.
+// ─── KPI value for an arbitrary date range (month-on-month) ──────────────────
 //
-// Caveat: if a user has more than one denominator instance in the window
-// (e.g. started two claims), they count as a success if ANY of their
-// instances has a matching numerator event in time — this can't currently
-// tell apart "claim A was fast, claim B was slow" for the same person.
-//
-// The actual implementation now lives in src/lib/metrics-engine.ts (imported
-// above) since "use server" files can only export async functions — this
-// comment block stays here as the canonical explanation of what it does.
+// getMetrics/getKpisByGoal always compute every KPI over the same trailing
+// 30 days — fine as the default, but a goal like "95% of claims paid within
+// 24h" naturally wants to be checked month by month, not just "as of right
+// now." This recomputes a single KPI over whatever range is asked for,
+// without touching the default behavior everything else still relies on.
+export async function getKpiForRange(
+  metricId: string,
+  sinceIso: string,
+  untilIso: string
+): Promise<{ total: number; trend: MetricDataPoint[]; error?: string }> {
+  const admin = createAdminClient();
+  const { data: metric, error } = await admin
+    .from("metrics")
+    .select("*")
+    .eq("id", metricId)
+    .single();
 
-// Same per-user time match as computeTimeWindowedRate, but for a raw COUNT
-// target instead of a percentage — e.g. "1,000 claims paid within 24h" as a
-// volume goal. The unit here is different on purpose: this counts matched
-// reference-event INSTANCES (each qualifying claim), not unique users, since
-// a volume target is naturally about how many things happened, and one user
-// can contribute more than one.
+  if (error || !metric) return { total: 0, trend: [], error: error?.message ?? "KPI not found" };
+
+  const since = new Date(sinceIso);
+  const until = new Date(untilIso);
+  const withData = await attachTrendData(metric as Metric, metric.organization_id as string, { since, until });
+  return { total: withData.total, trend: withData.trend };
+}
+
+// Per-OCCURRENCE time-windowed matching (migration 026, revised) — for each
+// individual denominator-event instance, check whether that same user's
+// next not-yet-used numerator event landed within `withinHours` hours
+// afterward. This used to match per USER (count the whole user as a success
+// if ANY of their denominator instances matched) — for someone with 10
+// claims and only 1 paid fast, that read as a 100% match across all 10.
+// matchOccurrences (src/lib/metrics-engine.ts) fixes that by consuming each
+// numerator event for at most one denominator event, in chronological order
+// per user, so the rate now reflects individual claims, not individual
+// people.
+//
+// The matching itself lives in metrics-engine.ts (shared with the count
+// version below and with the Cohort Builder) since "use server" files can
+// only export async functions — this comment stays here as the canonical
+// explanation of what it does.
+
+// Same per-occurrence time match as computeTimeWindowedRate, but for a raw
+// COUNT target instead of a percentage — e.g. "1,000 claims paid within
+// 24h" as a volume goal.
 function computeTimeWindowedCount(
   numeratorEvents: { timestamp: string; user_id: string | null }[],
   denominatorEvents: { timestamp: string; user_id: string | null }[],
   withinHours: number,
-  since: Date
+  since: Date,
+  days: number = 30
 ): { total: number; trend: MetricDataPoint[] } {
-  const windowMs = withinHours * 3600 * 1000;
-
-  const numByUser = new Map<string, number[]>();
-  for (const ev of numeratorEvents) {
-    if (!ev.user_id) continue;
-    const t = new Date(ev.timestamp).getTime();
-    const list = numByUser.get(ev.user_id);
-    if (list) list.push(t); else numByUser.set(ev.user_id, [t]);
-  }
+  const matches = matchOccurrences(numeratorEvents, denominatorEvents, withinHours);
 
   const dayCounts: Record<string, number> = {};
-  for (let i = 0; i < 30; i++) {
+  for (let i = 0; i < days; i++) {
     const d = new Date(since);
     d.setDate(d.getDate() + i);
     dayCounts[d.toISOString().slice(0, 10)] = 0;
   }
 
   let total = 0;
-  for (const ev of denominatorEvents) {
-    if (!ev.user_id) continue;
-    const dt = new Date(ev.timestamp).getTime();
-    const userNumTimes = numByUser.get(ev.user_id) ?? [];
-    const matched = userNumTimes.some((nt) => nt >= dt && nt - dt <= windowMs);
-    if (matched) {
-      total++;
-      const key = new Date(dt).toISOString().slice(0, 10);
-      if (key in dayCounts) dayCounts[key]++;
-    }
+  for (const m of matches) {
+    if (!m.matched) continue;
+    total++;
+    const key = m.timestamp.slice(0, 10);
+    if (key in dayCounts) dayCounts[key]++;
   }
 
   const trend = Object.keys(dayCounts)
@@ -500,33 +537,34 @@ function computeTimeWindowedCount(
 function buildTrend(
   events: { timestamp: string; user_id: string | null; session_id: string | null }[],
   aggregation: Metric["aggregation"],
-  since: Date
+  since: Date,
+  days: number = 30
 ): MetricDataPoint[] {
   // Build a map of date → set/count
-  const days: Record<string, Set<string> | number> = {};
+  const dayMap: Record<string, Set<string> | number> = {};
 
-  // Pre-fill all 30 days with 0 / empty sets
-  for (let i = 0; i < 30; i++) {
+  // Pre-fill every day in the window with 0 / empty sets
+  for (let i = 0; i < days; i++) {
     const d = new Date(since);
     d.setDate(d.getDate() + i);
     const key = d.toISOString().slice(0, 10);
-    days[key] = aggregation === "count" ? 0 : new Set<string>();
+    dayMap[key] = aggregation === "count" ? 0 : new Set<string>();
   }
 
   for (const ev of events) {
     const key = ev.timestamp.slice(0, 10);
-    if (!(key in days)) continue;
+    if (!(key in dayMap)) continue;
 
     if (aggregation === "count") {
-      (days[key] as number)++;
+      (dayMap[key] as number)++;
     } else if (aggregation === "unique_users" && ev.user_id) {
-      (days[key] as Set<string>).add(ev.user_id);
+      (dayMap[key] as Set<string>).add(ev.user_id);
     } else if (aggregation === "unique_sessions" && ev.session_id) {
-      (days[key] as Set<string>).add(ev.session_id);
+      (dayMap[key] as Set<string>).add(ev.session_id);
     }
   }
 
-  return Object.entries(days)
+  return Object.entries(dayMap)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, val]) => ({
       date,
@@ -541,10 +579,11 @@ function buildRateTrend(
   numeratorEvents: { timestamp: string; user_id: string | null; session_id: string | null }[],
   denominatorEvents: { timestamp: string; user_id: string | null; session_id: string | null }[],
   aggregation: Metric["aggregation"],
-  since: Date
+  since: Date,
+  days: number = 30
 ): MetricDataPoint[] {
-  const numTrend = buildTrend(numeratorEvents, aggregation, since);
-  const denTrend = buildTrend(denominatorEvents, aggregation, since);
+  const numTrend = buildTrend(numeratorEvents, aggregation, since, days);
+  const denTrend = buildTrend(denominatorEvents, aggregation, since, days);
   return numTrend.map((point, i) => {
     const denVal = denTrend[i]?.value ?? 0;
     const rate = denVal > 0 ? Math.round((point.value / denVal) * 1000) / 10 : 0;
