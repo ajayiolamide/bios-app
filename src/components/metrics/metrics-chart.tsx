@@ -29,7 +29,21 @@ const UNIT_SUFFIX: Record<string, string> = {
   unique_sessions: "sessions",
 };
 
-// Merge all metric trends into one data array keyed by date
+// A KPI with a denominator_event_name (rate_as_percentage !== false) has a
+// `total`/`trend.value` that's already a percentage, not a literal count —
+// UNIT_SUFFIX (keyed off `aggregation`, which is unrelated to this) would
+// otherwise label it "events" regardless, producing nonsense like "100
+// events" for a 100% rate. Check this first, before falling back to aggregation.
+function unitFor(m: MetricWithData): string {
+  if (m.denominator_event_name && m.rate_as_percentage !== false) return "%";
+  return UNIT_SUFFIX[m.aggregation] ?? "";
+}
+
+// Merge all metric trends into one data array keyed by date. Also carries
+// `${name}__matched`/`${name}__total` alongside the plotted value, when
+// present — recharts hands the whole merged row back to the tooltip via
+// `payload`, so this is how ChartTooltip gets at the real claim counts
+// behind a per-occurrence rate point instead of just the bare percentage.
 function mergeData(metrics: MetricWithData[]) {
   const map: Record<string, Record<string, number>> = {};
 
@@ -37,6 +51,8 @@ function mergeData(metrics: MetricWithData[]) {
     for (const point of m.trend) {
       if (!map[point.date]) map[point.date] = {};
       map[point.date][m.name] = point.value;
+      if (point.total !== undefined) map[point.date][`${m.name}__total`] = point.total;
+      if (point.matched !== undefined) map[point.date][`${m.name}__matched`] = point.matched;
     }
   }
 
@@ -60,7 +76,7 @@ export function MetricsChart({ metrics, title = "30-day trend" }: Props) {
       <div className="space-y-1 mb-3">
         {metrics.map((m, i) => {
           const insight = summarizeTrend(m.trend);
-          const unit = UNIT_SUFFIX[m.aggregation] ?? "";
+          const unit = unitFor(m);
           const cleanName = m.name.replace(/^\[.+?\]\s*/, "");
           const sentence = describeMetric({ name: cleanName, total: m.total, unit, targetValue: m.target_value, insight });
           return (
@@ -100,7 +116,7 @@ export function MetricsChart({ metrics, title = "30-day trend" }: Props) {
             />
             {metrics.length > 1 && <Legend wrapperStyle={{ fontSize: 12 }} />}
             {metrics.map((m, i) => {
-              const unit = UNIT_SUFFIX[m.aggregation] ?? "";
+              const unit = unitFor(m);
               return (
                 <Area
                   key={m.id}

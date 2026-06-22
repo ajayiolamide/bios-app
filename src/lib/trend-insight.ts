@@ -83,14 +83,20 @@ export function describeMetric(args: {
     return `No ${name.toLowerCase()} activity recorded in the last 30 days.`;
   }
 
-  const totalPart = `${total.toLocaleString()} ${unit} in the last 30 days`;
+  // A "%" unit means `total` is already a rate (e.g. 100 meaning 100%), not
+  // a literal count of events — phrase it as "100% in the last 30 days",
+  // never "100 % events" (and never let it get mistaken for a raw count).
+  const totalPart = unit === "%"
+    ? `${total}% in the last 30 days`
+    : `${total.toLocaleString()}${unit ? ` ${unit}` : ""} in the last 30 days`;
 
   let targetPart = "";
   if (targetValue && targetValue > 0) {
     const pct = Math.round((total / targetValue) * 100);
+    const targetLabel = `${targetValue.toLocaleString()}${unit === "%" ? "%" : ""}`;
     targetPart = pct >= 100
-      ? ` — ${pct >= 200 ? `${Math.round(pct / 100)}x past` : `${pct}% of`} the ${targetValue.toLocaleString()} target`
-      : ` — ${pct}% of the way to the ${targetValue.toLocaleString()} target`;
+      ? ` — ${pct >= 200 ? `${Math.round(pct / 100)}x past` : `${pct}% of`} the ${targetLabel} target`
+      : ` — ${pct}% of the way to the ${targetLabel} target`;
   }
 
   let trendPart = "";

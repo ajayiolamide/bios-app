@@ -384,6 +384,25 @@ function getMonthOptions(): { label: string; since: string; until: string }[] {
   return opts;
 }
 
+// Quick rolling-window presets (last N full days, inclusive of today) — sit
+// above the calendar-month list for the common case of "how are we doing
+// this week / this quarter" without picking a specific month. "Last 30 days"
+// is deliberately NOT in here: that one is the page's existing default
+// (picked === null), computed server-side with an open-ended `until` so it
+// always reads as of right now rather than as of the start of today.
+function getQuickRanges(): { label: string; since: string; until: string }[] {
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const until = new Date(startOfToday);
+  until.setDate(until.getDate() + 1); // exclusive upper bound, covers all of today
+  const mk = (days: number, label: string) => {
+    const since = new Date(startOfToday);
+    since.setDate(since.getDate() - (days - 1));
+    return { label, since: since.toISOString(), until: until.toISOString() };
+  };
+  return [mk(7, "Last 7 days"), mk(90, "Last 90 days")];
+}
+
 // Shared by both KpiRow variants below (the rate/count-with-reference-event
 // one and the plain volume one) — lets either swap its "last 30 days"
 // number for a specific calendar month on demand, without changing what
@@ -396,7 +415,7 @@ function RangePicker({
   defaultTrend: MetricDataPoint[];
   asPercentage: boolean;
   unit: string;
-  onResult?: (trend: MetricDataPoint[]) => void;
+  onResult?: (trend: MetricDataPoint[], label: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [picked, setPicked] = useState<{ label: string; since: string; until: string } | null>(null);
@@ -406,11 +425,11 @@ function RangePicker({
   async function pick(opt: { label: string; since: string; until: string } | null) {
     setOpen(false);
     setPicked(opt);
-    if (!opt) { setResult(null); onResult?.(defaultTrend); return; }
+    if (!opt) { setResult(null); onResult?.(defaultTrend, "30d"); return; }
     setLoading(true);
     const res = await getKpiForRange(metricId, opt.since, opt.until);
     setLoading(false);
-    if (!res.error) { setResult(res); onResult?.(res.trend); }
+    if (!res.error) { setResult(res); onResult?.(res.trend, opt.label); }
   }
 
   const shownTotal = picked ? (result?.total ?? null) : defaultTotal;
@@ -439,6 +458,15 @@ function RangePicker({
             >
               Last 30 days
             </button>
+            {getQuickRanges().map((opt) => (
+              <button
+                key={opt.label}
+                onClick={() => pick(opt)}
+                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-gray-50 transition-colors ${picked?.label === opt.label ? "text-indigo-600 font-semibold" : "text-gray-600"}`}
+              >
+                {opt.label}
+              </button>
+            ))}
             <div className="h-px bg-gray-100 my-1" />
             {getMonthOptions().map((opt) => (
               <button
@@ -466,6 +494,11 @@ function KpiRow({ kpi, featureCount, orgId, onWired, onEdit, onDelete }: {
   // separate page for this; now it's just a toggle on the row that already
   // has the number, so there's one place to look instead of two.
   const [showChart, setShowChart] = useState(false);
+  // Follows whatever range the RangePicker (next to the number) is currently
+  // showing, so toggling the chart open reflects the same window as the
+  // number above it instead of always silently falling back to 30 days.
+  const [chartTrend, setChartTrend] = useState<MetricDataPoint[]>(kpi.trend);
+  const [chartLabel, setChartLabel] = useState("30-day trend");
 
   // Shown on hover on every variant of this row — same actions regardless
   // of whether the KPI is wired, a rate, or a plain volume KPI. The trend
@@ -488,9 +521,14 @@ function KpiRow({ kpi, featureCount, orgId, onWired, onEdit, onDelete }: {
 
   const chartPanel = showChart && kpi.event_name ? (
     <div className="pb-3 -mt-1">
-      <MetricsChart metrics={[kpi]} title={`${kpi.name} — 30-day trend`} />
+      <MetricsChart metrics={[{ ...kpi, trend: chartTrend }]} title={`${kpi.name} — ${chartLabel}`} />
     </div>
   ) : null;
+
+  function handleRangeResult(trend: MetricDataPoint[], label: string) {
+    setChartTrend(trend);
+    setChartLabel(label === "30d" ? "30-day trend" : `${label} trend`);
+  }
 
   // Manually sourced from a connected sheet row (migration 029) — no event,
   // but a real number, so it shouldn't fall into the "not yet measurable"
@@ -582,6 +620,7 @@ function KpiRow({ kpi, featureCount, orgId, onWired, onEdit, onDelete }: {
             defaultTrend={kpi.trend}
             asPercentage={asPercentage}
             unit={asPercentage ? "rate" : "matched"}
+            onResult={handleRangeResult}
           />
           {RowActions}
           <span className="text-[10px] text-gray-400 flex-shrink-0 w-16 text-right">
@@ -610,6 +649,7 @@ function KpiRow({ kpi, featureCount, orgId, onWired, onEdit, onDelete }: {
           defaultTrend={kpi.trend}
           asPercentage={false}
           unit={unit}
+          onResult={handleRangeResult}
         />
         {RowActions}
         <span className="text-[10px] text-gray-400 flex-shrink-0 w-16 text-right">

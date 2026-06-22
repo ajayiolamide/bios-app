@@ -7,7 +7,13 @@
 // logically where it belongs — it has to live in an ordinary module that
 // both action files import from.
 
-export type MetricDataPoint = { date: string; value: number };
+// `matched`/`total` are only populated for per-occurrence rate trends (see
+// computeTimeWindowedRate below) — they let the UI show "1 of 5 claims paid
+// within 24h" instead of a bare percentage, and tell apart a day with no
+// claims at all (total: 0) from a day where claims came in but none of them
+// were fast enough (total > 0, matched: 0) — both render as `value: 0`
+// otherwise, which looks identical on the line but means very different things.
+export type MetricDataPoint = { date: string; value: number; matched?: number; total?: number };
 export type TimedEvent = { timestamp: string; user_id: string | null };
 
 // Per-OCCURRENCE time-window matching: for each individual denominator-event
@@ -114,6 +120,8 @@ export function computeTimeWindowedRate(
     .map((date) => ({
       date,
       value: dayTotals[date] > 0 ? Math.round((daySuccesses[date] / dayTotals[date]) * 1000) / 10 : 0,
+      matched: daySuccesses[date],
+      total: dayTotals[date],
     }));
 
   return { total, trend };
