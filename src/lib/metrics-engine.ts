@@ -98,6 +98,13 @@ export function matchOccurrences(
   requireMatchKey: boolean = false
 ): { timestamp: string; matched: boolean }[] {
   const windowMs = withinHours * 3600 * 1000;
+  // A payment landing within an hour of the claim being lodged isn't a
+  // believably fast real resolution — claims actually take real review
+  // time. Same-second/same-minute pairs are the signature of test or
+  // scripted events firing both at once, not genuine processing. Anything
+  // closer than this gets discarded as junk rather than counted as a win
+  // (see the inner skip-loop below).
+  const MIN_ELAPSED_MS = 60 * 60 * 1000; // 1 hour
   const groupKey = (ev: TimedEvent): string | null =>
     requireMatchKey ? (ev.match_key || null) : (ev.match_key || ev.user_id || null);
 
@@ -139,6 +146,10 @@ export function matchOccurrences(
       // Skip past any numerator events that happened before this particular
       // claim — they belong to an earlier claim (or to nothing).
       while (cursor < numTimes.length && numTimes[cursor] < d.t) cursor++;
+      // Also skip past (discard) any numerator event that's implausibly
+      // close to count as a real resolution — junk, not a legitimate
+      // outcome for this claim. Keep looking past it for a believable one.
+      while (cursor < numTimes.length && numTimes[cursor] - d.t < MIN_ELAPSED_MS) cursor++;
 
       if (cursor < numTimes.length && numTimes[cursor] - d.t <= windowMs) {
         // A payment exists and landed inside the window — fast match.
