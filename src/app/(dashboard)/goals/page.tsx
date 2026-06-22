@@ -1716,14 +1716,21 @@ export default function BusinessGoalsPage() {
 
   async function load() {
     if (!currentOrg) return;
-    const [goalsData, healthData, mpStatus, kpiData, progressData, objectivesData] = await Promise.all([
+    // getGoalProgress used to be called here independently, which meant it
+    // internally re-ran getKpisByGoal (and everything that fans out from
+    // it — a parallel trend query per KPI in the org) a second time, right
+    // alongside the getKpisByGoal call directly below it. Same data, fetched
+    // and recomputed twice on every single Goals page load. Awaiting
+    // kpiData first and handing it straight to getGoalProgress means that
+    // whole computation only happens once.
+    const [goalsData, healthData, mpStatus, kpiData, objectivesData] = await Promise.all([
       getBusinessGoals(currentOrg.id),
       getGoalHealthData(currentOrg.id),
       getMixpanelSettings(currentOrg.id),
       getKpisByGoal(currentOrg.id),
-      getGoalProgress(currentOrg.id),
       getCompanyObjectives(currentOrg.id),
     ]);
+    const progressData = await getGoalProgress(currentOrg.id, kpiData);
     setGoals(goalsData);
     setObjectives(objectivesData);
     setHealth(healthData);

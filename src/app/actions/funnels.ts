@@ -2,7 +2,7 @@
 
 import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 import type { Funnel } from "@/types/database";
-import { getMixpanelSettings, fetchMixpanelEventCounts, syncMixpanelRawEvents } from "@/app/actions/mixpanel";
+import { getMixpanelSettings, fetchMixpanelEventCounts } from "@/app/actions/mixpanel";
 import Anthropic from "@anthropic-ai/sdk";
 
 export type FunnelStep = { event_name: string };
@@ -120,27 +120,24 @@ export async function computeFunnel(
 
   const eventNames = [...new Set(steps.map((s) => s.event_name))];
 
-  // Picking a step's event name only ever searched Mixpanel for the NAME
-  // (via syncMixpanelEventNames' "Top Events" list, capped at the top 255 by
-  // volume over the last 31 days) — it never pulled the actual per-user
-  // occurrence rows. A real, low-volume, or simply newer event can be
-  // completely real in Mixpanel and still have zero rows in our own `events`
-  // table, which is what this function actually reads from. That showed up
-  // as "0 users / no data" for a step that's genuinely firing — exactly the
-  // same gap Cohorts had before it started syncing on demand. Doing the same
-  // here means a funnel works correctly the moment it's computed, not only
-  // for events that happened to already be raw-synced by something else.
+  // This used to call syncMixpanelRawEvents() right here, on every single
+  // expand/lookback change — a live network round-trip to Mixpanel's raw
+  // export API for the full requested window (up to 90 days), followed by
+  // a dedup query against everything already in `events` for those names.
+  // That's exactly the "auto-sync on every page visit" pattern that was
+  // deliberately removed from the Events page for being slow and
+  // duplicating an explicit manual action — it just hadn't been removed
+  // here yet, which is why opening a funnel or switching its lookback
+  // window could sit on "Computing…" for a while. Funnels now compute
+  // purely from whatever's already in our own `events` table (fast local
+  // query), and pulling fresh per-occurrence data from Mixpanel is a
+  // separate, manual "Sync Mixpanel" action on the funnel card — same shape
+  // as the Events page's "Sync Event Names" button.
   //
-  // Days here matches the `since` window above — it used to always ask for
-  // 90 days of raw export while only ever reading a hardcoded last-30, which
-  // meant computing a funnel for the first time pulled 3x more data from
-  // Mixpanel than it could ever use, making the click that opens a funnel
-  // noticeably slower (and on a step with a lot of volume, slow enough to
-  // hit the function timeout and leave the panel stuck not-expanding).
-  const { connected } = await getMixpanelSettings(orgId);
-  if (connected) {
-    await syncMixpanelRawEvents(orgId, eventNames, days).catch(() => {});
-  }
+  // Steps with zero local rows still fall back to Mixpanel's lightweight
+  // aggregate count endpoint below (fetchMixpanelEventCounts) — that's a
+  // simple per-day count, not a raw export, so it stays fast even though
+  // it's a live call.
 
   // Fetch real user-level events (excludes Mixpanel stubs which have null user_id)
   const { data: userEvents } = await admin

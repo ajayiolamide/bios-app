@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { Trash2, ChevronDown, ChevronUp, Sparkles, RefreshCw, Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Trash2, ChevronDown, ChevronUp, Sparkles, RefreshCw, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import type { Funnel, FunnelStepResult } from "@/app/actions/funnels";
 import { computeFunnel, deleteFunnel, getFunnelInsight, updateFunnelLookback } from "@/app/actions/funnels";
+import { getMixpanelSettings, syncMixpanelRawEvents } from "@/app/actions/mixpanel";
 import { FunnelConversionChart } from "./funnel-chart";
 import { SaveInsightButton } from "@/components/saved-insights/save-insight-button";
+
+type SyncState = "idle" | "syncing" | "done" | "error";
 
 interface Props {
   funnel: Funnel;
@@ -21,17 +24,45 @@ export function FunnelCard({ funnel, orgId, onDeleted }: Props) {
   const [loading, setLoading] = useState(false);
   const [insight, setInsight] = useState("");
   const [insightLoading, setInsightLoading] = useState(false);
-  // computeFunnel does a live Mixpanel sync before computing, which is a real
-  // network call that can fail or run long. Without a try/catch here, a
-  // thrown error skipped straight past setLoading(false) and setExpanded —
-  // the chevron looked "frozen" because the click handler died silently
-  // partway through, never reaching the lines that would un-stick the UI.
+  // Without a try/catch here, a thrown error skipped straight past
+  // setLoading(false) and setExpanded — the chevron looked "frozen" because
+  // the click handler died silently partway through, never reaching the
+  // lines that would un-stick the UI. computeFunnel itself is just a local
+  // DB query now (see funnels.ts), but this guard stays cheap insurance.
   const [computeError, setComputeError] = useState<string | null>(null);
   // How far back to sequence users through the steps. Used to be a fixed
   // 30 days everywhere, which under-counts longer conversion cycles (e.g.
   // signup week 1, first purchase week 6 reads as a drop-off). Persisted
   // per-funnel so the choice sticks next time it's opened.
   const [lookbackDays, setLookbackDays] = useState(funnel.lookback_days ?? 30);
+  // Pulling fresh per-occurrence data from Mixpanel used to happen
+  // automatically inside computeFunnel on every expand — moved to this
+  // explicit action instead (see comment in funnels.ts) so opening a funnel
+  // is a fast local query by default, and hitting Mixpanel's raw export API
+  // is something you choose to do, not something that blocks every click.
+  const [mpConnected, setMpConnected] = useState(false);
+  const [syncState, setSyncState] = useState<SyncState>("idle");
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    getMixpanelSettings(orgId).then(({ connected }) => setMpConnected(connected));
+  }, [orgId]);
+
+  async function handleSyncMixpanel() {
+    if (syncState === "syncing") return;
+    setSyncState("syncing");
+    setSyncMsg(null);
+    const eventNames = (funnel.steps as { event_name: string }[]).map(s => s.event_name);
+    const result = await syncMixpanelRawEvents(orgId, eventNames, lookbackDays);
+    if (result.error) {
+      setSyncState("error");
+      setSyncMsg(result.error);
+    } else {
+      setSyncState("done");
+      setSyncMsg(result.synced > 0 ? `Pulled ${result.synced.toLocaleString()} new event${result.synced !== 1 ? "s" : ""} from Mixpanel` : "Already up to date");
+      await loadResults(lookbackDays);
+    }
+  }
 
   async function generateInsight(r: FunnelStepResult[]) {
     setInsightLoading(true);
@@ -121,7 +152,7 @@ export function FunnelCard({ funnel, orgId, onDeleted }: Props) {
           {/* Lookback window — defaults to 30 days, but a flow with a longer
               conversion cycle (sign up week 1, purchase week 6) needs more
               room than that to avoid reading real conversions as drop-off. */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[11px] text-muted-foreground">Looking back</span>
             <div className="flex gap-1">
               {LOOKBACK_OPTIONS.map(d => (
@@ -138,6 +169,31 @@ export function FunnelCard({ funnel, orgId, onDeleted }: Props) {
                 </button>
               ))}
             </div>
+
+            {mpConnected && (
+              <div className="flex items-center gap-2 ml-auto">
+                {syncState === "done" && syncMsg && (
+                  <span className="flex items-center gap-1 text-[11px] text-green-600">
+                    <CheckCircle2 size={11} /> {syncMsg}
+                  </span>
+                )}
+                {syncState === "error" && (
+                  <span className="flex items-center gap-1 text-[11px] text-red-500" title={syncMsg ?? undefined}>
+                    <AlertCircle size={11} /> Sync failed
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={handleSyncMixpanel}
+                  disabled={syncState === "syncing" || loading}
+                  title="Pull fresh per-occurrence data from Mixpanel for this funnel's events"
+                  className="flex items-center gap-1.5 text-[11px] font-medium text-gray-500 hover:text-indigo-600 disabled:opacity-40 transition-colors border border-gray-200 rounded-full px-2.5 py-1"
+                >
+                  <RefreshCw size={10} className={syncState === "syncing" ? "animate-spin" : ""} />
+                  {syncState === "syncing" ? "Syncing…" : "Sync Mixpanel"}
+                </button>
+              </div>
+            )}
           </div>
 
           {loading ? (

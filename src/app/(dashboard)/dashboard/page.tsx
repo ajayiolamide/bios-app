@@ -11,6 +11,7 @@ import { useOrg } from "@/contexts/org-context";
 import { createClient } from "@/lib/supabase/client";
 import { QuickInsight } from "./quick-insight";
 import { getDashboardData, type DashboardData } from "@/app/actions/dashboard";
+import { getFeatureImpactSummaries } from "@/app/actions/feature-impact";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -189,6 +190,15 @@ export default function DashboardPage() {
     getDashboardData(currentOrg.id).then((d) => {
       setData(d);
       setLoading(false);
+
+      // Feature Impact is the heaviest computation on this page (a real
+      // query per launched feature) — it's fetched here, after the rest of
+      // the dashboard has already rendered, instead of gating everything
+      // else on it. Same deferred pattern the Goals page uses for this
+      // exact same call.
+      getFeatureImpactSummaries(currentOrg.id).then((featureImpactSummaries) => {
+        setData((prev) => prev ? { ...prev, featureImpactSummaries } : prev);
+      });
     });
   }, [currentOrg]);
 

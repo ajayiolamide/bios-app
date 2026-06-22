@@ -15,7 +15,6 @@ import {
 import { getBusinessGoals } from "@/app/actions/business-goals";
 import { getKpisByGoal, type MetricWithData } from "@/app/actions/metrics";
 import { getDistinctEventNames } from "@/app/actions/events";
-import { getMixpanelSettings, syncMixpanelEventNames } from "@/app/actions/mixpanel";
 import type { FeatureInput, FeatureSuggestion, FeatureMetric, BusinessGoal } from "@/types/database";
 import {
   Lightbulb, Loader2, Plus, Trash2, ChevronRight, ChevronLeft,
@@ -1085,13 +1084,15 @@ export default function FeatureMetricsPage() {
     if (!currentOrg) return;
     setLoading(true);
 
-    // If Mixpanel is connected, sync event names into the events table first
-    // so they appear in the autocomplete dropdown
-    const { connected } = await getMixpanelSettings(currentOrg.id);
-    if (connected) {
-      await syncMixpanelEventNames(currentOrg.id).catch(() => {/* silent — don't block load */});
-    }
-
+    // This used to await a Mixpanel event-names sync — a live network call —
+    // before even starting to load the page's own data, on every single
+    // visit. Despite the "don't block load" comment, the `await` in front of
+    // it did exactly that: serialize a Mixpanel round-trip ahead of
+    // everything else. Same anti-pattern the Events page had and already
+    // dropped (see events/page.tsx) — event names synced via the Sources
+    // page or Events page's own manual "Sync Event Names" button are already
+    // sitting in the `events` table by the time getDistinctEventNames below
+    // reads it, so this redundant auto-sync just added latency for no gain.
     const [data, goalData, eventNames, kpiData] = await Promise.all([
       getFeatureMetrics(currentOrg.id),
       getBusinessGoals(currentOrg.id),

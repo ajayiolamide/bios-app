@@ -292,8 +292,18 @@ export type GoalProgress = {
   progressRatio: number | null;
 };
 
-export async function getGoalProgress(orgId: string): Promise<Record<string, GoalProgress>> {
-  const kpisByGoal = await getKpisByGoal(orgId);
+// getMetrics (called inside getKpisByGoal) fans out into a parallel query per
+// metric/KPI to compute its trend — not free on an org with a lot of KPIs.
+// Callers that already have a fresh kpisByGoal (e.g. the Goals page, which
+// fetches it directly for its own KPI list) can pass it straight in here
+// instead of triggering that whole computation a second time on every page
+// load. Callers that don't have it yet (e.g. the Dashboard) just omit the
+// argument and it's fetched as before.
+export async function getGoalProgress(
+  orgId: string,
+  precomputedKpisByGoal?: Record<string, MetricWithData[]>
+): Promise<Record<string, GoalProgress>> {
+  const kpisByGoal = precomputedKpisByGoal ?? await getKpisByGoal(orgId);
   const result: Record<string, GoalProgress> = {};
 
   for (const [goalId, kpis] of Object.entries(kpisByGoal)) {

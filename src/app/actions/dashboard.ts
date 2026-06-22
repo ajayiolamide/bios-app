@@ -1,7 +1,7 @@
 "use server";
 
 import { createAdminClient } from "@/lib/supabase/server";
-import { getFeatureImpactSummaries, type FeatureImpactResult } from "./feature-impact";
+import type { FeatureImpactResult } from "./feature-impact";
 import { getCompanyObjectives } from "./company-objectives";
 import { getGoalProgress, type GoalProgress } from "./metrics";
 import type { BusinessGoal, CompanyObjective } from "@/types/database";
@@ -70,7 +70,6 @@ export async function getDashboardData(orgId: string): Promise<DashboardData> {
     { count: eventCount7d },
     { count: featureCount },
     { data: recentReports },
-    featureImpactSummaries,
   ] = await Promise.all([
     admin.from("business_goals")
       .select("*")
@@ -82,11 +81,17 @@ export async function getDashboardData(orgId: string): Promise<DashboardData> {
       .select("id, business_goal_id, suggestions, status")
       .eq("organization_id", orgId)
       .eq("status", "active"),
+    // "estimated" instead of "exact" — same reasoning as the Events page fix:
+    // an exact count forces Postgres to actually scan/count matching rows on
+    // every single dashboard load. On an org with hundreds of thousands of
+    // events, that's real latency for a number that's only ever shown
+    // rounded as "Events total" / "Events (7d)" — estimated is instant and
+    // plenty accurate for that.
     admin.from("events")
-      .select("*", { count: "exact", head: true })
+      .select("*", { count: "estimated", head: true })
       .eq("organization_id", orgId),
     admin.from("events")
-      .select("*", { count: "exact", head: true })
+      .select("*", { count: "estimated", head: true })
       .eq("organization_id", orgId)
       .gte("timestamp", new Date(Date.now() - 7 * 86400e3).toISOString()),
     admin.from("feature_metrics")
@@ -98,9 +103,17 @@ export async function getDashboardData(orgId: string): Promise<DashboardData> {
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false })
       .limit(4),
-    getFeatureImpactSummaries(orgId),
   ]);
 
+  // Feature Impact used to be computed right here, inline — a trend-break +
+  // adopter/non-adopter cohort comparison query for every launched feature
+  // in the org, which is the single heaviest thing on this page by far. That
+  // blocked the entire dashboard's first paint on it. It's now fetched
+  // separately by the page itself, right after everything above has already
+  // rendered — same deferred-load pattern the Goals page uses for the exact
+  // same computation. Defaults to empty here; the page fills it in once its
+  // own call resolves.
+  const featureImpactSummaries: FeatureImpactResult[] = [];
   const positiveImpact = featureImpactSummaries.filter(s => s.verdict === "likely_positive").length;
   const inconclusiveImpact = featureImpactSummaries.filter(s => s.verdict === "inconclusive").length;
   const negativeImpact = featureImpactSummaries.filter(s => s.verdict === "likely_negative").length;
