@@ -10,7 +10,7 @@ import {
 } from "@/app/actions/reports";
 import type { BiosSections, DataParameter, SourceConfig, SlideGuide } from "@/app/actions/reports";
 import {
-  createReviewSession, updateReviewAccess, getReviewComments, resolveComment, replanSlide, getOrgReviewSessions, deleteReviewSession, getReviewSessionForOwner,
+  createReviewSession, updateReviewDeck, updateReviewAccess, getReviewComments, resolveComment, replanSlide, getOrgReviewSessions, deleteReviewSession, getReviewSessionForOwner,
   remapCommentSlideIndexes,
 } from "@/app/actions/review";
 import type { SlideComment } from "@/app/actions/review";
@@ -733,6 +733,8 @@ function PreviewModal({
   const [sharing, setSharing] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
   const [shareError, setShareError] = useState<string | null>(null);
+  const [updatingShare, setUpdatingShare] = useState(false);
+  const [shareUpdated, setShareUpdated] = useState(false);
   const [reviewId, setReviewId] = useState<string | null>(initialReviewId ?? null);
   const [comments, setComments] = useState<SlideComment[]>([]);
   const [replanningSlide, setReplanningSlide] = useState(false);
@@ -937,6 +939,20 @@ function PreviewModal({
     setTimeout(() => setShareCopied(false), 3000);
   };
 
+  // Pushes whatever edits have happened since the link was created onto the
+  // SAME share_token, instead of leaving reviewers stuck looking at a stale
+  // snapshot with no way to refresh it short of deleting the review.
+  const handleUpdateShare = async () => {
+    if (!reviewId) return;
+    setUpdatingShare(true);
+    const res = await updateReviewDeck(reviewId, deck, period);
+    setUpdatingShare(false);
+    if (!res.error) {
+      setShareUpdated(true);
+      setTimeout(() => setShareUpdated(false), 2500);
+    }
+  };
+
   // Compute expires_at ISO string from expiry selection
   const computeExpiresAt = () => {
     if (reviewExpiry === "never") return null;
@@ -1103,10 +1119,21 @@ function PreviewModal({
               )}
               {/* Share for review */}
               {shareUrl ? (
-                <button onClick={() => { navigator.clipboard.writeText(shareUrl); setShareCopied(true); setTimeout(() => setShareCopied(false), 2000); }}
-                  className="flex items-center gap-1.5 text-xs font-medium bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 px-3 py-1.5 rounded-lg transition-colors">
-                  {shareCopied ? <><CheckCircle2 size={12} /> Copied!</> : <><ExternalLink size={12} /> Copy link</>}
-                </button>
+                <>
+                  <button onClick={() => { navigator.clipboard.writeText(shareUrl); setShareCopied(true); setTimeout(() => setShareCopied(false), 2000); }}
+                    className="flex items-center gap-1.5 text-xs font-medium bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 px-3 py-1.5 rounded-lg transition-colors">
+                    {shareCopied ? <><CheckCircle2 size={12} /> Copied!</> : <><ExternalLink size={12} /> Copy link</>}
+                  </button>
+                  {/* The link above is a snapshot taken when it was first
+                      created — edits since then don't appear there until
+                      this is clicked. Same link, refreshed content. */}
+                  <button onClick={handleUpdateShare} disabled={updatingShare}
+                    title="Push your latest edits to this same share link"
+                    className="flex items-center gap-1.5 text-xs font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50">
+                    {updatingShare ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                    {updatingShare ? "Updating…" : shareUpdated ? "Updated!" : "Update link"}
+                  </button>
+                </>
               ) : (
                 <button onClick={handleShare} disabled={sharing}
                   className="flex items-center gap-1.5 text-xs font-medium bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50">

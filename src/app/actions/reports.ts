@@ -675,7 +675,10 @@ ${biosBlock}${sourceConfigBlock}${biggestMoversBlock}${slideGuidesBlock}
 SHEET DATA (${filteredRows.length} rows)${filteredRows.length === 0 ? " — no sheet data provided, use internal Metrik data above" : ""}:
 ${filteredRows.length > 0 ? `Headers: ${headers}\n---\n${csvPreview}\n---` : "(none)"}
 
-Generate exactly ${template.slide_hint} slides as JSON.
+${slideGuidesBlock
+  ? `Generate exactly ${template.slide_hint} slides as JSON — a per-slide guide above specifies what goes in each position.`
+  : `Generate up to ${template.slide_hint} slides as JSON — that number is a ceiling, not a quota. Only include a slide if it presents a genuinely distinct fact, metric, or recommendation that no earlier slide already covers. Restating the same headline number or finding again in a different chart type just to reach ${template.slide_hint} slides is a real failure mode here — if there isn't enough distinct content for all ${template.slide_hint}, generate fewer instead of padding. The mandatory title (slide 1) and closing (last slide) don't count toward what needs to be "distinct."`
+}
 
 DESIGN PHILOSOPHY — follow strictly:
 - Data first. Every slide must show numbers, not paragraphs.

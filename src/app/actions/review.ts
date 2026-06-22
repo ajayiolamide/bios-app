@@ -45,6 +45,30 @@ export async function createReviewSession(
   return { token, reviewId: data.id, error: null };
 }
 
+// ─── Push the latest edited deck into an existing review session ─────────────
+//
+// createReviewSession snapshots the deck into deck_json at the moment it's
+// called — editing the deck afterward (fixing a typo, swapping a chart,
+// removing a slide) never touched that snapshot, so reviewers kept seeing
+// the stale version at the same link with no way to refresh it short of
+// deleting the whole review and starting over (which breaks the link anyone
+// already has). This updates deck_json (and title/period, in case those
+// changed too) in place, on the SAME share_token — the link a reviewer
+// already has keeps working and just shows the latest content next time
+// they load it.
+export async function updateReviewDeck(
+  reviewId: string,
+  deck: SlidesDeck,
+  period: string
+): Promise<{ error: string | null }> {
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("report_reviews")
+    .update({ deck_json: deck as unknown, deck_title: deck.title, period })
+    .eq("id", reviewId);
+  return { error: error?.message ?? null };
+}
+
 // ─── Update access control on a review session ───────────────────────────────
 
 export async function updateReviewAccess(
