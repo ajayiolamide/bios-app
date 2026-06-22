@@ -2,6 +2,10 @@
 
 import { createAdminClient, createServerClient } from "@/lib/supabase/server";
 import Anthropic from "@anthropic-ai/sdk";
+import { getGoalProgress } from "@/app/actions/metrics";
+import { getFeatureImpactSummaries } from "@/app/actions/feature-impact";
+import { getWeeklyActiveUsers } from "@/app/actions/cohorts";
+import type { BusinessGoal } from "@/types/database";
 
 const client = new Anthropic();
 
@@ -43,6 +47,9 @@ export async function getQuickInsight(orgId: string): Promise<{ insight?: string
     { data: sources },
     { data: metrics },
     { data: recentReports },
+    { data: goals },
+    featureImpact,
+    wau,
   ] = await Promise.all([
     admin.from("events").select("*", { count: "exact", head: true }).eq("organization_id", orgId),
     admin.from("report_sources").select("*", { count: "exact", head: true }).eq("organization_id", orgId),
@@ -62,9 +69,19 @@ export async function getQuickInsight(orgId: string): Promise<{ insight?: string
       .eq("status", "done")
       .order("created_at", { ascending: false })
       .limit(3),
+    // Goals + their real progress (same computation as the Goals page and
+    // Reports use) — see the prompt rewrite below for why this needed to
+    // become the LEAD data instead of an afterthought.
+    admin.from("business_goals").select("*").eq("organization_id", orgId).neq("status", "dropped").order("created_at", { ascending: false }).limit(20),
+    getFeatureImpactSummaries(orgId).catch(() => []),
+    getWeeklyActiveUsers(orgId, 8).catch(() => []),
   ]);
+  const goalProgress = goals?.length ? await getGoalProgress(orgId) : {};
 
-  if (!sourceCount && !eventCount) {
+  // A goals-only org (no sources/events connected yet) still has a real
+  // brief worth writing — refusing here just because infrastructure is
+  // empty would contradict the whole point of leading with goals over it.
+  if (!sourceCount && !eventCount && !goals?.length) {
     return { error: "No data connected yet. Add a source first, then generate your brief." };
   }
 
@@ -93,9 +110,51 @@ export async function getQuickInsight(orgId: string): Promise<{ insight?: string
     `- ${r.template_name} (${r.period})`
   ).join("\n");
 
-  const prompt = `You are a business intelligence assistant. Analyse the following data snapshot from a company's Metrik dashboard and write a concise, sharp executive brief — 3 to 5 bullet points — covering:
-1. What's looking good
-2. What needs attention or action
+  // Business Goals + their real progress — THE primary signal for this
+  // brief. Previously the only data here was raw infrastructure counts
+  // (events/sources/metrics/reports), so the AI had nothing else to talk
+  // about and every brief read as "N events tracked, N sources connected"
+  // instead of actual business health. Goals and Feature Impact below are
+  // now the lead content; infrastructure counts are demoted to one footer
+  // line for context only.
+  const goalsSummary = ((goals ?? []) as BusinessGoal[]).map((g) => {
+    const gp = goalProgress[g.id];
+    const progress = gp?.progressRatio != null
+      ? `${Math.round(gp.progressRatio * 100)}% of target`
+      : "not yet measurable (no KPI with a numeric target attached)";
+    return `- [${(g.status ?? "active").toUpperCase()}] ${g.title} (${g.type}): ${progress}`;
+  }).join("\n");
+
+  const featureImpactSummary = featureImpact
+    .filter((fi) => fi.status === "computed")
+    .map((fi) => {
+      if (fi.cohort) return `- ${fi.featureName}: ${fi.verdict} — adopters hit their KPI at ${fi.cohort.adopterKpiRate}% vs ${fi.cohort.nonAdopterKpiRate}% for non-adopters`;
+      if (fi.trend) return `- ${fi.featureName}: ${fi.verdict} — ${fi.trend.deltaPct >= 0 ? "+" : ""}${fi.trend.deltaPct}% vs predicted trend`;
+      return `- ${fi.featureName}: ${fi.verdict}`;
+    }).join("\n");
+
+  // Weekly active users — a real cohort/engagement signal, computed
+  // server-side from actual event data. Saved cohorts from Cohort Builder
+  // can't be included here (they only ever live in that browser's local
+  // storage, never the database), so this is the closest genuine
+  // engagement/retention proxy available without that bigger change.
+  let engagementSummary = "Not enough event history yet";
+  if (wau.length >= 2) {
+    const last = wau[wau.length - 1];
+    const prev = wau[wau.length - 2];
+    const pctChange = prev.users > 0 ? Math.round(((last.users - prev.users) / prev.users) * 1000) / 10 : null;
+    engagementSummary = `- Weekly active users: ${last.users} this week${pctChange != null ? ` (${pctChange >= 0 ? "+" : ""}${pctChange}% vs last week)` : ""}`;
+  } else if (wau.length === 1) {
+    engagementSummary = `- Weekly active users: ${wau[0].users} (only 1 week of history so far, no trend yet)`;
+  }
+
+  const prompt = `You are a business intelligence assistant writing an executive brief for a company's Metrik dashboard.
+
+PRIORITY ORDER — this matters: lead with Business Goals progress, Feature Impact verdicts, and the user engagement trend below. Those are the real business signal. Raw infrastructure counts (events tracked, sources connected, reports generated) are supporting context ONLY — never make one of your 3-5 bullets just "X events are being tracked" or "N sources are connected" unless something there is genuinely broken (e.g. tracking has stopped entirely). If goals, feature impact, or engagement data exists, at least 2 of your bullets must be about THAT, not about infrastructure.
+
+Write 3 to 5 bullet points covering:
+1. What's looking good (goal progress, feature wins — not infrastructure health)
+2. What needs attention or action (goals off track, features with poor impact, or — only if truly nothing else exists — data gaps)
 3. One specific next step you recommend
 
 Keep it direct and actionable. No fluff.
@@ -104,24 +163,26 @@ Each line must follow this exact structure so it can be parsed and displayed cle
 EMOJI|SHORT LABEL (3-5 words)|One sentence of detail.
 
 Example line:
-✅|Tracking foundation is solid|8 sources are connected and feeding clean data into your reports.
+✅|Signups goal ahead of pace|Currently at 78% of target with 6 weeks left in the quarter.
 
 Do not use markdown (no **, no #, no -). Do not add headers or any text outside the EMOJI|LABEL|DETAIL lines.
 
-DATA SNAPSHOT:
-- Events tracked: ${eventCount ?? 0}
-- Data sources: ${sourceCount ?? 0}
-- Tracked metrics: ${metricCount ?? 0}
-- Reports generated: ${reportCount ?? 0}
+BUSINESS GOALS (${goals?.length ?? 0} — the main story, lead with this):
+${goalsSummary || "None created yet — if this is the only major gap, it's fine to recommend adding one."}
 
-Connected sources:
-${sourcesSummary || "None"}
+FEATURE IMPACT (measured adoption-vs-KPI evidence, not speculation):
+${featureImpactSummary || "None computed yet"}
 
-Tracked metrics (raw event counters, not goals):
-${metricsSummary || "None defined yet"}
+USER ENGAGEMENT (cohort/retention signal):
+${engagementSummary}
 
 Recent reports:
 ${reportsSummary || "None"}
+
+Infrastructure (context only — do not lead a bullet with this unless something is actually broken):
+${eventCount ?? 0} events tracked across ${sourceCount ?? 0} sources, ${metricCount ?? 0} KPIs/metrics defined, ${reportCount ?? 0} reports generated.
+${sourcesSummary || "No sources connected"}
+${metricsSummary ? `Defined metrics:\n${metricsSummary}` : ""}
 
 Output 3 to 5 lines in the EMOJI|LABEL|DETAIL format above. Nothing else.`;
 
