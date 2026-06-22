@@ -66,15 +66,19 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
   );
 
   // ── Shared white-slide wrapper ───────────────────────────────────────────────
-  const W = ({ title, subtitle, children, imgUrl: wImgUrl }: { title: string; subtitle?: string; children: React.ReactNode; imgUrl?: string }) => (
-    <div className="w-full h-full bg-white flex flex-col overflow-hidden" style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
+  // `imgPos` (set once the user drags/resizes the image in the editor) makes
+  // the image a freely-placed absolute overlay instead of the small fixed
+  // header thumbnail. When unset (no position ever saved on this slide), the
+  // legacy inline thumbnail renders exactly as before — purely additive.
+  const W = ({ title, subtitle, children, imgUrl: wImgUrl, imgPos: wImgPos }: { title: string; subtitle?: string; children: React.ReactNode; imgUrl?: string; imgPos?: { x: number; y: number; w: number; h: number } | null }) => (
+    <div className="w-full h-full bg-white flex flex-col overflow-hidden relative" style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
       {/* Slide header — black on white */}
       <div className="px-8 pt-7 pb-5 flex-shrink-0 border-b border-gray-100 flex items-start gap-3">
         <div className="flex-1 min-w-0">
           <h2 className="font-black text-gray-900 leading-tight" style={{ fontSize: "clamp(13px,2vw,18px)", letterSpacing: "-0.02em" }}>{title}</h2>
           {subtitle && <p className="text-gray-400 mt-1 text-xs">{subtitle}</p>}
         </div>
-        {wImgUrl && (
+        {wImgUrl && !wImgPos && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={wImgUrl} alt="" className="w-14 h-10 object-cover rounded-lg flex-shrink-0 border border-gray-100" />
         )}
@@ -86,11 +90,23 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
         <div className="w-2 h-2 rounded-full" style={{ background: p }} />
         <p className="text-[10px] text-gray-300 tracking-wider uppercase">{deckTitle}</p>
       </div>
+      {wImgUrl && wImgPos && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={wImgUrl} alt="" className="absolute object-cover rounded-lg border border-gray-200 shadow-sm z-10"
+          style={{ left: `${wImgPos.x}%`, top: `${wImgPos.y}%`, width: `${wImgPos.w}%`, height: `${wImgPos.h}%` }} />
+      )}
     </div>
   );
 
-  // Helper: extract image_url from any slide type
+  // Helper: extract image_url + position from any slide type. Position is
+  // only meaningful once the user has actually placed it (see ImagePositioner
+  // in the editor) — until then this stays null and every slide type below
+  // falls back to its original fixed image placement, unchanged.
   const slideImg = (slide as { image_url?: string }).image_url;
+  const slidePosRaw = slide as { image_x?: number; image_y?: number; image_w?: number; image_h?: number };
+  const imgPos = (slidePosRaw.image_x != null || slidePosRaw.image_y != null || slidePosRaw.image_w != null || slidePosRaw.image_h != null)
+    ? { x: slidePosRaw.image_x ?? 70, y: slidePosRaw.image_y ?? 6, w: slidePosRaw.image_w ?? 26, h: slidePosRaw.image_h ?? 20 }
+    : null;
 
   // ── Big stat ─────────────────────────────────────────────────────────────────
   if (slide.type === "big_stat") {
@@ -99,9 +115,14 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
     const arrow = up ? "↑" : dn ? "↓" : "→";
     return (
       <div className="w-full h-full bg-white flex flex-col overflow-hidden relative" style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
-        {slideImg && (
+        {slideImg && !imgPos && (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={slideImg} alt="" className="absolute top-3 right-3 w-14 h-10 object-cover rounded-lg border border-gray-100 z-10" />
+        )}
+        {slideImg && imgPos && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={slideImg} alt="" className="absolute object-cover rounded-lg border border-gray-200 shadow-sm z-10"
+            style={{ left: `${imgPos.x}%`, top: `${imgPos.y}%`, width: `${imgPos.w}%`, height: `${imgPos.h}%` }} />
         )}
         <div className="flex-1 flex flex-col items-center justify-center px-10 gap-3">
           <p className="text-xs text-gray-400 uppercase tracking-widest text-center">{slide.label}</p>
@@ -139,7 +160,7 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
       const barAreaW = 230, labelW = 86, valW = 36;
       const W_SVG = labelW + barAreaW + valW + 8;
       return (
-        <W title={slide.title} subtitle={slide.subtitle} imgUrl={slideImg}>
+        <W title={slide.title} subtitle={slide.subtitle} imgUrl={slideImg} imgPos={imgPos}>
           <div className="h-full flex flex-col gap-1">
             <svg viewBox={`0 0 ${W_SVG} ${totalH}`} preserveAspectRatio="xMidYMid meet"
               style={{ flex: "1 1 0", minHeight: 0, width: "100%", display: "block" }}>
@@ -196,7 +217,7 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
     const colW = innerW / series.length;
     const barW = Math.min(colW * 0.65, 32);
     return (
-      <W title={slide.title} subtitle={slide.subtitle} imgUrl={slideImg}>
+      <W title={slide.title} subtitle={slide.subtitle} imgUrl={slideImg} imgPos={imgPos}>
         <svg viewBox={`0 0 ${W_SVG} ${H_SVG}`} className="w-full h-full" style={{ display: "block" }}>
           {/* Y grid lines */}
           {[0.25, 0.5, 0.75, 1].map(frac => {
@@ -261,7 +282,7 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
   // ── Progress bars ─────────────────────────────────────────────────────────────
   if (slide.type === "progress_bars") {
     return (
-      <W title={slide.title} imgUrl={slideImg}>
+      <W title={slide.title} imgUrl={slideImg} imgPos={imgPos}>
         <div className="space-y-4 h-full overflow-hidden">
           {slide.items.slice(0, 6).map((item, i) => {
             const pct = Math.min(100, item.target > 0 ? Math.round((item.value / item.target) * 100) : 0);
@@ -292,7 +313,7 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
     const kpis = slide.kpis.slice(0, 6);
     const cols = kpis.length <= 2 ? 2 : kpis.length <= 4 ? 2 : 3;
     return (
-      <W title={slide.title} imgUrl={slideImg}>
+      <W title={slide.title} imgUrl={slideImg} imgPos={imgPos}>
         <div className="grid gap-3 h-full content-start" style={{ gridTemplateColumns: `repeat(${cols}, 1fr)` }}>
           {kpis.map((kpi, i) => {
             const sc = kpi.status === "on_track" ? "#16A34A" : kpi.status === "off_track" ? "#DC2626" : "#D97706";
@@ -318,7 +339,7 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
     // original fixed w-32 ("balanced") so existing decks look unchanged.
     const statWidthCls = { narrow: "w-24", balanced: "w-32", wide: "w-48" }[slide.stat_width ?? "balanced"];
     return (
-      <W title={slide.title} imgUrl={slideImg}>
+      <W title={slide.title} imgUrl={slideImg} imgPos={imgPos}>
         <div className="flex gap-5 h-full overflow-hidden">
           <div className={`flex flex-col items-center justify-center rounded-2xl px-5 flex-shrink-0 ${statWidthCls}`} style={{ background: ac }}>
             <p className="text-white font-black leading-tight text-center" style={{ fontSize: "clamp(22px,3.5vw,32px)" }}>{slide.stat}</p>
@@ -354,7 +375,7 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
     const [hovLine, setHovLine] = useState<number | null>(null);
     const H_SVG_L = H_SVG + 28; // extra room for info bar
     return (
-      <W title={slide.title} subtitle={slide.subtitle} imgUrl={slideImg}>
+      <W title={slide.title} subtitle={slide.subtitle} imgUrl={slideImg} imgPos={imgPos}>
         <svg viewBox={`0 0 ${W_SVG} ${H_SVG_L}`} preserveAspectRatio="xMidYMid meet"
           style={{ width: "100%", height: "100%", display: "block" }}>
           {/* Y grid lines */}
@@ -461,7 +482,7 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
     });
 
     return (
-      <W title={slide.title} subtitle={slide.subtitle} imgUrl={slideImg}>
+      <W title={slide.title} subtitle={slide.subtitle} imgUrl={slideImg} imgPos={imgPos}>
         <div className="flex flex-col h-full gap-2">
           <div className="flex items-center gap-4 flex-1 min-h-0">
             <svg viewBox="0 0 140 140" style={{ flexShrink: 0, width: 130, height: 130 }}>
@@ -521,7 +542,7 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
 
   // ── Bullet list ───────────────────────────────────────────────────────────────
   if (slide.type === "bullet_list") return (
-    <W title={slide.title} imgUrl={slideImg}>
+    <W title={slide.title} imgUrl={slideImg} imgPos={imgPos}>
       <ul className="space-y-3">
         {slide.items.slice(0, 6).map((item, i) => (
           <li key={i} className="flex items-start gap-3">
@@ -535,7 +556,7 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
 
   // ── Action plan (department-tagged recommendations) ─────────────────────────
   if (slide.type === "action_plan") return (
-    <W title={slide.title} subtitle={slide.subtitle} imgUrl={slideImg}>
+    <W title={slide.title} subtitle={slide.subtitle} imgUrl={slideImg} imgPos={imgPos}>
       {/* justify-start (not justify-center) on purpose: this list sits inside
           an `overflow-hidden` container above, and centering a column that's
           taller than its box clips evenly off BOTH ends — which in practice

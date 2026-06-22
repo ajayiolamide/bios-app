@@ -6,7 +6,7 @@ import {
   getReportSources, saveReportSource, deleteReportSource,
   fetchSheetData, getCachedSheetData, getReports,
   planReport, buildReportFromPlan, deleteReport,
-  updateReportSourceConfig, suggestSourceConfig,
+  updateReportSourceConfig, suggestSourceConfig, uploadSlideImage,
 } from "@/app/actions/reports";
 import type { BiosSections, DataParameter, SourceConfig, SlideGuide } from "@/app/actions/reports";
 import {
@@ -24,7 +24,7 @@ import {
   Link, Edit3, Table, LayoutTemplate, History, Zap, ExternalLink, AlertCircle,
   Filter, X, ChevronDown, ChevronLeft, ChevronRight, Eye, Sparkles,
   Coins, MessageSquare, Share2, RotateCcw, Settings2, SlidersHorizontal,
-  Target, FlaskConical, ListOrdered, BookOpen, Bookmark,
+  Target, FlaskConical, ListOrdered, BookOpen, Bookmark, ImagePlus,
 } from "lucide-react";
 import { getSavedInsights, type SavedInsight } from "@/app/actions/saved-insights";
 
@@ -155,6 +155,84 @@ function convertChartType(slide: SlideContent, to: ChartSlideType): SlideContent
   }
   // pie_chart
   return { type: "pie_chart", title, subtitle, style: "pie", segments: labels.map((l, i) => ({ label: l, value: values[i] ?? 0 })) };
+}
+
+// ─── Reference image positioner ───────────────────────────────────────────────
+// Lets the user drag the attached screenshot around a small 16:9 stand-in for
+// the slide, and resize it from the bottom-right handle. Position/size are
+// stored as percentages (0-100) of the slide box, so the exact same numbers
+// drive the live preview (slide-card.tsx) and the PPTX export (reports.ts) —
+// what you see here is what ends up on the actual slide.
+function ImagePositioner({
+  imageUrl, x, y, w, h, onChange,
+}: {
+  imageUrl: string;
+  x: number; y: number; w: number; h: number;
+  onChange: (pos: { x: number; y: number; w: number; h: number }) => void;
+}) {
+  const boxRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ mode: "move" | "resize"; startX: number; startY: number; orig: { x: number; y: number; w: number; h: number } } | null>(null);
+
+  const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max);
+
+  const onPointerMove = (e: PointerEvent) => {
+    const ds = dragRef.current;
+    const box = boxRef.current;
+    if (!ds || !box) return;
+    const rect = box.getBoundingClientRect();
+    const dxPct = ((e.clientX - ds.startX) / rect.width) * 100;
+    const dyPct = ((e.clientY - ds.startY) / rect.height) * 100;
+    if (ds.mode === "move") {
+      onChange({
+        x: clamp(ds.orig.x + dxPct, 0, 100 - ds.orig.w),
+        y: clamp(ds.orig.y + dyPct, 0, 100 - ds.orig.h),
+        w: ds.orig.w,
+        h: ds.orig.h,
+      });
+    } else {
+      onChange({
+        x: ds.orig.x,
+        y: ds.orig.y,
+        w: clamp(ds.orig.w + dxPct, 8, 100 - ds.orig.x),
+        h: clamp(ds.orig.h + dyPct, 8, 100 - ds.orig.y),
+      });
+    }
+  };
+
+  const onPointerUp = () => {
+    dragRef.current = null;
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", onPointerUp);
+  };
+
+  const startDrag = (mode: "move" | "resize") => (e: React.PointerEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = { mode, startX: e.clientX, startY: e.clientY, orig: { x, y, w, h } };
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+  };
+
+  return (
+    <div
+      ref={boxRef}
+      className="relative w-full rounded-lg border border-gray-200 bg-gray-50 overflow-hidden select-none"
+      style={{ aspectRatio: "16/9", touchAction: "none" }}
+    >
+      <div
+        onPointerDown={startDrag("move")}
+        className="absolute cursor-move"
+        style={{ left: `${x}%`, top: `${y}%`, width: `${w}%`, height: `${h}%` }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={imageUrl} alt="" className="w-full h-full object-cover rounded border-2 border-indigo-400 pointer-events-none" />
+        <div
+          onPointerDown={startDrag("resize")}
+          className="absolute -bottom-1.5 -right-1.5 w-3.5 h-3.5 rounded-full bg-indigo-500 border-2 border-white shadow cursor-nwse-resize"
+        />
+      </div>
+    </div>
+  );
 }
 
 // ─── Slide field editor ───────────────────────────────────────────────────────
@@ -747,6 +825,11 @@ function PreviewModal({
   // directly from the editor instead of needing a published review link
   // and a reviewer comment first.
   const [aiEditText, setAiEditText] = useState("");
+  // Reference image attached to the current slide (e.g. a Mixpanel trend
+  // screenshot) — purely a visual attachment, the AI never sees or analyzes
+  // its content, same as the company logo being embedded.
+  const [slideImageUploading, setSlideImageUploading] = useState(false);
+  const [slideImageError, setSlideImageError] = useState<string | null>(null);
 
   const slides = deck?.slides ?? [];
   const total = slides.length;
@@ -1012,6 +1095,45 @@ function PreviewModal({
       updateSlide(res.slide);
       setAiEditText("");
     }
+  };
+
+  const handleSlideImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !slide) return;
+    setSlideImageUploading(true);
+    setSlideImageError(null);
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await uploadSlideImage(orgId, formData);
+    setSlideImageUploading(false);
+    if (res.error) {
+      setSlideImageError(res.error);
+    } else if (res.url) {
+      // Seed an explicit default position/size on upload (top-right-ish,
+      // roughly a quarter of the slide) so the positioner and preview agree
+      // from the first frame, rather than relying on each renderer's own
+      // fallback default.
+      updateSlide({ ...slide, image_url: res.url, image_x: 70, image_y: 6, image_w: 26, image_h: 20 } as SlideContent);
+    }
+  };
+
+  const handleRemoveSlideImage = () => {
+    if (!slide) return;
+    const { image_url, image_x, image_y, image_w, image_h, ...rest } = slide as SlideContent & {
+      image_url?: string; image_x?: number; image_y?: number; image_w?: number; image_h?: number;
+    };
+    void image_url; void image_x; void image_y; void image_w; void image_h;
+    updateSlide(rest as SlideContent);
+  };
+
+  const handleSlideImagePosition = (pos: { x: number; y: number; w: number; h: number }) => {
+    if (!slide) return;
+    updateSlide({ ...slide, image_x: pos.x, image_y: pos.y, image_w: pos.w, image_h: pos.h } as SlideContent);
+  };
+
+  const handleResetSlideImagePosition = () => {
+    if (!slide) return;
+    updateSlide({ ...slide, image_x: 70, image_y: 6, image_w: 26, image_h: 20 } as SlideContent);
   };
 
   if (presenting) {
@@ -1505,6 +1627,63 @@ function PreviewModal({
                     </button>
                   </div>
                   <SlideEditor slide={slide} onChange={updateSlide} />
+
+                  {/* Reference image — e.g. a Mixpanel trend screenshot.
+                      Purely a visual attachment embedded into the slide
+                      (same as the company logo); the AI does not see or
+                      analyze its content. */}
+                  <div className="border border-gray-200 rounded-xl p-3">
+                    <p className="text-xs font-semibold text-gray-700 mb-1">Reference image</p>
+                    <p className="text-[11px] text-gray-400 mb-2">
+                      Attach a screenshot (e.g. a Mixpanel chart) as a visual on this slide. Not analyzed by AI — just embedded.
+                    </p>
+                    {(slide as { image_url?: string }).image_url ? (
+                      slide.type === "title" || slide.type === "closing" ? (
+                        // Title/closing slides use the image as a full-bleed
+                        // cover panel already — no positioning to offer there.
+                        <div className="relative">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={(slide as { image_url?: string }).image_url} alt="" className="w-full h-24 object-cover rounded-lg border border-gray-200" />
+                          <button onClick={handleRemoveSlideImage}
+                            title="Remove image"
+                            className="absolute top-1.5 right-1.5 p-1 rounded-full bg-white/90 text-gray-500 hover:text-red-500 hover:bg-white shadow-sm transition-colors">
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      ) : (
+                        <div>
+                          <ImagePositioner
+                            imageUrl={(slide as { image_url?: string }).image_url!}
+                            x={(slide as { image_x?: number }).image_x ?? 70}
+                            y={(slide as { image_y?: number }).image_y ?? 6}
+                            w={(slide as { image_w?: number }).image_w ?? 26}
+                            h={(slide as { image_h?: number }).image_h ?? 20}
+                            onChange={handleSlideImagePosition}
+                          />
+                          <div className="flex items-center justify-between mt-1.5">
+                            <p className="text-[10px] text-gray-400">Drag to move, drag the dot to resize</p>
+                            <div className="flex items-center gap-2">
+                              <button onClick={handleResetSlideImagePosition}
+                                className="text-[11px] font-medium text-gray-400 hover:text-indigo-600 transition-colors">
+                                Reset
+                              </button>
+                              <button onClick={handleRemoveSlideImage}
+                                title="Remove image"
+                                className="p-1 rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    ) : (
+                      <label className="flex items-center justify-center gap-1.5 text-xs font-medium text-gray-500 border border-dashed border-gray-300 rounded-lg py-3 cursor-pointer hover:border-indigo-300 hover:text-indigo-600 transition-colors">
+                        {slideImageUploading ? <><Loader2 size={12} className="animate-spin" /> Uploading…</> : <><ImagePlus size={12} /> Upload image</>}
+                        <input type="file" accept="image/*" className="hidden" disabled={slideImageUploading} onChange={handleSlideImageUpload} />
+                      </label>
+                    )}
+                    {slideImageError && <p className="text-[11px] text-red-500 mt-1.5">{slideImageError}</p>}
+                  </div>
                 </div>
               </>
             ) : rightPanel === "comments" ? (

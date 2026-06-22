@@ -7,6 +7,45 @@ import { getFeatureImpactSummaries, type FeatureImpactResult } from "./feature-i
 import { getFunnels, computeFunnel, type FunnelStepResult } from "./funnels";
 import { getGoalProgress, type GoalProgress } from "./metrics";
 
+// ─── Slide reference image upload ─────────────────────────────────────────────
+//
+// Lets a slide carry a reference image (e.g. a screenshot of a Mixpanel
+// trend) purely as a visual attachment — image_url already existed on every
+// slide type and was already rendered (slide-card.tsx), but nothing in the
+// editor ever let a user actually set it. This does NOT analyze the image's
+// content; the AI never sees it, it's just embedded into the slide the same
+// way the company logo gets embedded.
+export async function uploadSlideImage(
+  orgId: string,
+  formData: FormData
+): Promise<{ url: string | null; error: string | null }> {
+  const file = formData.get("file") as File | null;
+  if (!file || file.size === 0) return { url: null, error: "No file provided" };
+
+  const admin = createAdminClient();
+  const ext = file.name.split(".").pop() || "png";
+  // Unique filename per upload (not a fixed per-slide path) — same reasoning
+  // as the logo fix: a reused path keeps the same public URL forever, which
+  // a CDN can keep serving stale bytes for after a re-upload. A brand-new
+  // URL every time sidesteps that with no cache-busting trick needed.
+  const path = `${orgId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+
+  const { error } = await admin.storage.from("slide-images").upload(path, file, {
+    contentType: file.type || undefined,
+  });
+  if (error) {
+    return {
+      url: null,
+      error: error.message?.toLowerCase().includes("bucket not found")
+        ? "Upload storage isn't set up yet — run the latest database migration, then try again."
+        : `Upload failed: ${error.message}`,
+    };
+  }
+
+  const { data } = admin.storage.from("slide-images").getPublicUrl(path);
+  return { url: data.publicUrl, error: null };
+}
+
 // ─── BIOS context types ───────────────────────────────────────────────────────
 
 export type BiosSections = {
@@ -403,17 +442,25 @@ export async function deleteReport(reportId: string): Promise<{ error: string | 
 
 // ─── Slide types ──────────────────────────────────────────────────────────────
 
+// Per-slide reference image position/size, as percentages (0-100) of the
+// slide's box — independent x/y/w/h (not aspect-locked) so a screenshot can
+// be freely placed and stretched. Optional: when unset, the slide-card
+// renderer and buildPptx both fall back to their original fixed-position
+// behavior, so any image attached before this feature existed still renders
+// exactly as before.
+type ImagePosition = { image_x?: number; image_y?: number; image_w?: number; image_h?: number };
+
 export type SlideContent =
   | { type: "title"; headline: string; subtitle: string; image_url?: string }
-  | { type: "big_stat"; label: string; value: string; change: string; change_direction: "up" | "down" | "flat"; context: string; image_url?: string }
-  | { type: "bar_chart"; title: string; subtitle: string; orientation: "vertical" | "horizontal"; series: { label: string; value: number; target?: number }[]; image_url?: string }
-  | { type: "line_chart"; title: string; subtitle: string; series: { label: string; value: number }[]; image_url?: string }
-  | { type: "pie_chart"; title: string; subtitle: string; style: "pie" | "donut"; segments: { label: string; value: number }[]; image_url?: string }
-  | { type: "progress_bars"; title: string; items: { label: string; value: number; target: number; unit: string; status: "on_track" | "off_track" | "neutral" }[]; image_url?: string }
-  | { type: "kpi_grid"; title: string; kpis: { label: string; value: string; target: string; status: "on_track" | "off_track" | "neutral" }[]; image_url?: string }
-  | { type: "insight"; title: string; body: string; stat: string; stat_label: string; status: "positive" | "negative" | "neutral"; stat_width?: "narrow" | "balanced" | "wide"; image_url?: string }
-  | { type: "bullet_list"; title: string; items: string[]; image_url?: string }
-  | {
+  | ({ type: "big_stat"; label: string; value: string; change: string; change_direction: "up" | "down" | "flat"; context: string; image_url?: string } & ImagePosition)
+  | ({ type: "bar_chart"; title: string; subtitle: string; orientation: "vertical" | "horizontal"; series: { label: string; value: number; target?: number }[]; image_url?: string } & ImagePosition)
+  | ({ type: "line_chart"; title: string; subtitle: string; series: { label: string; value: number }[]; image_url?: string } & ImagePosition)
+  | ({ type: "pie_chart"; title: string; subtitle: string; style: "pie" | "donut"; segments: { label: string; value: number }[]; image_url?: string } & ImagePosition)
+  | ({ type: "progress_bars"; title: string; items: { label: string; value: number; target: number; unit: string; status: "on_track" | "off_track" | "neutral" }[]; image_url?: string } & ImagePosition)
+  | ({ type: "kpi_grid"; title: string; kpis: { label: string; value: string; target: string; status: "on_track" | "off_track" | "neutral" }[]; image_url?: string } & ImagePosition)
+  | ({ type: "insight"; title: string; body: string; stat: string; stat_label: string; status: "positive" | "negative" | "neutral"; stat_width?: "narrow" | "balanced" | "wide"; image_url?: string } & ImagePosition)
+  | ({ type: "bullet_list"; title: string; items: string[]; image_url?: string } & ImagePosition)
+  | ({
       type: "action_plan";
       title: string;
       subtitle?: string;
@@ -424,7 +471,7 @@ export type SlideContent =
         priority: "high" | "medium" | "low";
       }[];
       image_url?: string;
-    }
+    } & ImagePosition)
   | { type: "closing"; headline: string; subtitle: string; image_url?: string };
 
 export type SlidesDeck = { title: string; slides: SlideContent[] };
@@ -1686,9 +1733,17 @@ async function buildPptx(
         } catch { /* skip */ }
       }
     } else if (imgUrl) {
-      // Content slides — inset image in top-right corner if provided
+      // Content slides — placed/sized per the editor's position controls
+      // (percentages of the 10in x 5.625in slide), falling back to the
+      // original fixed top-right inset for any image attached before this
+      // feature existed (no image_x/y/w/h saved on it).
+      const pos = slide as { image_x?: number; image_y?: number; image_w?: number; image_h?: number };
+      const imgX = (pos.image_x ?? 70) / 100 * 10;
+      const imgY = (pos.image_y ?? 6) / 100 * 5.625;
+      const imgW = (pos.image_w ?? 26) / 100 * 10;
+      const imgH = (pos.image_h ?? 20) / 100 * 5.625;
       try {
-        s.addImage({ path: imgUrl, x: 7.2, y: 1.15, w: 2.3, h: 1.6, sizing: { type: "contain", w: 2.3, h: 1.6 } });
+        s.addImage({ path: imgUrl, x: imgX, y: imgY, w: imgW, h: imgH, sizing: { type: "cover", w: imgW, h: imgH } });
       } catch { /* skip */ }
     }
 
