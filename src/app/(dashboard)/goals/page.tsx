@@ -1863,6 +1863,87 @@ function ObjectiveCard({
   );
 }
 
+// The plain-text rendering of a single Business Goal — no border, no
+// header row, no footer divider. It's "the one big thing," not a list
+// item, so it shouldn't borrow card/grid furniture that only earns its
+// keep once there's more than one of these to compare side by side.
+function ObjectiveStatement({
+  objective, goals, goalProgress, labelPlural, onStatusChange, onDelete, onAddAnother,
+}: {
+  objective: CompanyObjective;
+  goals: BusinessGoal[];
+  goalProgress: Record<string, GoalProgress>;
+  labelPlural: string;
+  onStatusChange: (status: CompanyObjective["status"]) => void;
+  onDelete: () => void;
+  onAddAnother: () => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const { goalCount, progressRatio } = objectiveProgress(objective.id, goals, goalProgress);
+  const pct = progressRatio !== null ? Math.round(progressRatio * 100) : null;
+  const overshot = pct !== null && pct > 100;
+  const isMissed = objective.status === "missed";
+  const signal = progressSignal(progressRatio, goalCount);
+
+  return (
+    <div className="flex items-start justify-between gap-6 pb-6 border-b border-gray-100">
+      <div className="flex-1 min-w-0">
+        <p className="text-[10px] font-semibold tracking-widest uppercase text-indigo-500 mb-1.5">This quarter / year</p>
+        <p className={`text-xl font-bold tracking-tight mb-1.5 ${isMissed ? "line-through text-gray-300" : "text-gray-900"}`}>
+          {objective.title}
+        </p>
+        {objective.description && (
+          <p className="text-sm text-gray-400 leading-relaxed mb-1.5 max-w-2xl">{objective.description}</p>
+        )}
+        <p className="text-sm text-gray-400 mb-2.5">
+          {[objective.target, objective.timeframe].filter(Boolean).join(" · ") || "No target set"}
+        </p>
+        <div className="flex items-center gap-3">
+          <SignalChip signal={signal} />
+          <span className="text-xs text-gray-400">
+            {pct !== null
+              ? `${pct.toLocaleString()}% rolled up from ${labelPlural.toLowerCase()}${overshot ? " — exceeded" : ""}`
+              : goalCount === 0
+              ? `No ${labelPlural.toLowerCase()} linked yet`
+              : `${goalCount} ${labelPlural.toLowerCase()} linked — none measurable yet`}
+          </span>
+        </div>
+      </div>
+      <div className="flex items-center gap-3 flex-shrink-0">
+        <div className="relative">
+          <button onClick={() => setMenuOpen(!menuOpen)} className="flex items-center gap-0.5 text-xs text-gray-400 hover:text-gray-600 transition-colors">
+            {STATUS_OPTIONS.find((s) => s.value === objective.status)?.label}
+            <ChevronDown size={11} />
+          </button>
+          {menuOpen && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+              <div className="absolute right-0 top-6 z-20 w-36 rounded-lg border border-gray-200 bg-white shadow-md overflow-hidden">
+                {STATUS_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => { onStatusChange(opt.value); setMenuOpen(false); }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-xs text-gray-600 hover:bg-gray-50 transition-colors"
+                  >
+                    {objective.status === opt.value ? <Check size={11} className="text-indigo-500" /> : <span className="w-[11px]" />}
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+        <button onClick={onAddAnother} className="text-xs font-medium text-gray-400 hover:text-gray-700 transition-colors whitespace-nowrap">
+          + Add another
+        </button>
+        <button onClick={onDelete} className="text-gray-300 hover:text-red-500 transition-colors" title="Delete business goal">
+          <Trash2 size={13} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ObjectivesPanel({
   objectives,
   goals,
@@ -1896,15 +1977,23 @@ function ObjectivesPanel({
 }) {
   const [showForm, setShowForm] = useState(false);
 
-  if (isFirstRun) {
-    return showForm ? (
+  // The wizard takes over completely regardless of how many objectives
+  // already exist — "add another" from the statement view below and the
+  // very first "Start" button land in the exact same place, instead of two
+  // different code paths that could drift apart.
+  if (showForm) {
+    return (
       <GuidedObjectiveWizard
         onSaved={() => { setShowForm(false); onSaved(); }}
         onCancel={() => setShowForm(false)}
         hasProductGoals={goals.length > 0}
         onCreateFirstGoal={onCreateFirstGoal}
       />
-    ) : (
+    );
+  }
+
+  if (isFirstRun) {
+    return (
       <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 py-20 text-center">
         <div className="w-11 h-11 rounded-2xl bg-indigo-50 flex items-center justify-center mb-5">
           <Trophy size={18} className="text-indigo-500" />
@@ -1927,6 +2016,31 @@ function ObjectivesPanel({
     );
   }
 
+  // There's realistically only ever one or two of these — it's "the one
+  // big thing," not a list to browse. Treating it as a bordered card with
+  // its own header row and footer was borrowing list/grid furniture for
+  // something that isn't a list yet. A single objective reads as a plain
+  // statement; it only earns real card/grid treatment once there's more
+  // than one to actually compare.
+  if (objectives.length === 1) {
+    const single = objectives[0];
+    return (
+      <ObjectiveStatement
+        objective={single}
+        goals={goals}
+        goalProgress={goalProgress}
+        labelPlural={labelPlural}
+        onStatusChange={async (status) => { await updateCompanyObjectiveStatus(single.id, status); onSaved(); }}
+        onDelete={async () => {
+          if (!confirm(`Delete "${single.title}"? Linked ${labelPlural} stay — they'll just show as not linked.`)) return;
+          await deleteCompanyObjective(single.id);
+          onSaved();
+        }}
+        onAddAnother={() => setShowForm(true)}
+      />
+    );
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
@@ -1940,25 +2054,19 @@ function ObjectivesPanel({
               Show all {labelPlural}
             </button>
           )}
-          {!showForm && (
-            <button
-              onClick={() => setShowForm(true)}
-              className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-900 transition-colors"
-            >
-              <Plus size={12} /> Add business goal
-            </button>
-          )}
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-1.5 text-xs font-medium text-gray-500 hover:text-gray-900 transition-colors"
+          >
+            <Plus size={12} /> Add business goal
+          </button>
         </div>
       </div>
 
-      {showForm ? (
-        <GuidedObjectiveWizard
-          onSaved={() => { setShowForm(false); onSaved(); }}
-          onCancel={() => setShowForm(false)}
-          hasProductGoals={goals.length > 0}
-          onCreateFirstGoal={onCreateFirstGoal}
-        />
-      ) : objectives.length === 0 ? (
+      {objectives.length === 0 ? (
+        // Edge case, not the common path: a Business Goal existed (so this
+        // isn't isFirstRun) but got deleted, leaving Product Goals orphaned
+        // above a now-empty objectives list.
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 py-10 text-center">
           <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center mb-3">
             <Trophy size={16} className="text-indigo-500" />
@@ -2817,13 +2925,44 @@ export default function BusinessGoalsPage() {
         onCreateFirstGoal={() => setShowForm(true)}
       />
 
-      {/* Everything below — header, sync controls, filters, the Product
-          Goals empty state — stays hidden on a true first run. None of it
-          means anything before a Business Goal exists, and showing it
-          anyway just competes for attention with the one thing that
-          matters: get that first goal created. ObjectivesPanel's own
-          first-run state above is the entire page's content until then. */}
-      {!isFirstRun && (
+      {/* Stage 2 of setup: a Business Goal exists, but there's still no
+          Product Goal underneath it. This used to fall straight through
+          to the full management page below — header, sync controls,
+          "Pull Mixpanel Data" — none of which means anything before
+          there's an actual Product Goal to manage. Stays just as minimal
+          as ObjectivesPanel's own first-run state above, for exactly as
+          long as there's nothing real to manage yet. */}
+      {objectives.length > 0 && goals.length === 0 && (
+        showForm ? (
+          <GuidedGoalWizard
+            objectives={objectives}
+            onSaved={async () => { setShowForm(false); await load(); }}
+            onCancel={() => setShowForm(false)}
+          />
+        ) : (
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 py-20 text-center">
+            <div className="w-11 h-11 rounded-2xl bg-indigo-50 flex items-center justify-center mb-5">
+              <Target size={18} className="text-indigo-500" />
+            </div>
+            <h3 className="text-2xl font-bold text-gray-900 tracking-tight mb-2">Now break it down.</h3>
+            <p className="text-sm text-gray-400 max-w-sm mb-6">
+              Log the first {productGoalLabel.toLowerCase()} your team owns to move that Business Goal forward.
+            </p>
+            <button
+              onClick={() => setShowForm(true)}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors"
+            >
+              <Plus size={14} /> Add {productGoalLabel.toLowerCase()}
+            </button>
+          </div>
+        )
+      )}
+
+      {/* Full management page — only once there's at least one real
+          Product Goal. Everything here (header, sync controls, filters)
+          used to render the moment a Business Goal existed, before there
+          was anything to actually manage. */}
+      {goals.length > 0 && (
       <>
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -2963,27 +3102,9 @@ export default function BusinessGoalsPage() {
         />
       )}
 
-      {/* Empty state — no goals at all */}
-      {goals.length === 0 && !showForm && (
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 py-16 text-center">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center mb-4">
-            <Target size={20} className="text-indigo-500" />
-          </div>
-          <h3 className="text-sm font-semibold text-gray-700 mb-1">No goals yet</h3>
-          <p className="text-sm text-gray-400 max-w-sm mb-5">
-            Log what your company is trying to achieve. Every feature you build will be measured against these goals.
-          </p>
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
-          >
-            <Plus size={14} /> Add your first goal
-          </button>
-        </div>
-      )}
-
-      {/* Empty state — filters returned nothing */}
-      {goals.length > 0 && filtered.length === 0 && (
+      {/* Empty state — filters returned nothing (goals.length > 0 is
+          already guaranteed by the wrapping block above) */}
+      {filtered.length === 0 && (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-100 py-12 text-center">
           <p className="text-sm text-gray-400 mb-2">No goals match the current filters.</p>
           <button
