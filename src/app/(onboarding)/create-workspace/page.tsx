@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createOrganization } from "@/app/actions/organizations";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Card,
@@ -13,7 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { BarChart3, Building2, Loader2 } from "lucide-react";
+import { BarChart3, Loader2 } from "lucide-react";
 
 export default function CreateWorkspacePage() {
   const router = useRouter();
@@ -47,12 +46,14 @@ export default function CreateWorkspacePage() {
             <BarChart3 className="h-6 w-6 text-white" />
           </div>
         </div>
-        <CardTitle className="text-2xl text-white">
+        {/* Bigger, more confident headline — same correction as the Goals
+            page first-run state: say the one thing plainly, in a size that
+            reads as a real first moment rather than a generic form title. */}
+        <CardTitle className="text-3xl font-bold text-white tracking-tight">
           Create your workspace
         </CardTitle>
         <CardDescription className="text-slate-400">
-          Your workspace is where your team&apos;s analytics live. You can
-          invite members after setup.
+          Where your team&apos;s analytics will live. Invite people after this.
         </CardDescription>
       </CardHeader>
 
@@ -62,20 +63,22 @@ export default function CreateWorkspacePage() {
             <Label htmlFor="name" className="text-slate-300">
               Organization name
             </Label>
-            <div className="relative">
-              <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-              <Input
-                id="name"
-                name="name"
-                type="text"
-                placeholder="Acme Corp"
-                required
-                minLength={2}
-                maxLength={60}
-                disabled={pending}
-                className="pl-9 border-slate-600 bg-slate-700/50 text-white placeholder:text-slate-500 focus-visible:ring-blue-500"
-              />
-            </div>
+            {/* Heading-style underlined field instead of a boxed input with
+                an icon inset — same sparse, "this is the one thing that
+                matters right now" treatment as the name fields in the Goals
+                wizards, applied to the very first field anyone fills in. */}
+            <input
+              id="name"
+              name="name"
+              type="text"
+              placeholder="Acme Corp"
+              required
+              minLength={2}
+              maxLength={60}
+              disabled={pending}
+              autoFocus
+              className="w-full border-0 border-b border-slate-600 bg-transparent px-0 py-1.5 text-xl font-semibold text-white placeholder:text-slate-500 placeholder:font-normal focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-50"
+            />
             <p className="text-xs text-slate-500">
               This will be your company or team name inside Metrik.
             </p>
@@ -101,6 +104,13 @@ export default function CreateWorkspacePage() {
               "Create workspace"
             )}
           </Button>
+
+          {/* "What happens next" — this used to be a dead-end form with no
+              sense of where it leads. One line, so it doesn't compete with
+              the button above it. */}
+          <p className="text-xs text-slate-500 text-center">
+            Next, we&apos;ll help you set your first goal.
+          </p>
         </form>
       </CardContent>
     </Card>

@@ -1502,7 +1502,13 @@ function GoalCard({
 // level up, so the whole hierarchy is one consistent creation experience
 // instead of a polished flow at one layer and a blank form at another.
 // Reuses WizardShell — defined once, used everywhere in this hierarchy.
-type ObjectiveWizardStep = "describe" | "confirm";
+// Each step is one decision, full stop — the earlier "describe" then one
+// big "confirm" screen crammed title + target + timeframe + context into a
+// single dense card. Splitting it into single-decision steps plus a visible
+// dot trail (StepTrail, defined below WizardShell) is the actual fix for
+// "too much at once," not just bigger text on the same dense screen.
+type ObjectiveWizardStep = "describe" | "title" | "target" | "context";
+const OBJECTIVE_STEPS: ObjectiveWizardStep[] = ["describe", "title", "target", "context"];
 
 function GuidedObjectiveWizard({ onSaved, onCancel }: { onSaved: () => void; onCancel: () => void }) {
   const { currentOrg } = useOrg();
@@ -1512,6 +1518,8 @@ function GuidedObjectiveWizard({ onSaved, onCancel }: { onSaved: () => void; onC
   const [form, setForm] = useState({ title: "", description: "", target: "", timeframe: "" });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const stepIndex = OBJECTIVE_STEPS.indexOf(step);
 
   async function handlePropose() {
     if (!description.trim()) { setError("Describe the one big thing you're trying to achieve first."); return; }
@@ -1525,7 +1533,7 @@ function GuidedObjectiveWizard({ onSaved, onCancel }: { onSaved: () => void; onC
     } else {
       setForm({ title: res.title, description: res.description || "", target: res.target || "", timeframe: res.timeframe || TIMEFRAMES[0] });
     }
-    setStep("confirm");
+    setStep("title");
   }
 
   async function handleSave() {
@@ -1539,7 +1547,7 @@ function GuidedObjectiveWizard({ onSaved, onCancel }: { onSaved: () => void; onC
   }
 
   if (step === "describe") return (
-    <WizardShell label="New business goal — step 1 of 2" onCancel={onCancel} error={error}>
+    <WizardShell label="New business goal" onCancel={onCancel} error={error} step={stepIndex} totalSteps={OBJECTIVE_STEPS.length}>
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1.5">
           The one big thing — what is the company trying to achieve? Describe it in your own words.
@@ -1552,6 +1560,10 @@ function GuidedObjectiveWizard({ onSaved, onCancel }: { onSaved: () => void; onC
           onChange={(e) => setDescription(e.target.value)}
           className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
         />
+        <SuggestionChips
+          examples={["Grow activations & retention this quarter", "Hit £2M ARR by year end", "Cut customer churn in half"]}
+          onPick={setDescription}
+        />
       </div>
       <div className="flex items-center gap-3">
         <button
@@ -1563,7 +1575,7 @@ function GuidedObjectiveWizard({ onSaved, onCancel }: { onSaved: () => void; onC
           {proposing ? "Thinking…" : "Suggest a business goal"}
         </button>
         <button
-          onClick={() => { setForm({ title: "", description: "", target: "", timeframe: TIMEFRAMES[0] }); setStep("confirm"); }}
+          onClick={() => { setForm({ title: "", description: "", target: "", timeframe: TIMEFRAMES[0] }); setStep("title"); }}
           className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
         >
           Skip — I&apos;ll fill it in myself
@@ -1572,24 +1584,42 @@ function GuidedObjectiveWizard({ onSaved, onCancel }: { onSaved: () => void; onC
     </WizardShell>
   );
 
-  return (
-    <WizardShell label="New business goal — step 2 of 2" onCancel={onCancel} error={error}>
-      <p className="text-xs text-gray-400 -mt-2">Here&apos;s what we&apos;ve put together — change anything that&apos;s not quite right.</p>
-      <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1.5">Title</label>
-        <input
-          autoFocus
-          type="text"
-          value={form.title}
-          onChange={(e) => setForm({ ...form, title: e.target.value })}
-          className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-        />
+  if (step === "title") return (
+    <WizardShell label="What's it called?" onCancel={onCancel} error={error} step={stepIndex} totalSteps={OBJECTIVE_STEPS.length}>
+      <p className="text-xs text-gray-400">Here&apos;s what we put together — change it if it&apos;s not quite right.</p>
+      <input
+        autoFocus
+        type="text"
+        placeholder="Name this business goal"
+        value={form.title}
+        onChange={(e) => setForm({ ...form, title: e.target.value })}
+        className="w-full border-0 border-b border-gray-200 px-0 py-1.5 text-lg font-semibold text-gray-900 placeholder:text-gray-300 placeholder:font-normal focus:outline-none focus:border-indigo-400 transition-colors"
+      />
+      <div className="flex items-center gap-3 pt-1">
+        <button
+          onClick={() => {
+            if (!form.title.trim()) { setError("Title is required."); return; }
+            setError("");
+            setStep("target");
+          }}
+          className="flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors"
+        >
+          Continue
+        </button>
+        <button onClick={() => setStep("describe")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">Back</button>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+    </WizardShell>
+  );
+
+  if (step === "target") return (
+    <WizardShell label="What does success look like?" onCancel={onCancel} error={error} step={stepIndex} totalSteps={OBJECTIVE_STEPS.length}>
+      <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1.5">Target</label>
           <input
+            autoFocus
             type="text"
+            placeholder="e.g. 98% activation, NPS 58+"
             value={form.target}
             onChange={(e) => setForm({ ...form, target: e.target.value })}
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
@@ -1607,10 +1637,27 @@ function GuidedObjectiveWizard({ onSaved, onCancel }: { onSaved: () => void; onC
           </select>
         </div>
       </div>
+      <div className="flex items-center gap-3 pt-1">
+        <button
+          onClick={() => setStep("context")}
+          className="flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors"
+        >
+          Continue
+        </button>
+        <button onClick={() => setStep("title")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">Back</button>
+      </div>
+    </WizardShell>
+  );
+
+  // step === "context" — last, optional beat, then save
+  return (
+    <WizardShell label="Anything else worth noting?" onCancel={onCancel} error={error} step={stepIndex} totalSteps={OBJECTIVE_STEPS.length}>
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1.5">Context <span className="text-gray-400 font-normal">(optional)</span></label>
         <textarea
-          rows={2}
+          autoFocus
+          rows={3}
+          placeholder="Why this matters to the business right now — totally optional."
           value={form.description}
           onChange={(e) => setForm({ ...form, description: e.target.value })}
           className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
@@ -1625,7 +1672,7 @@ function GuidedObjectiveWizard({ onSaved, onCancel }: { onSaved: () => void; onC
           {saving && <Loader2 size={13} className="animate-spin" />}
           Save business goal
         </button>
-        <button onClick={() => setStep("describe")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">Back</button>
+        <button onClick={() => setStep("target")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">Back</button>
       </div>
     </WizardShell>
   );
@@ -1774,6 +1821,7 @@ function ObjectivesPanel({
   onSaved,
   label,
   labelPlural,
+  isFirstRun,
 }: {
   objectives: CompanyObjective[];
   goals: BusinessGoal[];
@@ -1783,8 +1831,40 @@ function ObjectivesPanel({
   onSaved: () => void;
   label: string;
   labelPlural: string;
+  // True page-level first run — no Business Goal AND no Product Goal exist
+  // anywhere yet. The parent hides its own header/sync controls/filters
+  // entirely in this state, so this panel needs to read as the WHOLE
+  // page's starting point — one focused moment, not a small empty box
+  // sitting above another, differently-styled empty box below it.
+  isFirstRun: boolean;
 }) {
   const [showForm, setShowForm] = useState(false);
+
+  if (isFirstRun) {
+    return showForm ? (
+      <GuidedObjectiveWizard onSaved={() => { setShowForm(false); onSaved(); }} onCancel={() => setShowForm(false)} />
+    ) : (
+      <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 py-20 text-center">
+        <div className="w-11 h-11 rounded-2xl bg-indigo-50 flex items-center justify-center mb-5">
+          <Trophy size={18} className="text-indigo-500" />
+        </div>
+        {/* Bigger, more confident headline — the modest text-sm version read
+            as an afterthought rather than the one thing this page is asking
+            you to do. One line of subtext, not two — say the single most
+            useful thing and stop. */}
+        <h3 className="text-2xl font-bold text-gray-900 tracking-tight mb-2">Start with the one big thing.</h3>
+        <p className="text-sm text-gray-400 max-w-sm mb-6">
+          What&apos;s your company trying to achieve this quarter? We&apos;ll help you break it down from there.
+        </p>
+        <button
+          onClick={() => setShowForm(true)}
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors"
+        >
+          <Plus size={14} /> Start
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
@@ -1814,6 +1894,9 @@ function ObjectivesPanel({
         <GuidedObjectiveWizard onSaved={() => { setShowForm(false); onSaved(); }} onCancel={() => setShowForm(false)} />
       ) : objectives.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 py-10 text-center">
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center mb-3">
+            <Trophy size={16} className="text-indigo-500" />
+          </div>
           <p className="text-sm text-gray-400 max-w-sm">
             Nothing here yet — this is the one big thing (e.g. &quot;Grow activations &amp; retention this quarter&quot;)
             that all the {labelPlural.toLowerCase()} below should ladder up to.
@@ -1857,7 +1940,15 @@ function ObjectivesPanel({
 // windows, match keys, manual/sheet values) stay available afterward via the
 // edit icon on the created KPI (KpiForm, above) — this wizard is meant to
 // nail the common case quickly, not replace every capability up front.
-type GoalWizardStep = "goal_describe" | "goal_confirm" | "kpi_describe" | "kpi_confirm" | "done";
+// Each step is one decision, full stop — see the matching comment on
+// ObjectiveWizardStep above for why this got split out of two dense
+// "confirm" screens (one per layer) into a longer run of light ones, plus a
+// visible dot trail (StepTrail) connecting them into one walk instead of a
+// series of unrelated swaps. "goal_objective" only exists in the trail when
+// there's a business goal to link to — see goalSteps below.
+type GoalWizardStep =
+  | "goal_describe" | "goal_title" | "goal_objective" | "goal_type" | "goal_target" | "goal_context"
+  | "kpi_describe" | "kpi_name" | "kpi_event" | "kpi_target" | "done";
 
 // Shared chrome around whichever wizard step is active. This MUST be a
 // top-level component, not one defined inline inside GuidedGoalWizard's
@@ -1871,16 +1962,70 @@ type GoalWizardStep = "goal_describe" | "goal_confirm" | "kpi_describe" | "kpi_c
 // the root: a stable component identity means React only updates the DOM
 // that actually changed, never tears down the input.
 function WizardShell({
-  label, onCancel, error, children,
-}: { label: string; onCancel: () => void; error: string; children: React.ReactNode }) {
+  label, onCancel, error, children, step, totalSteps,
+}: {
+  label: string; onCancel: () => void; error: string; children: React.ReactNode;
+  // Optional — when set, renders the dot trail below the header so a step
+  // visually reads as one continuous walk forward rather than the card's
+  // content just swapping. Omitted on the final "done" screen.
+  step?: number; totalSteps?: number;
+}) {
   return (
-    <div className="bg-white border border-gray-100 rounded-2xl p-6 space-y-5">
+    <div className="bg-white border border-gray-100 rounded-2xl p-8 sm:p-10 space-y-7">
       <div className="flex items-center justify-between">
         <p className="text-sm font-bold text-gray-800">{label}</p>
         <button onClick={onCancel} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">Cancel</button>
       </div>
-      {children}
+      {typeof step === "number" && typeof totalSteps === "number" && (
+        <StepTrail current={step} total={totalSteps} />
+      )}
+      <div className="space-y-7">{children}</div>
       {error && <p className="text-xs text-red-500">{error}</p>}
+    </div>
+  );
+}
+
+// The "connecting the dots" piece that was missing — each step used to just
+// swap content with a "step X of Y" text label and no visual thread tying
+// them together. The current dot stretches into a short pill, completed
+// ones stay filled, upcoming ones stay faint — same minimal dot vocabulary
+// as SignalChip elsewhere on this page (a quiet status read, not a loud
+// progress bar with numbers).
+function StepTrail({ current, total }: { current: number; total: number }) {
+  return (
+    <div className="flex items-center gap-1.5">
+      {Array.from({ length: total }).map((_, i) => (
+        <span
+          key={i}
+          className={cn(
+            "h-1.5 rounded-full transition-all",
+            i === current ? "w-5 bg-indigo-500" : i < current ? "w-1.5 bg-indigo-300" : "w-1.5 bg-gray-200"
+          )}
+        />
+      ))}
+    </div>
+  );
+}
+
+// Clickable starting points sitting under a describe-step textarea — the
+// FuseDash AI-chat empty state never opens on a truly blank box, it offers
+// suggested prompts ("Identify key trends," "Create dashboard") so there's
+// always somewhere to start from. Same idea here: clicking one fills the
+// textarea with editable example text rather than submitting anything, so
+// it's a starting point, not a shortcut that skips the wizard.
+function SuggestionChips({ examples, onPick }: { examples: string[]; onPick: (text: string) => void }) {
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-2.5">
+      {examples.map((ex) => (
+        <button
+          key={ex}
+          type="button"
+          onClick={() => onPick(ex)}
+          className="text-[11px] text-gray-500 border border-gray-200 rounded-full px-2.5 py-1 hover:text-indigo-600 hover:border-indigo-200 transition-colors"
+        >
+          {ex}
+        </button>
+      ))}
     </div>
   );
 }
@@ -1912,6 +2057,18 @@ function GuidedGoalWizard({
   const [savingKpi, setSavingKpi] = useState(false);
   const [kpisCreated, setKpisCreated] = useState<string[]>([]);
 
+  // "goal_objective" only exists as a real step when there's a business
+  // goal to link to — otherwise it'd be a step asking you to choose from an
+  // empty list. Computed here so both the trail's total count and every
+  // step's "what's next" target agree on the same sequence.
+  const goalSteps: GoalWizardStep[] = [
+    "goal_describe", "goal_title",
+    ...(objectives.length > 0 ? (["goal_objective"] as GoalWizardStep[]) : []),
+    "goal_type", "goal_target", "goal_context",
+    "kpi_describe", "kpi_name", "kpi_event", "kpi_target",
+  ];
+  const stepIndex = goalSteps.indexOf(step);
+
   async function handleProposeGoal() {
     if (!goalDescription.trim()) { setError("Describe what you're trying to achieve first."); return; }
     setError("");
@@ -1929,7 +2086,7 @@ function GuidedGoalWizard({
         timeframe: res.timeframe || TIMEFRAMES[0], description: res.description || "", company_objective_id: "",
       });
     }
-    setStep("goal_confirm");
+    setStep("goal_title");
   }
 
   async function handleSaveGoal() {
@@ -1959,7 +2116,7 @@ function GuidedGoalWizard({
         event_name: res.matched_event_name || "", aggregation: res.aggregation || "unique_users",
       });
     }
-    setStep("kpi_confirm");
+    setStep("kpi_name");
   }
 
   async function handleSaveKpi() {
@@ -1988,7 +2145,7 @@ function GuidedGoalWizard({
   }
 
   if (step === "goal_describe") return (
-    <WizardShell label="New goal — step 1 of 2" onCancel={onCancel} error={error}>
+    <WizardShell label="New goal" onCancel={onCancel} error={error} step={stepIndex} totalSteps={goalSteps.length}>
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1.5">
           What are you trying to achieve? Describe it in your own words.
@@ -2001,6 +2158,10 @@ function GuidedGoalWizard({
           onChange={(e) => setGoalDescription(e.target.value)}
           className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
         />
+        <SuggestionChips
+          examples={["Speed up claims processing", "Grow signups this quarter", "Reduce onboarding drop-off"]}
+          onPick={setGoalDescription}
+        />
       </div>
       <div className="flex items-center gap-3">
         <button
@@ -2012,7 +2173,7 @@ function GuidedGoalWizard({
           {proposingGoal ? "Thinking…" : "Suggest a goal"}
         </button>
         <button
-          onClick={() => { setGoalForm({ title: "", type: "growth", target: "", timeframe: TIMEFRAMES[0], description: "", company_objective_id: "" }); setStep("goal_confirm"); }}
+          onClick={() => { setGoalForm({ title: "", type: "growth", target: "", timeframe: TIMEFRAMES[0], description: "", company_objective_id: "" }); setStep("goal_title"); }}
           className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
         >
           Skip — I&apos;ll fill it in myself
@@ -2021,58 +2182,96 @@ function GuidedGoalWizard({
     </WizardShell>
   );
 
-  if (step === "goal_confirm") return (
-    <WizardShell label="New goal — step 2 of 2" onCancel={onCancel} error={error}>
-      <p className="text-xs text-gray-400 -mt-2">Here&apos;s what we&apos;ve put together — change anything that&apos;s not quite right.</p>
-      <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1.5">Goal title</label>
-        <input
-          autoFocus
-          type="text"
-          value={goalForm.title}
-          onChange={(e) => setGoalForm({ ...goalForm, title: e.target.value })}
-          className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-        />
+  if (step === "goal_title") return (
+    <WizardShell label="What's it called?" onCancel={onCancel} error={error} step={stepIndex} totalSteps={goalSteps.length}>
+      <p className="text-xs text-gray-400">Here&apos;s what we put together — change it if it&apos;s not quite right.</p>
+      <input
+        autoFocus
+        type="text"
+        placeholder="Name this goal"
+        value={goalForm.title}
+        onChange={(e) => setGoalForm({ ...goalForm, title: e.target.value })}
+        className="w-full border-0 border-b border-gray-200 px-0 py-1.5 text-lg font-semibold text-gray-900 placeholder:text-gray-300 placeholder:font-normal focus:outline-none focus:border-indigo-400 transition-colors"
+      />
+      <div className="flex items-center gap-3 pt-1">
+        <button
+          onClick={() => {
+            if (!goalForm.title.trim()) { setError("Goal title is required."); return; }
+            setError("");
+            setStep(objectives.length > 0 ? "goal_objective" : "goal_type");
+          }}
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors"
+        >
+          Continue
+        </button>
+        <button onClick={() => setStep("goal_describe")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">Back</button>
       </div>
-      {objectives.length > 0 && (
-        <div>
-          <label className="block text-xs font-medium text-gray-500 mb-1.5">
-            Which business goal does this move? <span className="text-gray-400 font-normal">(optional)</span>
-          </label>
-          <select
-            value={goalForm.company_objective_id}
-            onChange={(e) => setGoalForm({ ...goalForm, company_objective_id: e.target.value })}
-            className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
-          >
-            <option value="">Not linked yet</option>
-            {objectives.map((o) => <option key={o.id} value={o.id}>{o.title}</option>)}
-          </select>
-        </div>
-      )}
-      <div>
-        <label className="block text-xs font-medium text-gray-500 mb-2">Type</label>
-        <div className="flex flex-wrap gap-2">
-          {GOAL_TYPES.map((t) => {
-            const Icon = t.icon;
-            const selected = goalForm.type === t.value;
-            return (
-              <button
-                key={t.value}
-                onClick={() => setGoalForm({ ...goalForm, type: t.value })}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-all"
-                style={selected ? { background: t.light, borderColor: t.border, color: t.accent } : { background: "white", borderColor: "#e5e7eb", color: "#6b7280" }}
-              >
-                <Icon size={11} />{t.label}
-              </button>
-            );
-          })}
-        </div>
+    </WizardShell>
+  );
+
+  if (step === "goal_objective") return (
+    <WizardShell label="Which business goal does this move?" onCancel={onCancel} error={error} step={stepIndex} totalSteps={goalSteps.length}>
+      <select
+        autoFocus
+        value={goalForm.company_objective_id}
+        onChange={(e) => setGoalForm({ ...goalForm, company_objective_id: e.target.value })}
+        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+      >
+        <option value="">Not linked yet</option>
+        {objectives.map((o) => <option key={o.id} value={o.id}>{o.title}</option>)}
+      </select>
+      <p className="text-xs text-gray-400">Optional — you can link this later from the goal card.</p>
+      <div className="flex items-center gap-3 pt-1">
+        <button
+          onClick={() => setStep("goal_type")}
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors"
+        >
+          Continue
+        </button>
+        <button onClick={() => setStep("goal_title")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">Back</button>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+    </WizardShell>
+  );
+
+  if (step === "goal_type") return (
+    <WizardShell label="What kind of goal is this?" onCancel={onCancel} error={error} step={stepIndex} totalSteps={goalSteps.length}>
+      <div className="flex flex-wrap gap-2">
+        {GOAL_TYPES.map((t) => {
+          const Icon = t.icon;
+          const selected = goalForm.type === t.value;
+          return (
+            <button
+              key={t.value}
+              onClick={() => setGoalForm({ ...goalForm, type: t.value })}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-medium transition-all"
+              style={selected ? { background: t.light, borderColor: t.border, color: t.accent } : { background: "white", borderColor: "#e5e7eb", color: "#6b7280" }}
+            >
+              <Icon size={11} />{t.label}
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex items-center gap-3 pt-1">
+        <button
+          onClick={() => setStep("goal_target")}
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors"
+        >
+          Continue
+        </button>
+        <button onClick={() => setStep(objectives.length > 0 ? "goal_objective" : "goal_title")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">Back</button>
+      </div>
+    </WizardShell>
+  );
+
+  if (step === "goal_target") return (
+    <WizardShell label="What does success look like?" onCancel={onCancel} error={error} step={stepIndex} totalSteps={goalSteps.length}>
+      <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1.5">Target</label>
           <input
+            autoFocus
             type="text"
+            placeholder="e.g. 95% within 24h"
             value={goalForm.target}
             onChange={(e) => setGoalForm({ ...goalForm, target: e.target.value })}
             className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
@@ -2090,10 +2289,26 @@ function GuidedGoalWizard({
           </select>
         </div>
       </div>
+      <div className="flex items-center gap-3 pt-1">
+        <button
+          onClick={() => setStep("goal_context")}
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors"
+        >
+          Continue
+        </button>
+        <button onClick={() => setStep("goal_type")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">Back</button>
+      </div>
+    </WizardShell>
+  );
+
+  if (step === "goal_context") return (
+    <WizardShell label="Anything else worth noting?" onCancel={onCancel} error={error} step={stepIndex} totalSteps={goalSteps.length}>
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1.5">Context <span className="text-gray-400 font-normal">(optional)</span></label>
         <textarea
-          rows={2}
+          autoFocus
+          rows={3}
+          placeholder="Why this matters — totally optional."
           value={goalForm.description}
           onChange={(e) => setGoalForm({ ...goalForm, description: e.target.value })}
           className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
@@ -2108,16 +2323,16 @@ function GuidedGoalWizard({
           {savingGoal && <Loader2 size={13} className="animate-spin" />}
           Create goal — next, the KPI
         </button>
-        <button onClick={() => setStep("goal_describe")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">Back</button>
+        <button onClick={() => setStep("goal_target")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">Back</button>
       </div>
     </WizardShell>
   );
 
   if (step === "kpi_describe") return (
-    <WizardShell label={`KPI for "${createdGoal?.title}" — step 1 of 2`} onCancel={onCancel} error={error}>
+    <WizardShell label={`How will you know "${createdGoal?.title}" is moving?`} onCancel={onCancel} error={error} step={stepIndex} totalSteps={goalSteps.length}>
       <div>
         <label className="block text-xs font-medium text-gray-500 mb-1.5">
-          How will you know this is actually moving? Describe the one thing you&apos;d look at.
+          Describe the one thing you&apos;d look at.
         </label>
         <textarea
           autoFocus
@@ -2126,6 +2341,10 @@ function GuidedGoalWizard({
           value={kpiDescription}
           onChange={(e) => setKpiDescription(e.target.value)}
           className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none"
+        />
+        <SuggestionChips
+          examples={["% of claims paid within 24h", "Weekly active users", "Signups completed within 5 minutes"]}
+          onPick={setKpiDescription}
         />
       </div>
       <div className="flex items-center gap-3">
@@ -2144,51 +2363,78 @@ function GuidedGoalWizard({
     </WizardShell>
   );
 
-  if (step === "kpi_confirm") return (
-    <WizardShell label={`KPI for "${createdGoal?.title}" — step 2 of 2`} onCancel={onCancel} error={error}>
-      <p className="text-xs text-gray-400 -mt-2">Here&apos;s the KPI we&apos;ve put together — change anything that&apos;s not quite right.</p>
-      <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1.5">KPI name</label>
-        <input
-          autoFocus
-          type="text"
-          value={kpiForm.name}
-          onChange={(e) => setKpiForm({ ...kpiForm, name: e.target.value })}
-          className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+  if (step === "kpi_name") return (
+    <WizardShell label="What's it called?" onCancel={onCancel} error={error} step={stepIndex} totalSteps={goalSteps.length}>
+      <p className="text-xs text-gray-400">Here&apos;s the KPI we put together — change it if it&apos;s not quite right.</p>
+      <input
+        autoFocus
+        type="text"
+        placeholder="Name this KPI"
+        value={kpiForm.name}
+        onChange={(e) => setKpiForm({ ...kpiForm, name: e.target.value })}
+        className="w-full border-0 border-b border-gray-200 px-0 py-1.5 text-lg font-semibold text-gray-900 placeholder:text-gray-300 placeholder:font-normal focus:outline-none focus:border-indigo-400 transition-colors"
+      />
+      <div className="flex items-center gap-3 pt-1">
+        <button
+          onClick={() => {
+            if (!kpiForm.name.trim()) { setError("KPI name is required."); return; }
+            setError("");
+            setStep("kpi_event");
+          }}
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors"
+        >
+          Continue
+        </button>
+        <button onClick={() => setStep("kpi_describe")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">Back</button>
+      </div>
+    </WizardShell>
+  );
+
+  if (step === "kpi_event") return (
+    <WizardShell label="Which event tracks this?" onCancel={onCancel} error={error} step={stepIndex} totalSteps={goalSteps.length}>
+      <p className="text-xs text-gray-400 -mt-2">Optional — you can wire this up later.</p>
+      {kpiForm.event_name && (
+        <p className="text-[11px] text-emerald-600">
+          ✓ Matched to an event you already track: <span className="font-mono">{kpiForm.event_name}</span>
+        </p>
+      )}
+      <div className="flex items-center gap-1.5">
+        <EventCombobox
+          value={kpiForm.event_name}
+          onChange={(v) => setKpiForm({ ...kpiForm, event_name: v })}
+          options={eventNames}
+          placeholder={eventNames.length > 0 ? "Search events…" : "event_name (optional)"}
+          className="flex-1"
         />
+        <select
+          value={kpiForm.aggregation}
+          onChange={(e) => setKpiForm({ ...kpiForm, aggregation: e.target.value })}
+          className="border border-gray-200 rounded-xl px-2.5 py-2 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
+        >
+          <option value="unique_users">Unique users</option>
+          <option value="count">Event count</option>
+          <option value="unique_sessions">Unique sessions</option>
+        </select>
       </div>
-      <div>
-        <label className="block text-xs font-medium text-gray-500 mb-1.5">
-          Which event tracks this? <span className="text-gray-400 font-normal">(optional — you can wire this up later)</span>
-        </label>
-        {kpiForm.event_name && (
-          <p className="text-[11px] text-emerald-600 mb-1.5">
-            ✓ Matched to an event you already track: <span className="font-mono">{kpiForm.event_name}</span>
-          </p>
-        )}
-        <div className="flex items-center gap-1.5">
-          <EventCombobox
-            value={kpiForm.event_name}
-            onChange={(v) => setKpiForm({ ...kpiForm, event_name: v })}
-            options={eventNames}
-            placeholder={eventNames.length > 0 ? "Search events…" : "event_name (optional)"}
-            className="flex-1"
-          />
-          <select
-            value={kpiForm.aggregation}
-            onChange={(e) => setKpiForm({ ...kpiForm, aggregation: e.target.value })}
-            className="border border-gray-200 rounded-xl px-2.5 py-2 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-indigo-300"
-          >
-            <option value="unique_users">Unique users</option>
-            <option value="count">Event count</option>
-            <option value="unique_sessions">Unique sessions</option>
-          </select>
-        </div>
+      <div className="flex items-center gap-3 pt-1">
+        <button
+          onClick={() => setStep("kpi_target")}
+          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors"
+        >
+          Continue
+        </button>
+        <button onClick={() => setStep("kpi_name")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">Back</button>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+    </WizardShell>
+  );
+
+  if (step === "kpi_target") return (
+    <WizardShell label="What's the target?" onCancel={onCancel} error={error} step={stepIndex} totalSteps={goalSteps.length}>
+      <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-medium text-gray-500 mb-1.5">Target</label>
           <input
+            autoFocus
             type="text"
             placeholder="e.g. 95%"
             value={kpiForm.target}
@@ -2218,7 +2464,7 @@ function GuidedGoalWizard({
           {savingKpi && <Loader2 size={13} className="animate-spin" />}
           Save KPI
         </button>
-        <button onClick={() => setStep("kpi_describe")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">Back</button>
+        <button onClick={() => setStep("kpi_event")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">Back</button>
       </div>
     </WizardShell>
   );
@@ -2430,6 +2676,12 @@ export default function BusinessGoalsPage() {
   const totalEvents   = Object.keys(health.eventCounts).length;
   const filtersActive = filterType !== "all" || filterStatus !== "all" || filterObjective !== "all";
 
+  // True page-level first run — nothing exists anywhere yet. Collapses the
+  // whole page down to one focused onboarding moment instead of two
+  // separately-empty sections plus controls (sync window, filters) that
+  // don't mean anything before a goal exists. See ObjectivesPanel.
+  const isFirstRun = objectives.length === 0 && goals.length === 0;
+
   // Drives the hint text next to the day-window picker — first-time syncs
   // need a wide window to get real history, recent ones don't.
   const daysSinceSync = lastSyncedAt
@@ -2495,8 +2747,17 @@ export default function BusinessGoalsPage() {
         onSaved={load}
         label={productGoalLabel}
         labelPlural={productGoalLabelPlural}
+        isFirstRun={isFirstRun}
       />
 
+      {/* Everything below — header, sync controls, filters, the Product
+          Goals empty state — stays hidden on a true first run. None of it
+          means anything before a Business Goal exists, and showing it
+          anyway just competes for attention with the one thing that
+          matters: get that first goal created. ObjectivesPanel's own
+          first-run state above is the entire page's content until then. */}
+      {!isFirstRun && (
+      <>
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
@@ -2665,6 +2926,8 @@ export default function BusinessGoalsPage() {
             Clear filters
           </button>
         </div>
+      )}
+      </>
       )}
 
       {/* Active */}
