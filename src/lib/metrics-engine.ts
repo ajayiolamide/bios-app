@@ -146,25 +146,36 @@ export function matchOccurrences(
       // Skip past any numerator events that happened before this particular
       // claim — they belong to an earlier claim (or to nothing).
       while (cursor < numTimes.length && numTimes[cursor] < d.t) cursor++;
-      // Also skip past (discard) any numerator event that's implausibly
-      // close to count as a real resolution — junk, not a legitimate
-      // outcome for this claim. Keep looking past it for a believable one.
-      while (cursor < numTimes.length && numTimes[cursor] - d.t < MIN_ELAPSED_MS) cursor++;
 
-      if (cursor < numTimes.length && numTimes[cursor] - d.t <= windowMs) {
+      // If the next available numerator event is implausibly close, it's
+      // this claim's own junk/test pairing — consume it (it's gone either
+      // way, real or fake) but do NOT keep searching further for a
+      // substitute. Searching forward here was the bug: the next REAL
+      // numerator event almost always belongs to a LATER claim in this
+      // same group, not this one — crediting it to this claim would be
+      // borrowing someone else's payment. Once this claim's own pairing is
+      // thrown out, it's correctly treated as having no payment at all.
+      let discardedAsImplausible = false;
+      if (cursor < numTimes.length && numTimes[cursor] - d.t < MIN_ELAPSED_MS) {
+        cursor++;
+        discardedAsImplausible = true;
+      }
+
+      if (!discardedAsImplausible && cursor < numTimes.length && numTimes[cursor] - d.t <= windowMs) {
         // A payment exists and landed inside the window — fast match.
         results.push({ timestamp: d.timestamp, matched: true });
         cursor++; // consume it so it can't also match a later claim
-      } else if (cursor < numTimes.length) {
+      } else if (!discardedAsImplausible && cursor < numTimes.length) {
         // A payment exists but arrived after the window — a definite,
         // already-resolved miss. No ambiguity about timing here.
         results.push({ timestamp: d.timestamp, matched: false });
       } else if (now - d.t >= windowMs) {
-        // No payment at all, and the full window has already run out —
+        // No valid payment (none at all, or its only candidate was thrown
+        // out as implausible) and the full window has already run out —
         // a genuine miss, not just "not yet."
         results.push({ timestamp: d.timestamp, matched: false });
       }
-      // else: no payment yet, and still within its window — pending.
+      // else: no valid payment yet, and still within its window — pending.
       // Deliberately not pushed: too early to call it a success or a miss.
     }
   }
