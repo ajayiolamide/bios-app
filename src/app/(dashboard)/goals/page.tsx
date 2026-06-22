@@ -500,11 +500,56 @@ function KpiRow({ kpi, featureCount, orgId, onWired, onEdit, onDelete }: {
   const [chartTrend, setChartTrend] = useState<MetricDataPoint[]>(kpi.trend);
   const [chartLabel, setChartLabel] = useState("30-day trend");
 
+  // A KPI's raw per-occurrence data (needed for time-window/match-key
+  // matching) only ever lands in the events table via the "Pull Mixpanel
+  // Data" sync up on the goal — but that sync's event list comes from
+  // FEATURES linked to the goal, not from the KPI itself. A KPI with no
+  // linked feature (very common right after creating it, or after a
+  // backfill delete) had no way to get its own event_name/
+  // denominator_event_name re-synced. This button fixes that by syncing
+  // exactly this KPI's events directly, the same manual-sync pattern as the
+  // Funnel cards.
+  const [mpConnected, setMpConnected] = useState(false);
+  const [syncState, setSyncState] = useState<"idle" | "syncing" | "done" | "error">("idle");
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!kpi.event_name) return;
+    getMixpanelSettings(orgId).then(({ connected }) => setMpConnected(connected));
+  }, [orgId, kpi.event_name]);
+
+  async function handleSyncMixpanel() {
+    if (syncState === "syncing") return;
+    const eventNames = [kpi.event_name, kpi.denominator_event_name].filter(Boolean) as string[];
+    if (!eventNames.length) return;
+    setSyncState("syncing");
+    setSyncMsg(null);
+    const result = await syncMixpanelRawEvents(orgId, eventNames, 90);
+    if (result.error) {
+      setSyncState("error");
+      setSyncMsg(result.error);
+    } else {
+      setSyncState("done");
+      setSyncMsg(result.synced > 0 ? `Pulled ${result.synced.toLocaleString()} new event${result.synced !== 1 ? "s" : ""}` : "Already up to date");
+      onWired(); // refetch this KPI's totals/trend now that fresh rows may have landed
+    }
+  }
+
   // Shown on hover on every variant of this row — same actions regardless
   // of whether the KPI is wired, a rate, or a plain volume KPI. The trend
   // toggle only makes sense once there's an event actually producing data.
   const RowActions = (
     <span className="hidden group-hover:flex items-center gap-1.5 flex-shrink-0">
+      {kpi.event_name && mpConnected && (
+        <button
+          onClick={handleSyncMixpanel}
+          title="Pull this KPI's raw events from Mixpanel"
+          disabled={syncState === "syncing"}
+          className="text-gray-300 hover:text-indigo-600 transition-colors disabled:opacity-50"
+        >
+          {syncState === "syncing" ? <Loader2 size={11} className="animate-spin" /> : <RefreshCw size={11} />}
+        </button>
+      )}
       {kpi.event_name && (
         <button onClick={() => setShowChart(v => !v)} title={showChart ? "Hide trend" : "Show trend"} className={`transition-colors ${showChart ? "text-indigo-500" : "text-gray-300 hover:text-indigo-600"}`}>
           <TrendingUp size={11} />
@@ -523,6 +568,13 @@ function KpiRow({ kpi, featureCount, orgId, onWired, onEdit, onDelete }: {
     <div className="pb-3 -mt-1">
       <MetricsChart metrics={[{ ...kpi, trend: chartTrend }]} title={`${kpi.name} — ${chartLabel}`} />
     </div>
+  ) : null;
+
+  // RowActions only shows on hover — without this, the result of a sync
+  // click would vanish the instant the mouse leaves the row, before anyone
+  // gets to read it.
+  const syncMsgPanel = syncMsg ? (
+    <p className={`text-[10px] pb-1.5 -mt-0.5 ${syncState === "error" ? "text-red-500" : "text-gray-400"}`}>{syncMsg}</p>
   ) : null;
 
   function handleRangeResult(trend: MetricDataPoint[], label: string) {
@@ -633,6 +685,7 @@ function KpiRow({ kpi, featureCount, orgId, onWired, onEdit, onDelete }: {
             {featureCount} feature{featureCount !== 1 ? "s" : ""}
           </span>
         </div>
+        {syncMsgPanel}
         {chartPanel}
       </div>
     );
@@ -662,6 +715,7 @@ function KpiRow({ kpi, featureCount, orgId, onWired, onEdit, onDelete }: {
           {featureCount} feature{featureCount !== 1 ? "s" : ""}
         </span>
       </div>
+      {syncMsgPanel}
       {chartPanel}
     </div>
   );
