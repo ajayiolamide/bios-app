@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/client";
 import { QuickInsight } from "./quick-insight";
 import { getDashboardData, type DashboardData } from "@/app/actions/dashboard";
 import { getFeatureImpactSummaries } from "@/app/actions/feature-impact";
+import { getGoalProgress } from "@/app/actions/metrics";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -198,6 +199,14 @@ export default function DashboardPage() {
       // exact same call.
       getFeatureImpactSummaries(currentOrg.id).then((featureImpactSummaries) => {
         setData((prev) => prev ? { ...prev, featureImpactSummaries } : prev);
+      });
+
+      // Goal progress fans out into a trend-data query per KPI in the org —
+      // also deferred, also matching the Goals page's pattern. The hero
+      // above renders fine with an empty map (every bar/ring just falls
+      // back to "—" until this fills in a moment later).
+      getGoalProgress(currentOrg.id).then((goalProgress) => {
+        setData((prev) => prev ? { ...prev, goalProgress } : prev);
       });
     });
   }, [currentOrg]);

@@ -3,7 +3,7 @@
 import { createAdminClient } from "@/lib/supabase/server";
 import type { FeatureImpactResult } from "./feature-impact";
 import { getCompanyObjectives } from "./company-objectives";
-import { getGoalProgress, type GoalProgress } from "./metrics";
+import type { GoalProgress } from "./metrics";
 import type { BusinessGoal, CompanyObjective } from "@/types/database";
 
 export type RecentReport = {
@@ -64,7 +64,6 @@ export async function getDashboardData(orgId: string): Promise<DashboardData> {
   const [
     { data: allGoals },
     objectives,
-    goalProgress,
     { data: allFeatures },
     { count: eventCount },
     { count: eventCount7d },
@@ -76,7 +75,6 @@ export async function getDashboardData(orgId: string): Promise<DashboardData> {
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false }),
     getCompanyObjectives(orgId),
-    getGoalProgress(orgId),
     admin.from("feature_metrics")
       .select("id, business_goal_id, suggestions, status")
       .eq("organization_id", orgId)
@@ -114,6 +112,16 @@ export async function getDashboardData(orgId: string): Promise<DashboardData> {
   // same computation. Defaults to empty here; the page fills it in once its
   // own call resolves.
   const featureImpactSummaries: FeatureImpactResult[] = [];
+
+  // goalProgress used to be fetched right here too — it calls getKpisByGoal,
+  // which fans out into a parallel trend-data query for every KPI/metric in
+  // the org (getMetrics' attachTrendData). On an org with a meaningful
+  // number of KPIs that's real, blocking work on every dashboard load.
+  // GoalsOverview already renders gracefully with an empty progress map
+  // (every lookup falls back to "—" / an empty ring), so this is deferred
+  // exactly like featureImpactSummaries above — the page fetches it
+  // separately right after the rest of the dashboard has rendered.
+  const goalProgress: Record<string, GoalProgress> = {};
   const positiveImpact = featureImpactSummaries.filter(s => s.verdict === "likely_positive").length;
   const inconclusiveImpact = featureImpactSummaries.filter(s => s.verdict === "inconclusive").length;
   const negativeImpact = featureImpactSummaries.filter(s => s.verdict === "likely_negative").length;

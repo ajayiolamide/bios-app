@@ -9,14 +9,20 @@ import { isRealEventName } from "@/lib/event-name-filter";
 
 export async function getDistinctEventNames(orgId: string): Promise<string[]> {
   const admin = createAdminClient();
-  const { data } = await admin
-    .from("events")
-    .select("name")
-    .eq("organization_id", orgId)
-    .order("name");
-  if (!data) return [];
-  // Deduplicate
-  return [...new Set(data.map((r) => r.name as string).filter(isRealEventName))].sort();
+  // This used to `select("name")` with no limit — pulling the name column
+  // for every single row in the org's events table (on this org, 900k+ rows)
+  // over the network just to dedupe it down to a couple hundred unique
+  // strings in JS. That's a full table read on every call, and this function
+  // gets called from several pages (Goals, Feature Metrics, Cohorts, the
+  // create-metric dialog) — some of them call it more than once per page
+  // load. get_distinct_event_names does the dedup inside Postgres itself via
+  // SQL migration 032, so only the actual distinct names cross the wire.
+  const { data, error } = await admin.rpc("get_distinct_event_names", { org_id: orgId });
+  if (error) {
+    console.error("[getDistinctEventNames]", error);
+    return [];
+  }
+  return [...new Set((data ?? []).map((r: { name: string }) => r.name).filter(isRealEventName))].sort();
 }
 
 // Returns distinct event names with their source (csv | mixpanel | sdk | null)

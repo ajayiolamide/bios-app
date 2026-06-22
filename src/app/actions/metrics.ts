@@ -5,6 +5,7 @@ import type { Metric } from "@/types/database";
 import { computeTimeWindowedRate } from "@/lib/metrics-engine";
 import type { MetricDataPoint } from "@/lib/metrics-engine";
 import { getManualKpiValue } from "./manual-kpi";
+import { getDistinctEventNames as getDistinctEventNamesFast } from "./events";
 
 // Server Actions files can only export async functions, so the actual sync
 // computeTimeWindowedRate helper lives in src/lib/metrics-engine.ts. cohorts.ts
@@ -565,13 +566,14 @@ function computeTotal(
 // ─── Distinct event names (for the create form dropdown) ─────────────────────
 
 export async function getDistinctEventNames(orgId: string): Promise<string[]> {
-  const admin = createAdminClient();
-  const { data } = await admin
-    .from("events")
-    .select("name")
-    .eq("organization_id", orgId)
-    .order("name");
-
-  if (!data) return [];
-  return [...new Set(data.map((r) => r.name))];
+  // This used to be its own separate implementation that pulled the `name`
+  // column for every row in the org's events table and deduped in JS — the
+  // exact same expensive full-table-read events.ts's version had, just
+  // copy-pasted into a second file, and missing that file's junk-name
+  // filtering on top (so dropdowns built from this version could show
+  // Mixpanel's internal "$"-prefixed events or stray email-shaped names that
+  // the Events page already knows to hide). Delegating to the one fixed,
+  // filtered implementation fixes both at once instead of having two
+  // versions drift apart.
+  return getDistinctEventNamesFast(orgId);
 }

@@ -175,13 +175,21 @@ export async function getGoalHealthData(orgId: string): Promise<GoalHealthData> 
   }
 
   // 3. Count events for each launched feature's event names only
+  //
+  // These only ever feed a "firing / not firing" badge — whether the count
+  // is 1 or 100,000 displays identically. "exact" forces Postgres to fully
+  // scan/count matching rows for every one of these queries, in parallel,
+  // one per distinct launched event name — on an org with a lot of events
+  // and several launched features, that's several full scans firing at
+  // once on every single Goals page load. "estimated" is enough for a
+  // >0 check and removes that cost.
   const eventCounts: Record<string, number> = {};
   if (launchedEventNames.size > 0) {
     await Promise.all(
       [...launchedEventNames].map(async (name) => {
         const { count } = await admin
           .from("events")
-          .select("*", { count: "exact", head: true })
+          .select("*", { count: "estimated", head: true })
           .eq("organization_id", orgId)
           .eq("name", name)
           // Exclude only Sync Event Names' name-only placeholder rows — real
