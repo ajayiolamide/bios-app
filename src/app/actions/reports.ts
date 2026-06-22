@@ -860,6 +860,37 @@ ${extraNotes}` : ""}`;
       deck = { title: (p.title as string) ?? template.name, slides };
     }
 
+    // ── Guarantee every Business Goal is visible, regardless of the model ──────
+    // Telling the planning model "every goal must be mentioned" in the prompt
+    // is a request, not a guarantee — under a tight slide budget, or with
+    // competing custom briefing notes, a cheap/fast planning model (Haiku)
+    // can still leave one out even when explicitly told not to. For a
+    // stakeholder-facing report, "is my goal actually in there" can't depend
+    // on model compliance, so this builds the goal-tracking slide directly
+    // from real data and inserts it — no AI involved, can't be skipped.
+    if (biosContext?.goals && biosContext.goals.length > 0) {
+      const goalKpis = biosContext.goals.slice(0, 12).map((g) => {
+        const gp = biosContext.goalProgress?.[g.id];
+        const pct = gp?.progressRatio != null ? Math.round(gp.progressRatio * 100) : null;
+        const status: "on_track" | "off_track" | "neutral" =
+          pct == null ? "neutral" : pct >= 100 ? "on_track" : pct >= 60 ? "neutral" : "off_track";
+        return {
+          label: g.title,
+          value: pct != null ? `${pct}%` : "Not yet measurable",
+          // kpi_grid's renderer hides the "Target: ..." line entirely when
+          // target is exactly "-" — used here so a goal with no measurable
+          // KPI doesn't show a meaningless "Target: -" row.
+          target: pct != null ? "100%" : "-",
+          status,
+        };
+      });
+      const goalSlide: SlideContent = { type: "kpi_grid", title: "Business Goals — Tracking Status", kpis: goalKpis };
+      // Right after the title slide when there is one (always slide 1 per
+      // the prompt's own rule), otherwise lead with it.
+      const insertAt = deck.slides[0]?.type === "title" ? 1 : 0;
+      deck.slides = [...deck.slides.slice(0, insertAt), goalSlide, ...deck.slides.slice(insertAt)];
+    }
+
     return { deck, tokensUsed, model, error: null };
   } catch (err) {
     return { deck: null, tokensUsed: 0, model, error: (err as Error).message };
