@@ -1907,7 +1907,7 @@ function ObjectiveStatement({
 
   return (
     <div
-      className="relative rounded-2xl overflow-hidden"
+      className="relative rounded-2xl overflow-hidden max-w-2xl"
       style={{
         background: palette.bg,
         boxShadow: `0 0 0 1.5px ${palette.border}, 0 8px 32px -8px ${palette.glow}`,
