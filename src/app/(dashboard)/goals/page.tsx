@@ -1774,21 +1774,37 @@ function ObjectiveCard({
   const signal = progressSignal(progressRatio, goalCount);
   void measurableGoalCount;
 
+  const palette = {
+    good:    { bg: "#f3f4ff", border: "rgba(99,102,241,0.28)",  glow: "rgba(99,102,241,0.14)", accent: "#6366f1", gradFrom: "#818cf8", gradTo: "#a78bfa" },
+    warn:    { bg: "#fffbf0", border: "rgba(217,119,6,0.25)",   glow: "rgba(217,119,6,0.12)",  accent: "#d97706", gradFrom: "#fbbf24", gradTo: "#fb923c" },
+    bad:     { bg: "#fff5f5", border: "rgba(225,29,72,0.25)",   glow: "rgba(225,29,72,0.12)",  accent: "#e11d48", gradFrom: "#fb7185", gradTo: "#f87171" },
+    neutral: { bg: "#f5f7ff", border: "rgba(99,102,241,0.18)",  glow: "rgba(99,102,241,0.08)", accent: "#818cf8", gradFrom: "#a5b4fc", gradTo: "#93c5fd" },
+  }[signal.tone];
+
   return (
-    // Light, white card — matching GoalCard (the Product Goal layer right
-    // below it) instead of the earlier dark navy treatment. The hierarchy
-    // reads as one consistent visual language now, not "the top layer gets
-    // a different theme than everything under it."
     <div
-      className={cn(
-        "group relative bg-white border border-gray-100 rounded-xl overflow-hidden transition-colors",
-        selected ? "ring-1 ring-indigo-200 border-indigo-100" : "hover:border-gray-200"
-      )}
+      className="group relative rounded-xl overflow-hidden"
+      style={{
+        background: palette.bg,
+        boxShadow: selected
+          ? `0 0 0 2px ${palette.border}, 0 8px 24px -6px ${palette.glow}`
+          : `0 0 0 1.5px ${palette.border}, 0 4px 16px -4px ${palette.glow}`,
+      }}
     >
+      {/* Gradient top line */}
+      <div
+        className="absolute inset-x-0 top-0 h-[2px]"
+        style={{ background: `linear-gradient(90deg, ${palette.gradFrom}, ${palette.gradTo})` }}
+      />
+      {/* Ghost Trophy */}
+      <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none select-none">
+        <Trophy size={64} style={{ color: palette.accent, opacity: 0.07 }} />
+      </div>
+
       <button onClick={onSelect} className="relative w-full text-left p-4">
-        <div className="flex items-center justify-between mb-2.5">
-          <span className="text-[11px] font-medium text-gray-400">Business Goal</span>
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-[10px] font-semibold tracking-widest uppercase" style={{ color: palette.accent }}>Business Goal</span>
+          <div className="flex items-center gap-2">
             <SignalChip signal={signal} />
             <span
               role="button"
@@ -1806,7 +1822,7 @@ function ObjectiveCard({
         </p>
 
         {objective.description && (
-          <p className="text-xs text-gray-400 leading-relaxed mb-1">{objective.description}</p>
+          <p className="text-xs text-gray-500 leading-relaxed mb-1 line-clamp-2">{objective.description}</p>
         )}
 
         <p className="text-xs text-gray-400 mb-3">
@@ -1827,17 +1843,23 @@ function ObjectiveCard({
                 {pct.toLocaleString()}%{overshot ? " — exceeded" : ""}
               </span>
             </div>
-            <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+            <div className="h-1 rounded-full overflow-hidden" style={{ background: "rgba(0,0,0,0.06)" }}>
               <div
-                className={`h-full rounded-full ${overshot ? "bg-emerald-500" : "bg-indigo-500"}`}
-                style={{ width: `${Math.min(pct, 100)}%` }}
+                className={`h-full rounded-full ${overshot ? "bg-emerald-500" : ""}`}
+                style={{
+                  width: `${Math.min(pct, 100)}%`,
+                  background: overshot ? undefined : `linear-gradient(90deg, ${palette.gradFrom}, ${palette.gradTo})`,
+                }}
               />
             </div>
           </div>
         )}
       </button>
 
-      <div className="relative flex items-center justify-between px-4 py-2.5 border-t border-gray-100">
+      <div
+        className="relative flex items-center justify-between px-4 py-2"
+        style={{ borderTop: `1px solid ${palette.border}` }}
+      >
         <span className="text-[11px] text-gray-400">
           {goalCount} {goalCount !== 1 ? labelPlural : label}
         </span>
