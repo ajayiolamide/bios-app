@@ -201,6 +201,8 @@ export default function SettingsPage() {
   // color + logo).
   const [designTheme, setDesignTheme] = useState("brand");
   const [slackWebhook, setSlackWebhook] = useState("");
+  const [slackDigestEnabled, setSlackDigestEnabled] = useState(false);
+  const [slackDigestCadence, setSlackDigestCadence] = useState<"daily" | "weekly">("weekly");
   const [logoUrl, setLogoUrl] = useState("");
   // Bumped on every re-upload to bust the browser's <img> cache for the
   // preview only — kept separate from logoUrl so the cache-busting query
@@ -253,6 +255,8 @@ export default function SettingsPage() {
       setPrimaryColor(b.primary_color ?? "#6366f1");
       setSecondaryColor((b as BrandSettings & { secondary_color?: string }).secondary_color ?? "#a5b4fc");
       setSlackWebhook(b.slack_webhook ?? "");
+      setSlackDigestEnabled((b as BrandSettings & { slack_digest_enabled?: boolean }).slack_digest_enabled ?? false);
+      setSlackDigestCadence(((b as BrandSettings & { slack_digest_cadence?: string }).slack_digest_cadence ?? "weekly") as "daily" | "weekly");
       setLogoUrl(b.logo_url ?? "");
       setDesignTheme((b as BrandSettings & { design_theme?: string }).design_theme ?? "brand");
     }
@@ -372,6 +376,8 @@ export default function SettingsPage() {
       primary_color: primaryColor,
       secondary_color: secondaryColor,
       slack_webhook: slackWebhook,
+      slack_digest_enabled: slackDigestEnabled,
+      slack_digest_cadence: slackDigestCadence,
       logo_url: logoUrl,
       design_theme: designTheme,
     });
@@ -693,6 +699,40 @@ export default function SettingsPage() {
               />
               <p className="text-xs text-muted-foreground">Reports posted here automatically each month</p>
             </div>
+
+            {/* Slack goal digest */}
+            {slackWebhook && (
+              <div className="space-y-2.5 rounded-xl border border-gray-100 bg-gray-50 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-800">Goal digest</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">Send a goal progress summary to Slack automatically</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSlackDigestEnabled(!slackDigestEnabled)}
+                    className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${slackDigestEnabled ? "bg-indigo-600" : "bg-gray-200"}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${slackDigestEnabled ? "translate-x-4" : "translate-x-0"}`} />
+                  </button>
+                </div>
+                {slackDigestEnabled && (
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs text-gray-500">Send</p>
+                    {(["daily", "weekly"] as const).map((c) => (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => setSlackDigestCadence(c)}
+                        className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${slackDigestCadence === c ? "bg-indigo-600 text-white" : "bg-white border border-gray-200 text-gray-500 hover:text-gray-800"}`}
+                      >
+                        {c === "daily" ? "Every morning" : "Every Monday"}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             <button type="submit" disabled={brandSaving}
               className="px-4 py-2 rounded-md text-sm bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">

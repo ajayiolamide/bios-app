@@ -297,6 +297,8 @@ export interface Database {
           primary_color: string;
           secondary_color: string;
           slack_webhook: string | null;
+          slack_digest_enabled: boolean;
+          slack_digest_cadence: string;
           mixpanel_username: string | null;
           mixpanel_api_secret: string | null;
           mixpanel_project_id: string | null;
@@ -318,6 +320,8 @@ export interface Database {
           primary_color?: string;
           secondary_color?: string;
           slack_webhook?: string | null;
+          slack_digest_enabled?: boolean;
+          slack_digest_cadence?: string;
           mixpanel_username?: string | null;
           mixpanel_api_secret?: string | null;
           mixpanel_project_id?: string | null;
@@ -335,6 +339,8 @@ export interface Database {
           primary_color?: string;
           secondary_color?: string;
           slack_webhook?: string | null;
+          slack_digest_enabled?: boolean;
+          slack_digest_cadence?: string;
           mixpanel_username?: string | null;
           mixpanel_api_secret?: string | null;
           mixpanel_project_id?: string | null;

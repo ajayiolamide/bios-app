@@ -3282,19 +3282,46 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
             <p className="text-xs text-gray-400 mt-2">Current selection: <span className="font-medium text-gray-600">{period}</span></p>
           </div>
 
-          <div className="pt-4 border-t border-gray-100">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-600">Include Metrik data</p>
+          <div className="pt-4 border-t border-gray-100 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-gray-600">Report scope</p>
               {!hasAnyDataSource && (
-                <span className="text-[11px] text-red-500 font-medium">Select at least one source</span>
+                <span className="text-[11px] text-red-500 font-medium">Select at least one</span>
               )}
             </div>
+
+            {/* Quick-pick presets — one click sets the right combination */}
+            <div className="flex flex-wrap gap-1.5">
+              {([
+                { label: "Full Review",      set: { goals: true,  features: true,  funnelsKpis: true,  funnels: true  } },
+                { label: "Goals Only",       set: { goals: true,  features: false, funnelsKpis: false, funnels: false } },
+                { label: "Feature Metrics",  set: { goals: false, features: true,  funnelsKpis: false, funnels: false } },
+                { label: "Insights & KPIs",  set: { goals: false, features: false, funnelsKpis: true,  funnels: false } },
+                { label: "User Journeys",    set: { goals: false, features: false, funnelsKpis: false, funnels: true  } },
+              ] as { label: string; set: BiosSections }[]).map(({ label, set }) => {
+                const isActive = JSON.stringify(biosSections) === JSON.stringify(set);
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => setBiosSections(set)}
+                    className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
+                      isActive ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Fine-grained toggles — still available to mix and match */}
             <div className="flex flex-wrap gap-2">
               {([
-                { key: "goals",      label: "Business Goals",  desc: "Active goals, status, targets and timeframes" },
-                { key: "features",   label: "Feature Metrics", desc: "Logged features and their tracking plans" },
+                { key: "goals",       label: "Business Goals",  desc: "Active goals, status, targets and timeframes" },
+                { key: "features",    label: "Feature Metrics", desc: "Logged features and their tracking plans" },
                 { key: "funnelsKpis", label: "KPIs & Metrics",  desc: "Metric definitions and event tracking items" },
-                { key: "funnels",    label: "User Journey",    desc: "Real step-by-step funnel conversion, current data" },
+                { key: "funnels",     label: "User Journey",    desc: "Real step-by-step funnel conversion, current data" },
               ] as { key: keyof BiosSections; label: string; desc: string }[]).map(({ key, label, desc }) => (
                 <button
                   key={key}

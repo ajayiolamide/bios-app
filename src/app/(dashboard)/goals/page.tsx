@@ -5,7 +5,7 @@ import {
   Plus, Target, TrendingUp, Users, Settings, Package, Globe,
   Trash2, Loader2, Trophy, CheckCircle2, ChevronDown, Check,
   ChevronRight, Lightbulb, Zap, AlertCircle, Activity, RefreshCw,
-  Calendar, ShieldAlert, Pencil, FileSpreadsheet, Sparkles,
+  Calendar, ShieldAlert, Pencil, FileSpreadsheet, Sparkles, Circle, Bell,
 } from "lucide-react";
 import { useOrg } from "@/contexts/org-context";
 import { cn } from "@/lib/utils";
@@ -2029,6 +2029,67 @@ function ObjectiveStatement({
   );
 }
 
+// ─── Goal Setup Checklist ─────────────────────────────────────────────────────
+// Compact "what's left to do" tracker rendered below the Business Goal card
+// once Stage 3 is active. Disappears when every item is checked.
+function GoalChecklist({
+  objectives,
+  goals,
+  goalProgress,
+}: {
+  objectives: CompanyObjective[];
+  goals: BusinessGoal[];
+  goalProgress: Record<string, GoalProgress>;
+}) {
+  const hasTarget       = objectives.some(o => !!o.target?.trim());
+  const hasProductGoal  = goals.length > 0;
+  const hasMeasurable   = Object.values(goalProgress).some(gp => gp.progressRatio !== null);
+  const hasFeature      = goals.some(g => (g as BusinessGoal & { feature_metrics?: unknown[] }).feature_metrics?.length);
+
+  const items: { label: string; done: boolean; hint: string }[] = [
+    { label: "Business Goal defined",        done: true,           hint: "" },
+    { label: "Success target set",           done: hasTarget,      hint: "Add a target (e.g. £2M ARR) to your Business Goal" },
+    { label: "Product Goal added",           done: hasProductGoal, hint: "Break the Business Goal into a team-owned outcome" },
+    { label: "KPI wired to measurement",     done: hasMeasurable,  hint: "Give a Product Goal KPI an event + numeric target" },
+    { label: "Feature linked",               done: hasFeature,     hint: "Add a Feature to show which builds are moving the needle" },
+  ];
+
+  const doneCount = items.filter(i => i.done).length;
+  if (doneCount === items.length) return null;
+
+  return (
+    <div className="rounded-xl border border-gray-100 bg-white p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-semibold text-gray-700">Setup progress</p>
+        <span className="text-[11px] text-gray-400">{doneCount} / {items.length} complete</span>
+      </div>
+      <div className="h-1 rounded-full bg-gray-100 overflow-hidden">
+        <div
+          className="h-full rounded-full bg-indigo-500 transition-all"
+          style={{ width: `${(doneCount / items.length) * 100}%` }}
+        />
+      </div>
+      <div className="space-y-2">
+        {items.map((item) => (
+          <div key={item.label} className="flex items-start gap-2.5">
+            {item.done
+              ? <CheckCircle2 size={14} className="text-emerald-500 flex-shrink-0 mt-0.5" />
+              : <Circle      size={14} className="text-gray-200    flex-shrink-0 mt-0.5" />}
+            <div className="flex-1 min-w-0">
+              <span className={`text-xs ${item.done ? "line-through text-gray-300" : "text-gray-700"}`}>
+                {item.label}
+              </span>
+              {!item.done && item.hint && (
+                <p className="text-[11px] text-gray-400 mt-0.5">{item.hint}</p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ObjectivesPanel({
   objectives,
   goals,
@@ -3094,6 +3155,9 @@ export default function BusinessGoalsPage() {
           so the wizard completion feels instant, not stutter-y. */}
       {(goals.length > 0 || productGoalJustCreated) && (
       <>
+      {/* Goal setup checklist — disappears once everything is wired up */}
+      <GoalChecklist objectives={objectives} goals={goals} goalProgress={goalProgress} />
+
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
