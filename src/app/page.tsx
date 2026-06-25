@@ -18,9 +18,7 @@ export default async function HomePage() {
       <nav className="flex items-center justify-between px-6 py-5 max-w-6xl mx-auto">
         <div className="flex items-center gap-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-metrik.svg" alt="Metrik" className="h-7 w-auto" onError={(e) => {
-            (e.target as HTMLImageElement).style.display = "none";
-          }} />
+          <img src="/logo-metrik.svg" alt="Metrik" className="h-7 w-auto" />
           <span className="font-black text-lg text-gray-900 tracking-tight">Metrik</span>
         </div>
         <div className="flex items-center gap-3">
