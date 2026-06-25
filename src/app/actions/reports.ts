@@ -565,6 +565,19 @@ export async function planReport(
     };
   }
 
+  // Build scope restriction instruction — tells the AI exactly what sections it may use
+  let scopeRestrictionBlock = "";
+  if (biosSections) {
+    const included: string[] = [];
+    const excluded: string[] = [];
+    if (biosSections.goals) included.push("Business Goals"); else excluded.push("Business Goals");
+    if (biosSections.features) included.push("Feature Metrics"); else excluded.push("Feature Metrics");
+    if (biosSections.funnelsKpis) included.push("KPIs & Metrics"); else excluded.push("KPIs & Metrics");
+    if (biosSections.funnels) included.push("User Journeys / Funnels"); else excluded.push("User Journeys / Funnels");
+    const excl = excluded.length > 0 ? ` Do NOT generate any slides about: ${excluded.join(", ")}.` : "";
+    scopeRestrictionBlock = `\nSCOPE RESTRICTION: This report covers ONLY: ${included.join(", ")}.${excl} Slides that reference excluded sections will be rejected — strictly omit them.\n`;
+  }
+
   // Build BIOS context block
   let biosBlock = "";
   if (biosContext) {
@@ -743,7 +756,7 @@ AUDIENCE: ${template.instructions}
 STRICT PERIOD RULE: This report is explicitly for ${period} — not today's date, not the most recent date in any data below.
 Never name, imply, or compute a stat for any month/quarter/date other than ${period} anywhere in the deck (titles, narration, chart labels, captions).
 The data below was not necessarily pre-filtered to ${period} and may include other dates — if so, silently treat it as the closest available stand-in for ${period} rather than calling out the month it actually came from.
-${biosBlock}${sourceConfigBlock}${biggestMoversBlock}${slideGuidesBlock}
+${scopeRestrictionBlock}${biosBlock}${sourceConfigBlock}${biggestMoversBlock}${slideGuidesBlock}
 SHEET DATA (${filteredRows.length} rows)${filteredRows.length === 0 ? " — no sheet data provided, use internal Metrik data above" : ""}:
 ${filteredRows.length > 0 ? `Headers: ${headers}\n---\n${csvPreview}\n---` : "(none)"}
 

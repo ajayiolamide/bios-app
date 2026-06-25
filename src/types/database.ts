@@ -606,6 +606,7 @@ export interface Database {
           planned_launch_date: string | null;
           actual_launch_date: string | null;
           launch_status: "ideation" | "design" | "dev" | "uat" | "ready_for_launch" | "deployed" | "launched" | "post_launch" | "rolled_back" | "paused" | "not_launched" | "delayed" | "cancelled";
+          pm_slack_handle: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -629,6 +630,7 @@ export interface Database {
           planned_launch_date?: string | null;
           actual_launch_date?: string | null;
           launch_status?: "not_launched" | "launched" | "delayed" | "cancelled";
+          pm_slack_handle?: string | null;
         };
         Update: {
           suggestions?: FeatureSuggestion[];
@@ -639,6 +641,7 @@ export interface Database {
           planned_launch_date?: string | null;
           actual_launch_date?: string | null;
           launch_status?: "not_launched" | "launched" | "delayed" | "cancelled";
+          pm_slack_handle?: string | null;
           updated_at?: string;
         };
       };
@@ -684,6 +687,7 @@ export type FeatureInput = {
   failure_definition: string;
   interaction_frequency: string;
   launch_timeline: string;
+  pm_slack_handle?: string;
 };
 
 // ── Table row aliases ─────────────────────────────────────────────────────────

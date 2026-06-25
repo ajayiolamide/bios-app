@@ -33,9 +33,9 @@ export default function CreateWorkspacePage() {
       return;
     }
 
-    // Full navigation — bypasses Next.js client cache entirely
-    // so the dashboard layout always sees the freshly created org.
-    window.location.href = "/dashboard";
+    // Navigate to onboarding to explain what data the tool needs.
+    // Full navigation — bypasses Next.js client cache so the org is visible.
+    window.location.href = "/onboarding";
   }
 
   return (

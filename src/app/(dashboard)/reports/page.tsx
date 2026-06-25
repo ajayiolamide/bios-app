@@ -3329,28 +3329,6 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
               })}
             </div>
 
-            {/* Fine-grained toggles — still available to mix and match */}
-            <div className="flex flex-wrap gap-2">
-              {([
-                { key: "goals",       label: "Business Goals",  desc: "Active goals, status, targets and timeframes" },
-                { key: "features",    label: "Feature Metrics", desc: "Logged features and their tracking plans" },
-                { key: "funnelsKpis", label: "KPIs & Metrics",  desc: "Metric definitions and event tracking items" },
-                { key: "funnels",     label: "User Journey",    desc: "Real step-by-step funnel conversion, current data" },
-              ] as { key: keyof BiosSections; label: string; desc: string }[]).map(({ key, label, desc }) => (
-                <button
-                  key={key}
-                  type="button"
-                  title={desc}
-                  onClick={() => setBiosSections(prev => ({ ...prev, [key]: !prev[key] }))}
-                  className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
-                    biosSections[key] ? "bg-indigo-50 border-indigo-200 text-indigo-700" : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
-                  }`}
-                >
-                  {biosSections[key] && <CheckCircle2 size={12} />}
-                  {label}
-                </button>
-              ))}
-            </div>
           </div>
 
           {/* Saved cohorts — these live only in this browser's local storage

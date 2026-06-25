@@ -409,3 +409,156 @@ export async function updateFeatureLaunchStatus(
   const { error } = await admin.from("feature_metrics").update(patch).eq("id", id);
   return { error: error?.message };
 }
+
+// ─── Delete a single suggestion by index ─────────────────────────────────────
+
+export async function deleteFeatureSuggestion(
+  featureMetricId: string,
+  index: number
+): Promise<{ error?: string }> {
+  const admin = createAdminClient();
+  const { data: feature, error: fetchErr } = await admin
+    .from("feature_metrics")
+    .select("suggestions")
+    .eq("id", featureMetricId)
+    .single();
+  if (fetchErr || !feature) return { error: fetchErr?.message ?? "Feature not found" };
+
+  const suggestions = [...((feature.suggestions ?? []) as FeatureSuggestion[])];
+  suggestions.splice(index, 1);
+
+  const { error: updateErr } = await admin
+    .from("feature_metrics")
+    .update({ suggestions, updated_at: new Date().toISOString() })
+    .eq("id", featureMetricId);
+  return { error: updateErr?.message };
+}
+
+// ─── Add a suggestion manually ────────────────────────────────────────────────
+
+export async function addFeatureSuggestion(
+  featureMetricId: string,
+  suggestion: FeatureSuggestion
+): Promise<{ error?: string }> {
+  const admin = createAdminClient();
+  const { data: feature, error: fetchErr } = await admin
+    .from("feature_metrics")
+    .select("suggestions")
+    .eq("id", featureMetricId)
+    .single();
+  if (fetchErr || !feature) return { error: fetchErr?.message ?? "Feature not found" };
+
+  const suggestions = [...((feature.suggestions ?? []) as FeatureSuggestion[]), suggestion];
+
+  const { error: updateErr } = await admin
+    .from("feature_metrics")
+    .update({ suggestions, updated_at: new Date().toISOString() })
+    .eq("id", featureMetricId);
+  return { error: updateErr?.message };
+}
+
+// ─── Update PM Slack handle ───────────────────────────────────────────────────
+
+export async function updateFeaturePmSlackHandle(
+  id: string,
+  pm_slack_handle: string | null
+): Promise<{ error?: string }> {
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("feature_metrics")
+    .update({ pm_slack_handle, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  return { error: error?.message };
+}
+
+// ─── Slack: notify on feature status change ───────────────────────────────────
+
+export async function notifySlackFeatureStatusChange(
+  orgId: string,
+  featureName: string,
+  newStatus: string,
+  pmHandle: string | null
+): Promise<void> {
+  const admin = createAdminClient();
+  const { data: settings } = await admin
+    .from("brand_settings")
+    .select("slack_webhook")
+    .eq("organization_id", orgId)
+    .single();
+  const webhookUrl = settings?.slack_webhook;
+  if (!webhookUrl) return;
+
+  const mention = pmHandle
+    ? (pmHandle.startsWith("@") ? pmHandle : `@${pmHandle}`)
+    : null;
+  const text = mention
+    ? `${mention} — *${featureName}* status changed to *${newStatus}*`
+    : `*${featureName}* status changed to *${newStatus}*`;
+  await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      blocks: [
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: `🔄 *Feature status update*\n${text}` },
+        },
+      ],
+    }),
+  }).catch(() => { /* best-effort */ });
+}
+
+// ─── Slack: send weekly feature digest for all active features ────────────────
+
+export async function sendWeeklyFeatureDigest(orgId: string): Promise<void> {
+  const admin = createAdminClient();
+  const { data: settings } = await admin
+    .from("brand_settings")
+    .select("slack_webhook")
+    .eq("organization_id", orgId)
+    .single();
+  const webhookUrl = settings?.slack_webhook;
+  if (!webhookUrl) return;
+  const { data: features } = await admin
+    .from("feature_metrics")
+    .select("feature_name, launch_status, pm_slack_handle, planned_launch_date, suggestions")
+    .eq("organization_id", orgId)
+    .eq("status", "active")
+    .order("created_at", { ascending: false });
+
+  if (!features?.length) return;
+
+  const lines = features.map((f) => {
+    const pm = f.pm_slack_handle
+      ? (f.pm_slack_handle.startsWith("@") ? f.pm_slack_handle : `@${f.pm_slack_handle}`)
+      : "—";
+    const date = f.planned_launch_date ? ` · launch ${f.planned_launch_date}` : "";
+    const sugg = (f.suggestions as FeatureSuggestion[] | null) ?? [];
+    const kpiCount = sugg.filter((s) => s.type === "kpi").length;
+    const guardrailCount = sugg.filter((s) => s.type === "guardrail").length;
+    return `• *${f.feature_name}* [${f.launch_status ?? "not_launched"}]${date} · PM: ${pm} · ${kpiCount} KPIs, ${guardrailCount} guardrails`;
+  });
+
+  await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      blocks: [
+        {
+          type: "header",
+          text: { type: "plain_text", text: "📊 Weekly Feature Digest", emoji: true },
+        },
+        {
+          type: "section",
+          text: { type: "mrkdwn", text: lines.join("\n") },
+        },
+        {
+          type: "context",
+          elements: [
+            { type: "mrkdwn", text: `${features.length} active features tracked on Metrik` },
+          ],
+        },
+      ],
+    }),
+  });
+}

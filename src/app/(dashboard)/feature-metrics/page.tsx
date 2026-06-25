@@ -12,6 +12,10 @@ import {
   confirmFeatureLaunch,
   updateFeatureLaunchStatus,
   updateFeatureSuggestionFrequency,
+  deleteFeatureSuggestion,
+  addFeatureSuggestion,
+  updateFeaturePmSlackHandle,
+  notifySlackFeatureStatusChange,
   type FeatureLaunchStatus,
 } from "@/app/actions/feature-metrics";
 import { getBusinessGoals } from "@/app/actions/business-goals";
@@ -23,6 +27,7 @@ import {
   CheckCircle2, BarChart3, TrendingUp, Shield, Zap, Clock,
   ExternalLink, Sparkles, ArrowRight, Trophy, Target, Link2,
   Calendar, AlertTriangle, Rocket, XCircle, RotateCcw, ChevronDown,
+  Download, User, X,
 } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -47,6 +52,7 @@ const QUESTIONS: {
   { key: "failure_definition",    label: "What would failure look like?",                     type: "textarea", placeholder: "e.g. Less than 10% of users try the feature, or support tickets about the flow increase." },
   { key: "interaction_frequency", label: "How often will users interact with this feature?",  type: "select",   options: FREQUENCIES, placeholder: "" },
   { key: "launch_timeline",       label: "When are you launching?",                           type: "select",   options: TIMELINES, placeholder: "" },
+  { key: "pm_slack_handle",       label: "Who owns this feature? (Slack handle, optional)",    type: "text",     placeholder: "e.g. @jane or jane.smith — we'll tag them in Slack updates" },
 ];
 
 // ─── Goal type colours ────────────────────────────────────────────────────────
@@ -229,11 +235,13 @@ function SuggestionCard({
   index,
   existingEvents,
   onChange,
+  onDelete,
 }: {
   s: FeatureSuggestion;
   index: number;
   existingEvents: string[];
   onChange: (updated: FeatureSuggestion) => void;
+  onDelete?: () => void;
 }) {
   const accent = s.type === "kpi" ? "#6366f1" : s.type === "guardrail" ? "#D97706" : "#3B82F6";
   return (
@@ -246,6 +254,15 @@ function SuggestionCard({
             <TypeBadge type={s.type} />
             <FreqBadge freq={s.frequency} onSelect={(f) => onChange({ ...s, frequency: f })} />
           </div>
+          {onDelete && (
+            <button
+              onClick={onDelete}
+              title="Remove this metric"
+              className="p-1 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
+            >
+              <X size={13} />
+            </button>
+          )}
         </div>
         <h3 className="font-bold text-gray-900 text-sm mb-1">{s.name}</h3>
         <p className="text-xs text-gray-500 leading-relaxed mb-4">{s.description}</p>
@@ -408,16 +425,30 @@ function SavedPlanCard({
   onArchive,
   onUpdated,
   goals,
+  orgId,
 }: {
   plan: FeatureMetric;
   onArchive: (id: string) => void;
   onUpdated: () => void;
   goals: BusinessGoal[];
+  orgId: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [editingDate, setEditingDate] = useState(false);
   const [dateInput, setDateInput] = useState(plan.planned_launch_date ?? "");
   const [saving, setSaving] = useState(false);
+
+  // PM Slack handle
+  const [editingPm, setEditingPm] = useState(false);
+  const [pmHandle, setPmHandle] = useState(plan.pm_slack_handle ?? "");
+
+  // Add metric inline form
+  const [addingMetric, setAddingMetric] = useState(false);
+  const [newMetricType, setNewMetricType] = useState<FeatureSuggestion["type"]>("metric");
+  const [newMetricName, setNewMetricName] = useState("");
+  const [newMetricDesc, setNewMetricDesc] = useState("");
+  const [newMetricTarget, setNewMetricTarget] = useState("");
+  const [savingMetric, setSavingMetric] = useState(false);
 
   function timeAgo(iso: string) {
     const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
@@ -471,18 +502,58 @@ function SavedPlanCard({
   }
 
   async function handleStatusChange(newStatus: FeatureLaunchStatus) {
+    await handleStatusChangeWithSlack(newStatus);
+  }
+
+  async function handleFrequencyChange(index: number, frequency: FeatureSuggestion["frequency"]) {
+    await updateFeatureSuggestionFrequency(plan.id, index, frequency);
+    onUpdated();
+  }
+
+  async function handlePmSave() {
+    await updateFeaturePmSlackHandle(plan.id, pmHandle.trim() || null);
+    setEditingPm(false);
+    onUpdated();
+  }
+
+  async function handleDeleteSuggestion(index: number) {
+    await deleteFeatureSuggestion(plan.id, index);
+    onUpdated();
+  }
+
+  async function handleAddMetric() {
+    if (!newMetricName.trim()) return;
+    setSavingMetric(true);
+    const suggestion: FeatureSuggestion = {
+      type: newMetricType,
+      name: newMetricName.trim(),
+      description: newMetricDesc.trim(),
+      how_to_track: "Track manually or via a Mixpanel event",
+      target: newMetricTarget.trim() || null,
+      event_name: null,
+      compared_event_name: null,
+      frequency: "weekly",
+    };
+    await addFeatureSuggestion(plan.id, suggestion);
+    setSavingMetric(false);
+    setAddingMetric(false);
+    setNewMetricName("");
+    setNewMetricDesc("");
+    setNewMetricTarget("");
+    setNewMetricType("metric");
+    onUpdated();
+  }
+
+  async function handleStatusChangeWithSlack(newStatus: FeatureLaunchStatus) {
     setSaving(true);
     if (newStatus === "launched") {
       await confirmFeatureLaunch(plan.id);
     } else {
       await updateFeatureLaunchStatus(plan.id, newStatus);
     }
+    // Fire-and-forget Slack notification
+    notifySlackFeatureStatusChange(orgId, plan.feature_name, newStatus, plan.pm_slack_handle ?? null);
     setSaving(false);
-    onUpdated();
-  }
-
-  async function handleFrequencyChange(index: number, frequency: FeatureSuggestion["frequency"]) {
-    await updateFeatureSuggestionFrequency(plan.id, index, frequency);
     onUpdated();
   }
 
@@ -638,6 +709,28 @@ function SavedPlanCard({
               <span className="font-semibold text-gray-600">Success: </span>{plan.success_definition}
             </div>
           )}
+          {/* PM Slack handle */}
+          <div className="flex items-center gap-2">
+            <User size={12} className="text-gray-400 flex-shrink-0" />
+            {editingPm ? (
+              <div className="flex items-center gap-2 flex-1">
+                <input
+                  value={pmHandle}
+                  onChange={e => setPmHandle(e.target.value)}
+                  placeholder="e.g. @jane or jane.smith"
+                  className="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                  autoFocus
+                />
+                <button onClick={handlePmSave} className="text-xs text-indigo-600 font-semibold hover:text-indigo-800">Save</button>
+                <button onClick={() => { setEditingPm(false); setPmHandle(plan.pm_slack_handle ?? ""); }} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+              </div>
+            ) : (
+              <button onClick={() => setEditingPm(true)} className="text-xs text-gray-400 hover:text-gray-700 transition-colors">
+                {plan.pm_slack_handle ? <span className="text-indigo-600 font-medium">{plan.pm_slack_handle}</span> : <span className="italic">Add PM Slack handle</span>}
+              </button>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {(plan.suggestions as FeatureSuggestion[]).map((s, i) => (
               <SuggestionCard
@@ -645,9 +738,67 @@ function SavedPlanCard({
                 onChange={(updated) => {
                   if (updated.frequency !== s.frequency) handleFrequencyChange(i, updated.frequency);
                 }}
+                onDelete={() => handleDeleteSuggestion(i)}
               />
             ))}
           </div>
+
+          {/* Add metric form */}
+          {addingMetric ? (
+            <div className="border border-gray-100 rounded-xl p-4 space-y-3 bg-gray-50">
+              <p className="text-xs font-semibold text-gray-600">Add a metric manually</p>
+              <div className="flex gap-2">
+                {(["metric", "kpi", "guardrail"] as FeatureSuggestion["type"][]).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setNewMetricType(t)}
+                    className={`px-3 py-1 text-xs rounded-full border font-medium transition-colors ${newMetricType === t ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-gray-600 border-gray-200 hover:border-indigo-300"}`}
+                  >
+                    {t.charAt(0).toUpperCase() + t.slice(1)}
+                  </button>
+                ))}
+              </div>
+              <input
+                value={newMetricName}
+                onChange={e => setNewMetricName(e.target.value)}
+                placeholder="Metric name *"
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+              />
+              <input
+                value={newMetricDesc}
+                onChange={e => setNewMetricDesc(e.target.value)}
+                placeholder="Description (optional)"
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+              />
+              <input
+                value={newMetricTarget}
+                onChange={e => setNewMetricTarget(e.target.value)}
+                placeholder="Target (optional, e.g. > 30%)"
+                className="w-full border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={handleAddMetric}
+                  disabled={!newMetricName.trim() || savingMetric}
+                  className="flex items-center gap-1.5 text-xs bg-indigo-600 text-white px-4 py-1.5 rounded-lg hover:bg-indigo-700 disabled:opacity-50 font-medium transition-colors"
+                >
+                  {savingMetric ? <Loader2 size={11} className="animate-spin" /> : <Plus size={11} />}
+                  Add metric
+                </button>
+                <button onClick={() => setAddingMetric(false)} className="text-xs text-gray-400 hover:text-gray-600 px-3 py-1.5">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setAddingMetric(true)}
+              className="flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-800 border border-dashed border-indigo-200 hover:border-indigo-400 rounded-xl px-4 py-2.5 transition-colors w-full justify-center"
+            >
+              <Plus size={12} /> Add metric manually
+            </button>
+          )}
+
           <div className="flex justify-end">
             <button
               onClick={() => onArchive(plan.id)}
@@ -861,6 +1012,7 @@ function KpiSelector({
 const EMPTY_INPUT: FeatureInput = {
   feature_name: "", feature_description: "", sector: "", target_users: "",
   success_definition: "", failure_definition: "", interaction_frequency: "", launch_timeline: "",
+  pm_slack_handle: "",
 };
 
 type WizardStage = "goal" | "kpi" | "questions" | "generating" | "results";
@@ -880,7 +1032,8 @@ function Wizard({ goals, kpisByGoal, onSaved, existingEventNames, footerEl }: { 
   const current = QUESTIONS[step];
   const isLast = step === QUESTIONS.length - 1;
   const currentValue = input[current?.key] ?? "";
-  const canNext = currentValue.toString().trim().length > 0;
+  // pm_slack_handle is optional — always allow advancing on that step
+  const canNext = current?.key === "pm_slack_handle" || currentValue.toString().trim().length > 0;
   const goalKpis = selectedGoal ? (kpisByGoal[selectedGoal.id] ?? []) : [];
 
   async function handleGenerate() {
@@ -1211,6 +1364,30 @@ export default function FeatureMetricsPage() {
     setPlans(p => p.filter(x => x.id !== id));
   }
 
+  function handleCsvExport() {
+    const rows: string[][] = [
+      ["Feature", "Sector", "Status", "Planned Launch", "PM Slack", "Metric Type", "Metric Name", "Description", "Event", "Target"],
+    ];
+    for (const plan of plans) {
+      const sugg = (plan.suggestions as FeatureSuggestion[]) ?? [];
+      if (sugg.length === 0) {
+        rows.push([plan.feature_name, plan.sector ?? "", plan.launch_status ?? "", plan.planned_launch_date ?? "", plan.pm_slack_handle ?? "", "", "", "", "", ""]);
+      } else {
+        for (const s of sugg) {
+          rows.push([plan.feature_name, plan.sector ?? "", plan.launch_status ?? "", plan.planned_launch_date ?? "", plan.pm_slack_handle ?? "", s.type, s.name, s.description, s.event_name ?? "", s.target ?? ""]);
+        }
+      }
+    }
+    const csv = rows.map(r => r.map(c => `"${c.replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "metrik-features.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   if (!currentOrg) return (
     <div className="flex items-center justify-center h-64 text-gray-400 text-sm">Select an organisation first.</div>
   );
@@ -1233,6 +1410,15 @@ export default function FeatureMetricsPage() {
               <Target size={11} className="text-indigo-400" />
               {goals.filter(g => g.status === "active").length} active goal{goals.filter(g => g.status === "active").length !== 1 ? "s" : ""}
             </div>
+          )}
+          {plans.length > 0 && (
+            <button
+              onClick={handleCsvExport}
+              title="Download all features as CSV"
+              className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 border border-gray-200 hover:border-gray-400 bg-white px-3 py-2 rounded-xl transition-colors"
+            >
+              <Download size={13} /> Export CSV
+            </button>
           )}
           <button
             onClick={openWizard}
@@ -1334,7 +1520,7 @@ export default function FeatureMetricsPage() {
             {plans.length} feature{plans.length !== 1 ? "s" : ""} logged
           </p>
           {plans.map(p => (
-            <SavedPlanCard key={p.id} plan={p} onArchive={handleArchive} onUpdated={load} goals={goals} />
+            <SavedPlanCard key={p.id} plan={p} onArchive={handleArchive} onUpdated={load} goals={goals} orgId={currentOrg.id} />
           ))}
         </div>
       )}
