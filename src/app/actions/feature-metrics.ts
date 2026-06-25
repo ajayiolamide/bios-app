@@ -104,12 +104,23 @@ Respond with ONLY valid JSON — no markdown, no explanation, just the array:
   try {
     const msg = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 1400,
+      max_tokens: 2400,
       messages: [{ role: "user", content: prompt }],
     });
 
     const raw = (msg.content[0] as { type: string; text: string }).text.trim();
-    const json = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
+
+    // Strip any markdown fences (```json ... ``` or ``` ... ```)
+    // then extract the first JSON array we find — the model occasionally
+    // adds a sentence before or after the array.
+    let json = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+    const arrayMatch = json.match(/\[[\s\S]*\]/);
+    if (!arrayMatch) {
+      console.error("[generateFeatureSuggestions] no JSON array found in response:", raw);
+      return { error: "AI returned an unexpected format. Please try again." };
+    }
+    json = arrayMatch[0];
+
     // Normalize compared_event_name to null rather than leaving it undefined
     // when the model omits the field — the field was added after this
     // prompt's schema existed, so older runs/edge cases shouldn't crash

@@ -29,24 +29,29 @@ function stripJsonFences(raw: string): string {
 // the structured fields for them to confirm/edit, instead of handing them a
 // blank multi-field form first.
 export async function proposeGoalFromDescription(
-  description: string
-): Promise<{ title?: string; type?: string; target?: string; timeframe?: string; description?: string; error?: string }> {
+  description: string,
+  businessGoals?: { id: string; title: string; target?: string | null; timeframe?: string | null }[]
+): Promise<{ title?: string; type?: string; target?: string; timeframe?: string; description?: string; suggestedObjectiveId?: string; error?: string }> {
   if (!description.trim()) return { error: "Describe what you're trying to achieve first." };
 
-  const prompt = `A non-technical product/business person is creating a goal on an internal BI tool called Metrik. They described what they want in their own words — turn it into a clean, structured goal they can confirm or tweak.
+  const goalsContext = businessGoals?.length
+    ? `\n\nThe company has these Business Goals:\n${businessGoals.map((g, i) => `${i + 1}. [id: ${g.id}] "${g.title}"${g.target ? ` — target: ${g.target}` : ""}${g.timeframe ? ` (${g.timeframe})` : ""}`).join("\n")}\n\nAlso return "suggestedObjectiveId": the id of whichever Business Goal this Product Goal most directly moves. If none fit, omit it.`
+    : "";
 
-Their description: "${description.trim()}"
+  const prompt = `A non-technical product/business person is creating a Product Goal on a BI tool called Metrik. A Product Goal is the specific, team-owned outcome that moves a Business Goal forward — like "Reduce claims processing time" or "Improve signup completion rate."
+
+Their description: "${description.trim()}"${goalsContext}
 
 Pick the single best-fitting type from exactly this list: ${GOAL_TYPE_VALUES.join(", ")}.
-Pick the single best-fitting timeframe from exactly this list: ${TIMEFRAME_VALUES.join(", ")}. If nothing in their description implies a timeframe, default to the soonest quarter in that list.
+Pick the single best-fitting timeframe from exactly this list: ${TIMEFRAME_VALUES.join(", ")}. If nothing implies a timeframe, default to the soonest quarter.
 
 Return ONLY this JSON, no markdown fences, no commentary:
 {
-  "title": "short, specific goal title, under 12 words",
+  "title": "short, specific product goal title, under 12 words",
   "type": "one of the type values above, exactly as written",
-  "target": "short target text, e.g. '95% of claims paid within 24h' or '£2M ARR' — pull a concrete number from their description if they gave one, otherwise propose a reasonable placeholder they can edit",
+  "target": "concrete measurable target they can edit, e.g. '90% of claims processed within 5 days'",
   "timeframe": "one of the timeframe values above, exactly as written",
-  "description": "one sentence on why this matters, in their own words where possible"
+  "description": "one sentence on why this matters to the business"${businessGoals?.length ? `,\n  "suggestedObjectiveId": "id from the Business Goals list above, or omit if none fit"` : ""}
 }`;
 
   try {
@@ -57,7 +62,7 @@ Return ONLY this JSON, no markdown fences, no commentary:
     });
     const raw = (msg.content[0] as { type: string; text: string }).text.trim();
     const parsed = JSON.parse(stripJsonFences(raw)) as {
-      title: string; type: string; target: string; timeframe: string; description: string;
+      title: string; type: string; target: string; timeframe: string; description: string; suggestedObjectiveId?: string;
     };
     return parsed;
   } catch (err) {

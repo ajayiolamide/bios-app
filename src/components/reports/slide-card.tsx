@@ -113,6 +113,7 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
     const up = slide.change_direction === "up", dn = slide.change_direction === "down";
     const changeColor = up ? "#16A34A" : dn ? "#DC2626" : "#94A3B8";
     const arrow = up ? "↑" : dn ? "↓" : "→";
+    const hasNarrative = !!slide.narrative;
     return (
       <div className="w-full h-full bg-white flex flex-col overflow-hidden relative" style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
         {slideImg && !imgPos && (
@@ -124,20 +125,60 @@ export function SlideCard({ slide, brand, deckTitle }: { slide: SlideContent; br
           <img src={slideImg} alt="" className="absolute object-cover rounded-lg border border-gray-200 shadow-sm z-10"
             style={{ left: `${imgPos.x}%`, top: `${imgPos.y}%`, width: `${imgPos.w}%`, height: `${imgPos.h}%` }} />
         )}
-        <div className="flex-1 flex flex-col items-center justify-center px-10 gap-3">
-          <p className="text-xs text-gray-400 uppercase tracking-widest text-center">{slide.label}</p>
-          <p className="font-black leading-none text-center" style={{ fontSize: "clamp(56px,11vw,90px)", color: p, letterSpacing: "-0.04em" }}>{slide.value}</p>
-          <div className="flex items-center gap-2 px-4 py-1.5 rounded-full" style={{ background: changeColor + "18" }}>
-            <span className="font-bold text-sm" style={{ color: changeColor }}>{arrow} {slide.change}</span>
+        <div className={`flex-1 flex ${hasNarrative ? "flex-row items-stretch" : "flex-col items-center justify-center"} px-8 gap-6 py-6`}>
+          {/* Number column */}
+          <div className={`flex flex-col items-center justify-center ${hasNarrative ? "w-2/5 flex-shrink-0 border-r border-gray-100" : ""} gap-2`}>
+            <p className="text-xs text-gray-400 uppercase tracking-widest text-center">{slide.label}</p>
+            <p className="font-black leading-none text-center" style={{ fontSize: hasNarrative ? "clamp(40px,8vw,68px)" : "clamp(56px,11vw,90px)", color: p, letterSpacing: "-0.04em" }}>{slide.value}</p>
+            <div className="flex items-center gap-2 px-3 py-1 rounded-full" style={{ background: changeColor + "18" }}>
+              <span className="font-bold text-sm" style={{ color: changeColor }}>{arrow} {slide.change}</span>
+            </div>
+            <p className="text-xs text-gray-400 text-center leading-relaxed">{slide.context}</p>
           </div>
-          <p className="text-xs text-gray-400 text-center max-w-xs leading-relaxed">{slide.context}</p>
+          {/* Narrative column — only when narrative is present */}
+          {hasNarrative && (
+            <div className="flex-1 flex flex-col justify-center pl-2">
+              <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">{slide.narrative}</p>
+            </div>
+          )}
         </div>
-        {/* flex-shrink-0 keeps this footer pinned at a fixed height no matter
-            how short the rendered canvas is — without it, a tight canvas
-            (e.g. the review page's, which shares width with a comment
-            sidebar) makes flexbox shrink the footer unpredictably along with
-            the stat content above, instead of only the stat area absorbing
-            the squeeze. */}
+        {/* flex-shrink-0 keeps this footer pinned at a fixed height */}
+        <div className="px-8 pb-3 flex items-center gap-1.5 flex-shrink-0">
+          <div className="w-2 h-2 rounded-full" style={{ background: p }} />
+          <p className="text-[10px] text-gray-300 tracking-wider uppercase">{deckTitle}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Stat + narrative (new variant: prominent number left, story text right) ──
+  if (slide.type === "stat_narrative") {
+    const up = slide.change_direction === "up", dn = slide.change_direction === "down";
+    const changeColor = up ? "#16A34A" : dn ? "#DC2626" : "#94A3B8";
+    const accentColor = slide.status === "positive" ? "#16A34A" : slide.status === "negative" ? "#DC2626" : p;
+    const arrow = up ? "↑" : dn ? "↓" : "→";
+    return (
+      <div className="w-full h-full bg-white flex flex-col overflow-hidden" style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
+        {/* Header */}
+        <div className="px-8 pt-7 pb-4 flex-shrink-0 border-b border-gray-100">
+          <h2 className="font-black text-gray-900 leading-tight" style={{ fontSize: "clamp(13px,2vw,18px)", letterSpacing: "-0.02em" }}>{slide.title}</h2>
+        </div>
+        {/* Body: big number left, narrative right */}
+        <div className="flex-1 flex items-stretch gap-0 overflow-hidden">
+          {/* Left — number panel */}
+          <div className="w-2/5 flex flex-col items-center justify-center px-6 gap-3 border-r-2 flex-shrink-0" style={{ borderColor: accentColor + "30", background: accentColor + "06" }}>
+            <p className="text-[11px] text-gray-400 uppercase tracking-widest text-center">{slide.stat_label}</p>
+            <p className="font-black leading-none text-center" style={{ fontSize: "clamp(44px,8vw,72px)", color: accentColor, letterSpacing: "-0.04em" }}>{slide.stat}</p>
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full" style={{ background: changeColor + "18" }}>
+              <span className="font-bold text-xs" style={{ color: changeColor }}>{arrow} {slide.change}</span>
+            </div>
+          </div>
+          {/* Right — narrative */}
+          <div className="flex-1 flex flex-col justify-center px-7 py-5 overflow-hidden">
+            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line line-clamp-6">{slide.narrative}</p>
+          </div>
+        </div>
+        {/* Footer */}
         <div className="px-8 pb-3 flex items-center gap-1.5 flex-shrink-0">
           <div className="w-2 h-2 rounded-full" style={{ background: p }} />
           <p className="text-[10px] text-gray-300 tracking-wider uppercase">{deckTitle}</p>

@@ -267,7 +267,10 @@ export default function DashboardPage() {
     featureImpactSummaries,
   } = data;
 
-  const hasGoals = data.goals.length > 0;
+  // Show the overview as soon as there's a Business Goal OR a Product Goal —
+  // previously this only checked Product Goals, so a user who had set a
+  // Business Goal but not yet a Product Goal still saw "Get started".
+  const hasGoals = data.objectives.length > 0 || data.goals.length > 0;
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-7">
@@ -285,7 +288,7 @@ export default function DashboardPage() {
             className="flex items-center gap-1.5 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-xl transition-colors">
             <Plus size={14} /> Add Goal
           </Link>
-          {hasGoals && (
+          {data.goals.length > 0 && (
             <Link href="/reports"
               className="flex items-center gap-1.5 text-sm font-medium text-gray-700 bg-white border border-gray-200 hover:bg-gray-50 px-4 py-2 rounded-xl transition-colors">
               <LayoutTemplate size={14} /> Generate Report
@@ -334,7 +337,7 @@ export default function DashboardPage() {
 
         {/* Left: AI insight */}
         <div className="lg:col-span-2 space-y-5">
-          {hasGoals && <QuickInsight orgId={currentOrg?.id ?? ""} hasData={eventCount > 0} />}
+          {(data.objectives.length > 0 || data.goals.length > 0) && <QuickInsight orgId={currentOrg?.id ?? ""} hasData={eventCount > 0} />}
         </div>
 
         {/* Right: stats + recent reports */}

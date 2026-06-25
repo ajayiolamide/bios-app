@@ -452,13 +452,14 @@ type ImagePosition = { image_x?: number; image_y?: number; image_w?: number; ima
 
 export type SlideContent =
   | { type: "title"; headline: string; subtitle: string; image_url?: string }
-  | ({ type: "big_stat"; label: string; value: string; change: string; change_direction: "up" | "down" | "flat"; context: string; image_url?: string } & ImagePosition)
+  | ({ type: "big_stat"; label: string; value: string; change: string; change_direction: "up" | "down" | "flat"; context: string; narrative?: string; image_url?: string } & ImagePosition)
   | ({ type: "bar_chart"; title: string; subtitle: string; orientation: "vertical" | "horizontal"; series: { label: string; value: number; target?: number }[]; image_url?: string } & ImagePosition)
   | ({ type: "line_chart"; title: string; subtitle: string; series: { label: string; value: number }[]; image_url?: string } & ImagePosition)
   | ({ type: "pie_chart"; title: string; subtitle: string; style: "pie" | "donut"; segments: { label: string; value: number }[]; image_url?: string } & ImagePosition)
   | ({ type: "progress_bars"; title: string; items: { label: string; value: number; target: number; unit: string; status: "on_track" | "off_track" | "neutral" }[]; image_url?: string } & ImagePosition)
   | ({ type: "kpi_grid"; title: string; kpis: { label: string; value: string; target: string; status: "on_track" | "off_track" | "neutral" }[]; image_url?: string } & ImagePosition)
   | ({ type: "insight"; title: string; body: string; stat: string; stat_label: string; status: "positive" | "negative" | "neutral"; stat_width?: "narrow" | "balanced" | "wide"; image_url?: string } & ImagePosition)
+  | ({ type: "stat_narrative"; title: string; stat: string; stat_label: string; change: string; change_direction: "up" | "down" | "flat"; narrative: string; status: "positive" | "negative" | "neutral"; image_url?: string } & ImagePosition)
   | ({ type: "bullet_list"; title: string; items: string[]; image_url?: string } & ImagePosition)
   | ({
       type: "action_plan";
@@ -756,7 +757,8 @@ DESIGN PHILOSOPHY — follow strictly:
 - Use bar_chart for comparisons across categories or multiple metrics side by side.
 - Use line_chart for time-series data or trends across sequential periods (months, weeks, quarters).
 - Use pie_chart for part-of-whole breakdowns (3-7 categories). Use "donut" style when a central metric matters.
-- Use big_stat for the single most important headline number.
+- Use big_stat for the single most important headline number — always include a narrative (2-3 sentences explaining why it matters, what drove it).
+- Use stat_narrative when a key number needs both visual punch AND a business story alongside it — big number left, 2-3 sentence explanation right. Use this instead of big_stat when the number alone needs more context.
 - Use progress_bars when tracking metrics vs targets.
 - Use kpi_grid only for a summary grid of 4-6 KPIs.
 - insight slides: 2 sentences max + one headline stat (no long paragraphs).
@@ -775,7 +777,18 @@ SLIDE TYPE SCHEMAS:
   "value": "47.2K",
   "change": "+12% vs last month",
   "change_direction": "up" | "down" | "flat",
-  "context": "One short line of context (max 12 words)"
+  "context": "One short line of context (max 12 words)",
+  "narrative": "2-3 sentences that turn this number into a business story — why it matters, what it implies, what drove it"
+}
+{
+  "type": "stat_narrative",
+  "title": "string",
+  "stat": "84%",
+  "stat_label": "claim approval rate",
+  "change": "+6pp vs last quarter",
+  "change_direction": "up" | "down" | "flat",
+  "narrative": "2-3 sentences explaining what this number means for the business — the cause, the implication, what to watch next",
+  "status": "positive" | "negative" | "neutral"
 }
 {
   "type": "bar_chart",
@@ -1236,33 +1249,114 @@ async function buildPptx(
       // Top accent bar (matches all other content slides)
       s.addShape("rect" as never, { x: 0, y: 0, w: 10, h: 0.08, fill: { color: accentColor }, line: { type: "none" } });
 
-      // Metric label (small caps)
-      s.addText(slide.label.toUpperCase(), {
-        x: 0.6, y: 0.85, w: 8.8, h: 0.4,
-        fontSize: 10, color: textMid, align: "center", charSpacing: 2,
-      });
+      if (slide.narrative) {
+        // Compact layout: number on left half, narrative on right half
+        // Re-position label + number to left column
+        s.addText(slide.label.toUpperCase(), {
+          x: 0.5, y: 0.85, w: 4.5, h: 0.4,
+          fontSize: 10, color: textMid, align: "center", charSpacing: 2,
+        });
+        s.addText(slide.value, {
+          x: 0.5, y: 1.2, w: 4.5, h: 2.2,
+          fontSize: 72, bold: true, color: accentColor, align: "center", fontFace: "Calibri",
+        });
+        s.addShape("rect" as never, {
+          x: 1.3, y: 3.5, w: 2.0, h: 0.42,
+          fill: { color: changeColor, transparency: 88 },
+          line: { color: changeColor, width: 0.5, transparency: 60 },
+        });
+        s.addText(`${arrow}  ${slide.change}`, {
+          x: 1.3, y: 3.5, w: 2.0, h: 0.42,
+          fontSize: 12, bold: true, color: changeColor, align: "center", valign: "middle",
+        });
+        s.addText(slide.context, {
+          x: 0.5, y: 4.05, w: 4.5, h: 0.55,
+          fontSize: 10, color: textLight, align: "center",
+        });
+        // Divider
+        s.addShape("line" as never, {
+          x: 5.2, y: 0.9, w: 0, h: 3.8,
+          line: { color: "E5E7EB", width: 1 },
+        });
+        // Narrative on right
+        s.addText(slide.narrative, {
+          x: 5.4, y: 1.1, w: 4.3, h: 3.6,
+          fontSize: 13, color: textDark, lineSpacingMultiple: 1.35, valign: "middle",
+        });
+      } else {
+        // Original centered layout
+        s.addText(slide.label.toUpperCase(), {
+          x: 0.6, y: 0.85, w: 8.8, h: 0.4,
+          fontSize: 10, color: textMid, align: "center", charSpacing: 2,
+        });
+        s.addText(slide.value, {
+          x: 0.6, y: 1.25, w: 8.8, h: 2.4,
+          fontSize: 88, bold: true, color: accentColor, align: "center", fontFace: "Calibri",
+        });
+        s.addShape("rect" as never, {
+          x: 3.8, y: 3.75, w: 2.4, h: 0.48,
+          fill: { color: changeColor, transparency: 88 },
+          line: { color: changeColor, width: 0.5, transparency: 60 },
+        });
+        s.addText(`${arrow}  ${slide.change}`, {
+          x: 3.8, y: 3.75, w: 2.4, h: 0.48,
+          fontSize: 14, bold: true, color: changeColor, align: "center", valign: "middle",
+        });
+        s.addText(slide.context, {
+          x: 1.5, y: 4.35, w: 7, h: 0.55,
+          fontSize: 11, color: textLight, align: "center",
+        });
+      }
 
-      // Giant number — centered
-      s.addText(slide.value, {
-        x: 0.6, y: 1.25, w: 8.8, h: 2.4,
-        fontSize: 88, bold: true, color: accentColor, align: "center", fontFace: "Calibri",
-      });
+      addFooter(s, slideNum);
 
-      // Change pill
+    // ── Stat narrative (new: big number left + story right) ───────────────────
+    } else if (slide.type === "stat_narrative") {
+      s.background = { color: bodyBg };
+      const snColor = slide.status === "positive" ? green : slide.status === "negative" ? red : accentColor;
+      const snChangeColor = slide.change_direction === "up" ? green : slide.change_direction === "down" ? red : textMid;
+      const snArrow = slide.change_direction === "up" ? "▲" : slide.change_direction === "down" ? "▼" : "—";
+
+      s.addShape("rect" as never, { x: 0, y: 0, w: 10, h: 0.08, fill: { color: snColor }, line: { type: "none" } });
+      addSlideTitle(s, slide.title, undefined, slideNum);
+
+      // Left panel background
       s.addShape("rect" as never, {
-        x: 3.8, y: 3.75, w: 2.4, h: 0.48,
-        fill: { color: changeColor, transparency: 88 },
-        line: { color: changeColor, width: 0.5, transparency: 60 },
+        x: 0, y: 1.1, w: 4.0, h: 4.0,
+        fill: { color: snColor, transparency: 94 },
+        line: { color: snColor, transparency: 75, width: 0.5 },
       });
-      s.addText(`${arrow}  ${slide.change}`, {
-        x: 3.8, y: 3.75, w: 2.4, h: 0.48,
-        fontSize: 14, bold: true, color: changeColor, align: "center", valign: "middle",
+      // Stat label
+      s.addText(slide.stat_label.toUpperCase(), {
+        x: 0.3, y: 1.4, w: 3.4, h: 0.4,
+        fontSize: 9, color: textMid, align: "center", charSpacing: 2,
+      });
+      // Big number
+      s.addText(slide.stat, {
+        x: 0.3, y: 1.75, w: 3.4, h: 1.9,
+        fontSize: 68, bold: true, color: snColor, align: "center", fontFace: "Calibri",
+      });
+      // Change
+      s.addShape("rect" as never, {
+        x: 0.8, y: 3.75, w: 2.4, h: 0.38,
+        fill: { color: snChangeColor, transparency: 88 },
+        line: { color: snChangeColor, width: 0.5, transparency: 60 },
+      });
+      s.addText(`${snArrow}  ${slide.change}`, {
+        x: 0.8, y: 3.75, w: 2.4, h: 0.38,
+        fontSize: 11, bold: true, color: snChangeColor, align: "center", valign: "middle",
       });
 
-      // Context
-      s.addText(slide.context, {
-        x: 1.5, y: 4.35, w: 7, h: 0.55,
-        fontSize: 11, color: textLight, align: "center",
+      // Divider
+      s.addShape("line" as never, {
+        x: 4.2, y: 1.2, w: 0, h: 3.7,
+        line: { color: "E5E7EB", width: 1 },
+      });
+
+      // Narrative text on right
+      s.addText(slide.narrative, {
+        x: 4.4, y: 1.3, w: 5.3, h: 3.6,
+        fontSize: 14, color: textDark, lineSpacingMultiple: 1.4, valign: "middle",
       });
 
       addFooter(s, slideNum);

@@ -2029,10 +2029,11 @@ function ObjectiveStatement({
   );
 }
 
-// ─── Goal Setup Checklist ─────────────────────────────────────────────────────
-// Compact "what's left to do" tracker rendered below the Business Goal card
-// once Stage 3 is active. Disappears when every item is checked.
-function GoalChecklist({
+// ─── Setup Checklist (fixed bottom-right) ─────────────────────────────────────
+// Subtle floating widget — visible on the Goals page whenever any setup step
+// is incomplete. Collapsed by default (just shows X/5 dot), expands on click.
+// Disappears entirely once everything is done.
+function SetupChecklist({
   objectives,
   goals,
   goalProgress,
@@ -2041,51 +2042,61 @@ function GoalChecklist({
   goals: BusinessGoal[];
   goalProgress: Record<string, GoalProgress>;
 }) {
+  const [open, setOpen] = useState(false);
+
+  const hasBusinessGoal = objectives.length > 0;
   const hasTarget       = objectives.some(o => !!o.target?.trim());
   const hasProductGoal  = goals.length > 0;
   const hasMeasurable   = Object.values(goalProgress).some(gp => gp.progressRatio !== null);
   const hasFeature      = goals.some(g => (g as BusinessGoal & { feature_metrics?: unknown[] }).feature_metrics?.length);
 
-  const items: { label: string; done: boolean; hint: string }[] = [
-    { label: "Business Goal defined",        done: true,           hint: "" },
-    { label: "Success target set",           done: hasTarget,      hint: "Add a target (e.g. £2M ARR) to your Business Goal" },
-    { label: "Product Goal added",           done: hasProductGoal, hint: "Break the Business Goal into a team-owned outcome" },
-    { label: "KPI wired to measurement",     done: hasMeasurable,  hint: "Give a Product Goal KPI an event + numeric target" },
-    { label: "Feature linked",               done: hasFeature,     hint: "Add a Feature to show which builds are moving the needle" },
+  const items: { label: string; done: boolean }[] = [
+    { label: "Business Goal defined",    done: hasBusinessGoal },
+    { label: "Success target set",       done: hasTarget       },
+    { label: "Product Goal added",       done: hasProductGoal  },
+    { label: "KPI wired to measurement", done: hasMeasurable   },
+    { label: "Feature linked",           done: hasFeature      },
   ];
 
   const doneCount = items.filter(i => i.done).length;
-  if (doneCount === items.length) return null;
+  if (doneCount === items.length) return null; // all done — hide
 
   return (
-    <div className="rounded-xl border border-gray-100 bg-white p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <p className="text-xs font-semibold text-gray-700">Setup progress</p>
-        <span className="text-[11px] text-gray-400">{doneCount} / {items.length} complete</span>
-      </div>
-      <div className="h-1 rounded-full bg-gray-100 overflow-hidden">
-        <div
-          className="h-full rounded-full bg-indigo-500 transition-all"
-          style={{ width: `${(doneCount / items.length) * 100}%` }}
-        />
-      </div>
-      <div className="space-y-2">
-        {items.map((item) => (
-          <div key={item.label} className="flex items-start gap-2.5">
-            {item.done
-              ? <CheckCircle2 size={14} className="text-emerald-500 flex-shrink-0 mt-0.5" />
-              : <Circle      size={14} className="text-gray-200    flex-shrink-0 mt-0.5" />}
-            <div className="flex-1 min-w-0">
-              <span className={`text-xs ${item.done ? "line-through text-gray-300" : "text-gray-700"}`}>
-                {item.label}
-              </span>
-              {!item.done && item.hint && (
-                <p className="text-[11px] text-gray-400 mt-0.5">{item.hint}</p>
-              )}
-            </div>
+    <div className="fixed bottom-6 right-6 z-30 flex flex-col items-end gap-2">
+      {/* Expanded panel */}
+      {open && (
+        <div className="bg-white border border-gray-200 rounded-2xl shadow-lg p-4 w-56 space-y-3">
+          <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-widest">Setup</p>
+          <div className="space-y-2">
+            {items.map((item) => (
+              <div key={item.label} className="flex items-center gap-2">
+                {item.done
+                  ? <CheckCircle2 size={13} className="text-emerald-500 flex-shrink-0" />
+                  : <Circle      size={13} className="text-gray-300    flex-shrink-0" />}
+                <span className={`text-xs ${item.done ? "line-through text-gray-300" : "text-gray-600"}`}>
+                  {item.label}
+                </span>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      )}
+
+      {/* Collapsed pill / trigger */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-2 bg-white border border-gray-200 rounded-full pl-2.5 pr-3 py-1.5 shadow-md hover:shadow-lg transition-shadow"
+      >
+        <div className="flex gap-0.5">
+          {items.map((item, i) => (
+            <div
+              key={i}
+              className={`h-1.5 w-3 rounded-full ${item.done ? "bg-indigo-500" : "bg-gray-200"}`}
+            />
+          ))}
+        </div>
+        <span className="text-[11px] font-medium text-gray-500">{doneCount}/{items.length}</span>
+      </button>
     </div>
   );
 }
@@ -2399,17 +2410,21 @@ function GuidedGoalWizard({
     if (!goalDescription.trim()) { setError("Describe what you're trying to achieve first."); return; }
     setError("");
     setProposingGoal(true);
-    const res = await proposeGoalFromDescription(goalDescription);
+    const res = await proposeGoalFromDescription(
+      goalDescription,
+      objectives.map(o => ({ id: o.id, title: o.title, target: o.target, timeframe: o.timeframe }))
+    );
     setProposingGoal(false);
-    // Never a dead end — fall back to a sensible manual starting point so an
-    // AI hiccup doesn't block someone from creating the goal at all.
     if (res.error || !res.title) {
       setGoalForm({ title: goalDescription.trim().slice(0, 80), type: "growth", target: "", timeframe: TIMEFRAMES[0], description: "", company_objective_id: "" });
       if (res.error) setError(res.error);
     } else {
       setGoalForm({
         title: res.title, type: res.type || "growth", target: res.target || "",
-        timeframe: res.timeframe || TIMEFRAMES[0], description: res.description || "", company_objective_id: "",
+        timeframe: res.timeframe || TIMEFRAMES[0], description: res.description || "",
+        // Auto-select the suggested Business Goal if the AI returned one and it exists
+        company_objective_id: res.suggestedObjectiveId && objectives.some(o => o.id === res.suggestedObjectiveId)
+          ? res.suggestedObjectiveId : "",
       });
     }
     setStep("goal_title");
@@ -2849,6 +2864,84 @@ function pluralize(label: string): string {
   return label.toLowerCase().endsWith("s") ? label : `${label}s`;
 }
 
+// ─── Product Goal Drawer ───────────────────────────────────────────────────────
+// 75% wide right slide-over with a dark backdrop. Keeps the page visible behind
+// it so the user never loses context, and gives the wizard plenty of space.
+function GoalDrawer({
+  open,
+  onClose,
+  objectives,
+  goalLabel,
+  onSaved,
+}: {
+  open: boolean;
+  onClose: () => void;
+  objectives: CompanyObjective[];
+  goalLabel: string;
+  onSaved: () => Promise<void>;
+}) {
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]"
+        onClick={onClose}
+      />
+
+      {/* Drawer panel — slides in from the right */}
+      <div
+        className="fixed inset-y-0 right-0 z-50 flex flex-col bg-white shadow-2xl"
+        style={{ width: "75%" }}
+      >
+        {/* Drawer header */}
+        <div className="flex items-start justify-between px-8 pt-7 pb-5 border-b border-gray-100">
+          <div>
+            <p className="text-[10px] font-semibold tracking-widest uppercase text-indigo-500 mb-1">
+              New {goalLabel}
+            </p>
+            <h2 className="text-xl font-bold text-gray-900 tracking-tight">
+              Break your Business Goal into a team-owned outcome
+            </h2>
+            <p className="text-sm text-gray-400 mt-1 max-w-lg">
+              A {goalLabel} is the specific result a team owns — like &quot;Reduce claims processing time&quot; or
+              &quot;Improve signup completion.&quot; You&apos;ll measure it with a KPI and link the features driving it.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="ml-6 flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors mt-1"
+            aria-label="Close"
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+              <path d="M15 5L5 15M5 5l10 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* Wizard body — scrollable */}
+        <div className="flex-1 overflow-y-auto px-8 py-6">
+          <GuidedGoalWizard
+            objectives={objectives}
+            goalLabel={goalLabel}
+            onSaved={onSaved}
+            onCancel={onClose}
+          />
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function BusinessGoalsPage() {
   const { currentOrg } = useOrg();
   const productGoalLabel = currentOrg?.product_goal_label?.trim() || "Product Goal";
@@ -3077,6 +3170,18 @@ export default function BusinessGoalsPage() {
     );
   }
 
+  // Progress badge — counts completed setup steps
+  const setupSteps = [
+    objectives.length > 0,
+    objectives.some(o => !!o.target?.trim()),
+    goals.length > 0,
+    Object.values(goalProgress).some(gp => gp.progressRatio !== null),
+    goals.some(g => (g as BusinessGoal & { feature_metrics?: unknown[] }).feature_metrics?.length),
+  ];
+  const setupDone = setupSteps.filter(Boolean).length;
+  const setupTotal = setupSteps.length;
+  const setupComplete = setupDone === setupTotal;
+
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
 
@@ -3099,65 +3204,54 @@ export default function BusinessGoalsPage() {
         />
       )}
 
-      {/* Stage 2: Business Goal exists, no Product Goal yet.
-          Gates on !objectivePanelWizardOpen so this never renders
-          simultaneously with the Business Goal wizard's own "done" step.
-          Gates on !productGoalJustCreated so it doesn't flash while load()
-          is in-flight after the first Product Goal is saved. */}
+      {/* Stage 2: Business Goal exists, no Product Goal yet — show a clean
+          hero explaining what a Product Goal is. The wizard lives in the
+          drawer, not inline, so the page context stays visible. */}
       {(objectives.length > 0 || pendingFirstGoal) && goals.length === 0 && !objectivePanelWizardOpen && !productGoalJustCreated && (
-        showForm ? (
-          <GuidedGoalWizard
-            objectives={objectives}
-            goalLabel={productGoalLabel}
-            onSaved={async () => {
-              setProductGoalJustCreated(true);
-              setShowForm(false);
-              await load();
-              setProductGoalJustCreated(false);
-            }}
-            onCancel={() => setShowForm(false)}
-          />
-        ) : (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 py-20 text-center px-8">
-            <div className="w-11 h-11 rounded-2xl bg-indigo-50 flex items-center justify-center mb-5">
-              <Target size={18} className="text-indigo-500" />
-            </div>
-
-            {/* Reassure: their Business Goal is done */}
-            <div className="flex items-center gap-2 mb-4">
-              <CheckCircle2 size={14} className="text-emerald-500" />
-              <p className="text-xs text-emerald-600 font-medium">Business Goal set</p>
-            </div>
-
-            <h3 className="text-2xl font-bold text-gray-900 tracking-tight mb-3">Now, break it down.</h3>
-
-            {/* Explain what a Product Goal is before asking them to create one */}
-            <p className="text-sm text-gray-500 max-w-md mb-2">
-              A <strong className="text-gray-700">{productGoalLabel}</strong> is the specific, team-owned outcome that moves your Business Goal forward —
-              like &quot;Reduce claims processing time&quot; or &quot;Improve signup completion rate.&quot;
-            </p>
-            <p className="text-sm text-gray-400 max-w-sm mb-8">
-              You&apos;ll define a KPI to measure it and link the features your team is building to move that number.
-            </p>
-
-            <button
-              onClick={() => setShowForm(true)}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-10 py-3 rounded-xl transition-colors"
-            >
-              <Plus size={14} /> Add my first {productGoalLabel.toLowerCase()}
-            </button>
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 py-20 text-center px-8">
+          <div className="w-11 h-11 rounded-2xl bg-indigo-50 flex items-center justify-center mb-5">
+            <Target size={18} className="text-indigo-500" />
           </div>
-        )
+          <div className="flex items-center gap-2 mb-4">
+            <CheckCircle2 size={14} className="text-emerald-500" />
+            <p className="text-xs text-emerald-600 font-medium">Business Goal set</p>
+          </div>
+          <h3 className="text-2xl font-bold text-gray-900 tracking-tight mb-3">Now, break it down.</h3>
+          <p className="text-sm text-gray-500 max-w-md mb-2">
+            A <strong className="text-gray-700">{productGoalLabel}</strong> is the specific, team-owned outcome that moves your Business Goal forward —
+            like &quot;Reduce claims processing time&quot; or &quot;Improve signup completion rate.&quot;
+          </p>
+          <p className="text-sm text-gray-400 max-w-sm mb-8">
+            You&apos;ll define a KPI to measure it and link the features your team is building to move that number.
+          </p>
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-10 py-3 rounded-xl transition-colors"
+          >
+            <Plus size={14} /> Add my first {productGoalLabel.toLowerCase()}
+          </button>
+        </div>
       )}
+
+      {/* Drawer — used for both Stage 2 (first goal) and Stage 3 (add more) */}
+      <GoalDrawer
+        open={showForm && !objectivePanelWizardOpen}
+        onClose={() => setShowForm(false)}
+        objectives={objectives}
+        goalLabel={productGoalLabel}
+        onSaved={async () => {
+          setProductGoalJustCreated(true);
+          setShowForm(false);
+          await load();
+          setProductGoalJustCreated(false);
+        }}
+      />
 
       {/* Full management page — only once there's at least one real Product Goal.
           productGoalJustCreated keeps it visible during the brief load() gap
           so the wizard completion feels instant, not stutter-y. */}
       {(goals.length > 0 || productGoalJustCreated) && (
       <>
-      {/* Goal setup checklist — disappears once everything is wired up */}
-      <GoalChecklist objectives={objectives} goals={goals} goalProgress={goalProgress} />
-
       {/* Header */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
@@ -3211,7 +3305,7 @@ export default function BusinessGoalsPage() {
               <Zap size={14} /> Connect Mixpanel
             </a>
           )}
-          {!showForm && (
+          {(
             <button
               onClick={() => setShowForm(true)}
               className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
@@ -3439,6 +3533,9 @@ export default function BusinessGoalsPage() {
           </div>
         </section>
       )}
+
+      {/* Fixed bottom-right setup checklist — visible whenever any step is incomplete */}
+      <SetupChecklist objectives={objectives} goals={goals} goalProgress={goalProgress} />
 
     </div>
   );
