@@ -1008,12 +1008,16 @@ function Wizard({ goals, kpisByGoal, onSaved, existingEventNames }: { goals: Bus
 
         {error && <p className="text-xs text-red-500">{error}</p>}
 
-        <div className="flex items-center justify-between">
+        {/* Spacer so content isn't obscured by the sticky footer */}
+        <div className="h-20" />
+
+        {/* Sticky save bar — always visible regardless of scroll position */}
+        <div className="sticky bottom-0 -mx-7 px-7 py-4 bg-white border-t border-gray-100 flex items-center justify-between">
           <button onClick={() => setStage("questions")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">
             ← Regenerate
           </button>
           <button onClick={handleSave} disabled={saving}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors disabled:opacity-50">
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-6 py-2.5 rounded-xl shadow-sm transition-colors disabled:opacity-50">
             {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
             Save to platform
           </button>
