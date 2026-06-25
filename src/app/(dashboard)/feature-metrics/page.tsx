@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useOrg } from "@/contexts/org-context";
 import {
   generateFeatureSuggestions,
@@ -864,7 +865,7 @@ const EMPTY_INPUT: FeatureInput = {
 
 type WizardStage = "goal" | "kpi" | "questions" | "generating" | "results";
 
-function Wizard({ goals, kpisByGoal, onSaved, existingEventNames }: { goals: BusinessGoal[]; kpisByGoal: Record<string, MetricWithData[]>; onSaved: () => void; existingEventNames: string[] }) {
+function Wizard({ goals, kpisByGoal, onSaved, existingEventNames, footerEl }: { goals: BusinessGoal[]; kpisByGoal: Record<string, MetricWithData[]>; onSaved: () => void; existingEventNames: string[]; footerEl: HTMLElement | null }) {
   const { currentOrg } = useOrg();
   const [stage, setStage] = useState<WizardStage>("goal");
   const [step, setStep] = useState(0);
@@ -1008,20 +1009,20 @@ function Wizard({ goals, kpisByGoal, onSaved, existingEventNames }: { goals: Bus
 
         {error && <p className="text-xs text-red-500">{error}</p>}
 
-        {/* Spacer so content isn't obscured by the sticky footer */}
-        <div className="h-20" />
-
-        {/* Sticky save bar — always visible regardless of scroll position */}
-        <div className="sticky bottom-0 -mx-7 px-7 py-4 bg-white border-t border-gray-100 flex items-center justify-between">
-          <button onClick={() => setStage("questions")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">
-            ← Regenerate
-          </button>
-          <button onClick={handleSave} disabled={saving}
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-6 py-2.5 rounded-xl shadow-sm transition-colors disabled:opacity-50">
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-            Save to platform
-          </button>
-        </div>
+        {/* Footer rendered via portal into the drawer's flex-shrink-0 footer slot */}
+        {footerEl && createPortal(
+          <div className="border-t border-gray-100 px-7 py-4 bg-white flex items-center justify-between flex-shrink-0">
+            <button onClick={() => setStage("questions")} className="text-sm text-gray-400 hover:text-gray-600 transition-colors">
+              ← Regenerate
+            </button>
+            <button onClick={handleSave} disabled={saving}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold px-6 py-2.5 rounded-xl shadow-sm transition-colors disabled:opacity-50">
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+              Save to platform
+            </button>
+          </div>,
+          footerEl
+        )}
       </div>
     );
   }
@@ -1161,6 +1162,7 @@ export default function FeatureMetricsPage() {
   const [existingEventNames, setExistingEventNames] = useState<string[]>([]);
   const [showWizard, setShowWizard] = useState(false);
   const [wizardVisible, setWizardVisible] = useState(false);
+  const [drawerFooterEl, setDrawerFooterEl] = useState<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Smooth slide-in / slide-out for the wizard drawer
@@ -1290,8 +1292,10 @@ export default function FeatureMetricsPage() {
             </div>
             {/* Scrollable body */}
             <div className="flex-1 overflow-y-auto px-7 py-6">
-              <Wizard goals={goals} kpisByGoal={kpisByGoal} existingEventNames={existingEventNames} onSaved={() => { closeWizard(); load(); }} />
+              <Wizard goals={goals} kpisByGoal={kpisByGoal} existingEventNames={existingEventNames} onSaved={() => { closeWizard(); load(); }} footerEl={drawerFooterEl} />
             </div>
+            {/* Footer portal target — rendered outside scroll so it's always flush at bottom */}
+            <div ref={setDrawerFooterEl} className="flex-shrink-0" />
           </div>
         </>
       )}
