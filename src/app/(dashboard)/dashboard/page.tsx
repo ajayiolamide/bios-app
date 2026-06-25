@@ -144,29 +144,26 @@ function GoalsOverview({ data, labelPlural }: { data: DashboardData; labelPlural
   return (
     <div className="bg-white border border-gray-100 rounded-2xl p-6">
       <div className="flex items-center justify-between mb-1">
-        <div className="flex items-center gap-2">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Business Goal → {labelPlural}</p>
-          {attentionCount > 0 && (
-            <div className="group relative flex items-center">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" />
-              </span>
-              {/* Tooltip */}
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 hidden group-hover:block z-10 bg-gray-900 text-white text-[11px] rounded-lg px-3 py-2 w-56 shadow-xl">
-                <p className="font-semibold mb-1">Needs attention ({attentionCount})</p>
-                <ul className="space-y-0.5 opacity-80">
-                  {needsAttention.slice(0, 3).map((msg, i) => <li key={i}>· {msg}</li>)}
-                  {needsAttention.length > 3 && <li>· and {needsAttention.length - 3} more…</li>}
-                </ul>
-              </div>
-            </div>
-          )}
-        </div>
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Business Goal → {labelPlural}</p>
         <Link href="/goals" className="text-xs text-indigo-500 hover:text-indigo-700 flex items-center gap-0.5 transition-colors">
           Manage <ArrowRight size={11} />
         </Link>
       </div>
+
+      {attentionCount > 0 && (
+        <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-100 rounded-xl px-4 py-2.5 mb-4">
+          <AlertCircle size={13} className="text-amber-500 flex-shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <p className="text-xs font-semibold text-amber-800">{attentionCount} item{attentionCount !== 1 ? "s" : ""} need attention</p>
+            <p className="text-[11px] text-amber-600 mt-0.5 leading-relaxed">
+              {needsAttention.slice(0, 2).join(" · ")}{needsAttention.length > 2 ? ` · +${needsAttention.length - 2} more` : ""}
+            </p>
+          </div>
+          <Link href="/goals" className="flex-shrink-0 text-[11px] font-medium text-amber-700 hover:text-amber-900 transition-colors mt-0.5">
+            Fix →
+          </Link>
+        </div>
+      )}
 
       {objectives.length === 0 ? (
         <p className="text-sm text-gray-400 py-3">

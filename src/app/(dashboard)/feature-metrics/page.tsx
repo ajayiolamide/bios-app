@@ -1267,7 +1267,7 @@ export default function FeatureMetricsPage() {
           {/* Panel */}
           <div
             className="fixed inset-y-0 right-0 z-50 bg-white shadow-2xl flex flex-col transition-transform duration-300 ease-out"
-            style={{ width: "75%", maxWidth: 680, transform: wizardVisible ? "translateX(0)" : "translateX(100%)" }}
+            style={{ width: "75%", transform: wizardVisible ? "translateX(0)" : "translateX(100%)" }}
           >
             {/* Drawer header */}
             <div className="flex items-center justify-between px-7 py-5 border-b border-gray-100 flex-shrink-0">
