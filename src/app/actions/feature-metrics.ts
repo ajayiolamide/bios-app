@@ -404,7 +404,22 @@ export async function updateFeatureLaunchStatus(
   actual_launch_date?: string | null
 ): Promise<{ error?: string }> {
   const admin = createAdminClient();
-  const patch: Record<string, unknown> = { launch_status, updated_at: new Date().toISOString() };
+
+  // Fetch current status_log to append to it
+  const { data: current } = await admin
+    .from("feature_metrics")
+    .select("status_log")
+    .eq("id", id)
+    .single();
+
+  const existingLog = (current?.status_log ?? []) as { status: string; timestamp: string }[];
+  const newLog = [...existingLog, { status: launch_status, timestamp: new Date().toISOString() }];
+
+  const patch: Record<string, unknown> = {
+    launch_status,
+    status_log: newLog,
+    updated_at: new Date().toISOString(),
+  };
   if (actual_launch_date !== undefined) patch.actual_launch_date = actual_launch_date;
   const { error } = await admin.from("feature_metrics").update(patch).eq("id", id);
   return { error: error?.message };
@@ -482,11 +497,14 @@ export async function notifySlackFeatureStatusChange(
   const admin = createAdminClient();
   const { data: settings } = await admin
     .from("brand_settings")
-    .select("slack_webhook")
+    .select("slack_webhook, pm_status_alerts_enabled")
     .eq("organization_id", orgId)
     .single();
   const webhookUrl = settings?.slack_webhook;
   if (!webhookUrl) return;
+  // Respect the org-level toggle — default true if column not yet migrated
+  const alertsEnabled = settings?.pm_status_alerts_enabled ?? true;
+  if (!alertsEnabled) return;
 
   const mention = pmHandle
     ? (pmHandle.startsWith("@") ? pmHandle : `@${pmHandle}`)
@@ -514,11 +532,14 @@ export async function sendWeeklyFeatureDigest(orgId: string): Promise<void> {
   const admin = createAdminClient();
   const { data: settings } = await admin
     .from("brand_settings")
-    .select("slack_webhook")
+    .select("slack_webhook, pm_weekly_digest_enabled")
     .eq("organization_id", orgId)
     .single();
   const webhookUrl = settings?.slack_webhook;
   if (!webhookUrl) return;
+  // Respect the org-level toggle — default true if column not yet migrated
+  const digestEnabled = settings?.pm_weekly_digest_enabled ?? true;
+  if (!digestEnabled) return;
   const { data: features } = await admin
     .from("feature_metrics")
     .select("feature_name, launch_status, pm_slack_handle, planned_launch_date, suggestions")

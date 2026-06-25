@@ -299,6 +299,8 @@ export interface Database {
           slack_webhook: string | null;
           slack_digest_enabled: boolean;
           slack_digest_cadence: string;
+          pm_status_alerts_enabled: boolean;
+          pm_weekly_digest_enabled: boolean;
           mixpanel_username: string | null;
           mixpanel_api_secret: string | null;
           mixpanel_project_id: string | null;
@@ -322,6 +324,8 @@ export interface Database {
           slack_webhook?: string | null;
           slack_digest_enabled?: boolean;
           slack_digest_cadence?: string;
+          pm_status_alerts_enabled?: boolean;
+          pm_weekly_digest_enabled?: boolean;
           mixpanel_username?: string | null;
           mixpanel_api_secret?: string | null;
           mixpanel_project_id?: string | null;
@@ -341,6 +345,8 @@ export interface Database {
           slack_webhook?: string | null;
           slack_digest_enabled?: boolean;
           slack_digest_cadence?: string;
+          pm_status_alerts_enabled?: boolean;
+          pm_weekly_digest_enabled?: boolean;
           mixpanel_username?: string | null;
           mixpanel_api_secret?: string | null;
           mixpanel_project_id?: string | null;
@@ -607,6 +613,7 @@ export interface Database {
           actual_launch_date: string | null;
           launch_status: "ideation" | "design" | "dev" | "uat" | "ready_for_launch" | "deployed" | "launched" | "post_launch" | "rolled_back" | "paused" | "not_launched" | "delayed" | "cancelled";
           pm_slack_handle: string | null;
+          status_log: { status: string; timestamp: string; note?: string }[];
           created_at: string;
           updated_at: string;
         };
@@ -631,6 +638,7 @@ export interface Database {
           actual_launch_date?: string | null;
           launch_status?: "not_launched" | "launched" | "delayed" | "cancelled";
           pm_slack_handle?: string | null;
+          status_log?: { status: string; timestamp: string; note?: string }[];
         };
         Update: {
           suggestions?: FeatureSuggestion[];
@@ -642,6 +650,7 @@ export interface Database {
           actual_launch_date?: string | null;
           launch_status?: "not_launched" | "launched" | "delayed" | "cancelled";
           pm_slack_handle?: string | null;
+          status_log?: { status: string; timestamp: string; note?: string }[];
           updated_at?: string;
         };
       };

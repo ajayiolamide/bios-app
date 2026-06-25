@@ -22,6 +22,10 @@ export async function saveBrandSettings(
     primary_color: string;
     secondary_color: string;
     slack_webhook: string;
+    slack_digest_enabled?: boolean;
+    slack_digest_cadence?: string;
+    pm_status_alerts_enabled?: boolean;
+    pm_weekly_digest_enabled?: boolean;
     logo_url?: string;
     design_theme?: string;
   }
@@ -35,6 +39,10 @@ export async function saveBrandSettings(
     primary_color: payload.primary_color || "#6366f1",
     secondary_color: payload.secondary_color || "#a5b4fc",
     slack_webhook: payload.slack_webhook.trim() || null,
+    ...(payload.slack_digest_enabled !== undefined ? { slack_digest_enabled: payload.slack_digest_enabled } : {}),
+    ...(payload.slack_digest_cadence !== undefined ? { slack_digest_cadence: payload.slack_digest_cadence } : {}),
+    ...(payload.pm_status_alerts_enabled !== undefined ? { pm_status_alerts_enabled: payload.pm_status_alerts_enabled } : {}),
+    ...(payload.pm_weekly_digest_enabled !== undefined ? { pm_weekly_digest_enabled: payload.pm_weekly_digest_enabled } : {}),
     ...(payload.logo_url !== undefined ? { logo_url: payload.logo_url } : {}),
     ...(payload.design_theme !== undefined ? { design_theme: payload.design_theme } : {}),
     updated_at: new Date().toISOString(),

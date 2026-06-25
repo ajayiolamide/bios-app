@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Edit2, Check, X, Upload, ImageIcon, Link2, Loader2, CheckCircle2, AlertCircle, Tag, Palette, Plug, LayoutTemplate, Building2, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, Edit2, Check, X, Upload, ImageIcon, Link2, Loader2, CheckCircle2, AlertCircle, Tag, Palette, Plug, LayoutTemplate, Building2, AlertTriangle, Bell } from "lucide-react";
 import { useOrg } from "@/contexts/org-context";
 import {
   getBrandSettings, saveBrandSettings,
@@ -55,6 +55,7 @@ const SETTINGS_TABS = [
   { id: "organization", label: "Organization", icon: Building2 },
   { id: "terminology", label: "Terminology", icon: Tag },
   { id: "brand", label: "Brand", icon: Palette },
+  { id: "notifications", label: "Notifications", icon: Bell },
   { id: "integrations", label: "Integrations", icon: Plug },
   { id: "templates", label: "Report templates", icon: LayoutTemplate },
 ] as const;
@@ -202,7 +203,11 @@ export default function SettingsPage() {
   const [designTheme, setDesignTheme] = useState("brand");
   const [slackWebhook, setSlackWebhook] = useState("");
   const [slackDigestEnabled, setSlackDigestEnabled] = useState(false);
-  const [slackDigestCadence, setSlackDigestCadence] = useState<"daily" | "weekly">("weekly");
+  const [slackDigestCadence, setSlackDigestCadence] = useState<"daily" | "weekly" | "monthly">("weekly");
+  const [pmStatusAlertsEnabled, setPmStatusAlertsEnabled] = useState(true);
+  const [pmWeeklyDigestEnabled, setPmWeeklyDigestEnabled] = useState(true);
+  const [notifSaving, setNotifSaving] = useState(false);
+  const [notifSaved, setNotifSaved] = useState(false);
   const [logoUrl, setLogoUrl] = useState("");
   // Bumped on every re-upload to bust the browser's <img> cache for the
   // preview only — kept separate from logoUrl so the cache-busting query
@@ -257,6 +262,8 @@ export default function SettingsPage() {
       setSlackWebhook(b.slack_webhook ?? "");
       setSlackDigestEnabled((b as BrandSettings & { slack_digest_enabled?: boolean }).slack_digest_enabled ?? false);
       setSlackDigestCadence(((b as BrandSettings & { slack_digest_cadence?: string }).slack_digest_cadence ?? "weekly") as "daily" | "weekly" | "monthly");
+      setPmStatusAlertsEnabled((b as BrandSettings & { pm_status_alerts_enabled?: boolean }).pm_status_alerts_enabled ?? true);
+      setPmWeeklyDigestEnabled((b as BrandSettings & { pm_weekly_digest_enabled?: boolean }).pm_weekly_digest_enabled ?? true);
       setLogoUrl(b.logo_url ?? "");
       setDesignTheme((b as BrandSettings & { design_theme?: string }).design_theme ?? "brand");
     }
@@ -376,14 +383,31 @@ export default function SettingsPage() {
       primary_color: primaryColor,
       secondary_color: secondaryColor,
       slack_webhook: slackWebhook,
-      slack_digest_enabled: slackDigestEnabled,
-      slack_digest_cadence: slackDigestCadence,
       logo_url: logoUrl,
       design_theme: designTheme,
     });
     setBrandSaving(false);
     setBrandSaved(true);
     setTimeout(() => setBrandSaved(false), 2000);
+  }
+
+  async function saveNotifications(e: React.FormEvent) {
+    e.preventDefault();
+    if (!currentOrg) return;
+    setNotifSaving(true);
+    await saveBrandSettings(currentOrg.id, {
+      company_name: companyName,
+      primary_color: primaryColor,
+      secondary_color: secondaryColor,
+      slack_webhook: slackWebhook,
+      slack_digest_enabled: slackDigestEnabled,
+      slack_digest_cadence: slackDigestCadence,
+      pm_status_alerts_enabled: pmStatusAlertsEnabled,
+      pm_weekly_digest_enabled: pmWeeklyDigestEnabled,
+    });
+    setNotifSaving(false);
+    setNotifSaved(true);
+    setTimeout(() => setNotifSaved(false), 2000);
   }
 
   async function saveMixpanel() {
@@ -689,7 +713,7 @@ export default function SettingsPage() {
               <p className="text-xs text-muted-foreground">{DESIGN_THEMES.find(t => t.id === designTheme)?.desc}</p>
             </div>
 
-            {/* Slack */}
+            {/* Slack webhook — needed here so reports post to Slack */}
             <div className="space-y-1.5">
               <label className="text-sm font-medium">Slack webhook <span className="text-muted-foreground">(optional)</span></label>
               <input
@@ -697,46 +721,8 @@ export default function SettingsPage() {
                 placeholder="https://hooks.slack.com/services/..." value={slackWebhook}
                 onChange={(e) => setSlackWebhook(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">Reports posted here automatically each month</p>
+              <p className="text-xs text-muted-foreground">Reports are posted here. Notification settings are under the Notifications tab.</p>
             </div>
-
-            {/* Slack goal digest */}
-            {slackWebhook && (
-              <div className="space-y-2.5 rounded-xl border border-gray-100 bg-gray-50 p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">Goal digest</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Send a goal progress summary to Slack automatically</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setSlackDigestEnabled(!slackDigestEnabled)}
-                    className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${slackDigestEnabled ? "bg-indigo-600" : "bg-gray-200"}`}
-                  >
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${slackDigestEnabled ? "translate-x-4" : "translate-x-0"}`} />
-                  </button>
-                </div>
-                {slackDigestEnabled && (
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-xs text-gray-500">Send</p>
-                    {([
-                      { value: "daily",   label: "Every morning" },
-                      { value: "weekly",  label: "Every Monday"  },
-                      { value: "monthly", label: "1st of month"  },
-                    ] as const).map(({ value, label }) => (
-                      <button
-                        key={value}
-                        type="button"
-                        onClick={() => setSlackDigestCadence(value)}
-                        className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${slackDigestCadence === value ? "bg-indigo-600 text-white" : "bg-white border border-gray-200 text-gray-500 hover:text-gray-800"}`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
 
             <button type="submit" disabled={brandSaving}
               className="px-4 py-2 rounded-md text-sm bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">
@@ -756,6 +742,131 @@ export default function SettingsPage() {
           </div>
         </div>
       </Section>
+      )}
+
+      {activeTab === "notifications" && (
+      <form onSubmit={saveNotifications} className="space-y-6">
+
+        {/* ── Slack webhook prereq ─────────────────────────────────────────── */}
+        {!slackWebhook && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 flex items-start gap-3">
+            <Bell className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-amber-800">Slack webhook not set</p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                All notifications below send via Slack. Add your webhook URL in the <strong>Brand</strong> tab first.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* ── Goal & Product Digest ─────────────────────────────────────────── */}
+        <Section title="Goal & Product Digest" icon={Bell}
+          description="A scheduled summary of your business goals and product goal health, sent to the whole team.">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">Enable digest</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Posts a goal progress summary to your Slack channel</p>
+              </div>
+              <button
+                type="button"
+                disabled={!slackWebhook}
+                onClick={() => setSlackDigestEnabled(!slackDigestEnabled)}
+                className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 disabled:opacity-40 ${slackDigestEnabled ? "bg-indigo-600" : "bg-gray-200"}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${slackDigestEnabled ? "translate-x-4" : "translate-x-0"}`} />
+              </button>
+            </div>
+
+            {slackDigestEnabled && (
+              <div className="space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground">Frequency</p>
+                <div className="flex gap-2 flex-wrap">
+                  {([
+                    { value: "daily",   label: "Every morning" },
+                    { value: "weekly",  label: "Every Monday"  },
+                    { value: "monthly", label: "1st of month"  },
+                  ] as const).map(({ value, label }) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => setSlackDigestCadence(value)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${slackDigestCadence === value ? "bg-indigo-600 text-white" : "bg-white border border-gray-200 text-gray-500 hover:text-gray-800"}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </Section>
+
+        {/* ── PM Feature Notifications ──────────────────────────────────────── */}
+        <Section title="PM Feature Notifications" icon={Bell}
+          description="Targeted notifications to the PM assigned to each feature — separate from the team-wide digest above.">
+          <div className="space-y-5">
+
+            {/* Status change alert */}
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium">Status change alert</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Whenever a feature's status changes, Slack pings the assigned PM handle immediately (e.g. @jane).
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={!slackWebhook}
+                onClick={() => setPmStatusAlertsEnabled(!pmStatusAlertsEnabled)}
+                className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 disabled:opacity-40 ${pmStatusAlertsEnabled ? "bg-indigo-600" : "bg-gray-200"}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${pmStatusAlertsEnabled ? "translate-x-4" : "translate-x-0"}`} />
+              </button>
+            </div>
+
+            <div className="border-t" />
+
+            {/* Weekly PM digest */}
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium">Weekly PM digest</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Every Monday at 9am, each PM gets a Slack summary of their assigned features — status, KPI count, guardrails, and launch date.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={!slackWebhook}
+                onClick={() => setPmWeeklyDigestEnabled(!pmWeeklyDigestEnabled)}
+                className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 disabled:opacity-40 ${pmWeeklyDigestEnabled ? "bg-indigo-600" : "bg-gray-200"}`}
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${pmWeeklyDigestEnabled ? "translate-x-4" : "translate-x-0"}`} />
+              </button>
+            </div>
+
+            <p className="text-xs text-muted-foreground bg-gray-50 rounded-lg px-3 py-2">
+              PM handles are set per feature on the Feature Metrics page. Make sure each feature has a handle like <span className="font-mono">@jane</span> for these to work.
+            </p>
+          </div>
+        </Section>
+
+        <div className="flex items-center gap-3">
+          <button
+            type="submit"
+            disabled={notifSaving}
+            className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-3.5 py-1.5 rounded-md transition-colors disabled:opacity-50"
+          >
+            {notifSaving ? "Saving…" : "Save notification settings"}
+          </button>
+          {notifSaved && (
+            <span className="flex items-center gap-1 text-xs text-emerald-600">
+              <CheckCircle2 className="h-3.5 w-3.5" /> Saved
+            </span>
+          )}
+        </div>
+      </form>
       )}
 
       {activeTab === "integrations" && (

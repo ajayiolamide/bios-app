@@ -749,6 +749,35 @@ function SavedPlanCard({
             )}
           </div>
 
+          {/* Status history trail */}
+          {(() => {
+            const log = (plan.status_log ?? []) as { status: string; timestamp: string }[];
+            if (log.length === 0) return null;
+            const reversed = [...log].reverse();
+            return (
+              <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">Status history</p>
+                <ol className="space-y-2">
+                  {reversed.map((entry, i) => {
+                    const d = new Date(entry.timestamp);
+                    const label = d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+                    const time = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+                    const isLatest = i === 0;
+                    return (
+                      <li key={i} className="flex items-start gap-2.5">
+                        <span className={`mt-1 h-2 w-2 rounded-full shrink-0 ${isLatest ? "bg-indigo-500" : "bg-gray-300"}`} />
+                        <span className={`text-xs ${isLatest ? "text-gray-800 font-semibold" : "text-gray-500"}`}>
+                          {entry.status.replace(/_/g, " ")}
+                          <span className="ml-2 font-normal text-gray-400">{label} · {time}</span>
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+            );
+          })()}
+
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {(plan.suggestions as FeatureSuggestion[]).map((s, i) => (
               <SuggestionCard
