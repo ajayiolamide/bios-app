@@ -12,8 +12,10 @@ export default async function HomePage() {
     <div className="min-h-screen bg-white text-gray-900 font-sans antialiased">
 
       {/* ── Subtle gradient background ───────────────────────────────────────── */}
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-10%,rgba(139,92,246,0.08),transparent)]" />
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_90%_55%_at_50%_-5%,rgba(99,102,241,0.13),transparent)]" />
+        <div className="absolute top-[30%] -left-[10%] w-[500px] h-[400px] bg-[radial-gradient(ellipse,rgba(99,102,241,0.06),transparent_70%)]" />
+        <div className="absolute top-[20%] -right-[10%] w-[400px] h-[350px] bg-[radial-gradient(ellipse,rgba(139,92,246,0.05),transparent_70%)]" />
       </div>
 
       {/* ── Nav ──────────────────────────────────────────────────────────────── */}
@@ -39,25 +41,24 @@ export default async function HomePage() {
       {/* ── Hero ─────────────────────────────────────────────────────────────── */}
       <section className="relative z-10 max-w-4xl mx-auto px-8 pt-20 pb-20 text-center">
 
-        <div className="inline-flex items-center gap-2 bg-violet-50 border border-violet-100 text-violet-600 text-xs font-medium px-3.5 py-1.5 rounded-full mb-8">
-          <span className="h-1.5 w-1.5 rounded-full bg-violet-500 shrink-0" />
+        <div className="inline-flex items-center gap-2 bg-indigo-50 border border-indigo-100 text-indigo-600 text-xs font-medium px-3.5 py-1.5 rounded-full mb-8">
+          <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 shrink-0" />
           Early access · Limited spots available
         </div>
 
         <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 leading-[1.1] tracking-tight mb-5">
-          The measurement layer<br />for product teams.
+          Turn feature releases into<br />business outcomes, with AI.
         </h1>
 
         <p className="text-lg text-gray-500 max-w-xl mx-auto mb-10 leading-relaxed">
-          Log a feature, set a business goal, and Metrik tells you whether shipping it
-          actually moved the needle — with AI-suggested metrics, KPI tracking, and
-          stakeholder-ready reports built in.
+          Set a goal. Log a feature. Metrik&apos;s AI suggests the right metrics, tracks
+          impact after launch, and tells you exactly what moved the needle.
         </p>
 
         <div className="flex items-center justify-center gap-3 flex-wrap">
           <Link
             href="/signup"
-            className="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 text-white font-semibold px-6 py-3 rounded-lg transition-colors text-sm"
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-6 py-3 rounded-lg transition-colors text-sm"
           >
             Get early access <ArrowRight size={14} />
           </Link>
@@ -95,8 +96,8 @@ export default async function HomePage() {
           ].map(({ icon: Icon, step, title, desc }) => (
             <div key={step} className="bg-gray-50 border border-gray-100 rounded-2xl p-6 hover:border-gray-200 transition-colors">
               <div className="flex items-center gap-3 mb-5">
-                <div className="w-8 h-8 rounded-lg bg-violet-50 border border-violet-100 flex items-center justify-center">
-                  <Icon size={14} className="text-violet-500" />
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-violet-100 flex items-center justify-center">
+                  <Icon size={14} className="text-indigo-500" />
                 </div>
                 <span className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">{step}</span>
               </div>
@@ -122,7 +123,7 @@ export default async function HomePage() {
             { icon: BarChart3,  label: "Cohort analysis & funnels" },
           ].map(({ icon: Icon, label }) => (
             <div key={label} className="flex items-center gap-3 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3.5 hover:border-gray-200 transition-colors">
-              <Icon size={14} className="text-violet-400 shrink-0" />
+              <Icon size={14} className="text-indigo-400 shrink-0" />
               <span className="text-sm text-gray-600">{label}</span>
             </div>
           ))}
@@ -153,7 +154,7 @@ export default async function HomePage() {
         <span className="text-xs text-gray-300">© 2026 MyCovergenius</span>
         <div className="flex items-center gap-4">
           <Link href="/login" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">Sign in</Link>
-          <Link href="/signup" className="text-xs font-semibold text-violet-600 hover:text-violet-700 transition-colors">Get started →</Link>
+          <Link href="/signup" className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 transition-colors">Get started →</Link>
         </div>
       </footer>
 
