@@ -624,6 +624,15 @@ function SavedPlanCard({
                   </span>
                 </>
               )}
+              <>
+                <span className="text-xs text-gray-300">·</span>
+                <span className="inline-flex items-center gap-1 text-[11px]">
+                  <User size={9} className="text-gray-400" />
+                  {plan.pm_slack_handle
+                    ? <span className="text-indigo-600 font-medium">{plan.pm_slack_handle}</span>
+                    : <span className="text-gray-400 italic">No PM set</span>}
+                </span>
+              </>
             </div>
           </div>
         </div>
@@ -710,23 +719,32 @@ function SavedPlanCard({
             </div>
           )}
           {/* PM Slack handle */}
-          <div className="flex items-center gap-2">
-            <User size={12} className="text-gray-400 flex-shrink-0" />
+          <div className="bg-gray-50 border border-gray-100 rounded-xl p-3">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+              <User size={10} /> Owner / PM Slack handle
+            </p>
             {editingPm ? (
-              <div className="flex items-center gap-2 flex-1">
+              <div className="flex items-center gap-2">
                 <input
                   value={pmHandle}
                   onChange={e => setPmHandle(e.target.value)}
                   placeholder="e.g. @jane or jane.smith"
-                  className="flex-1 border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                  className="flex-1 border border-gray-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
                   autoFocus
+                  onKeyDown={e => { if (e.key === "Enter") handlePmSave(); if (e.key === "Escape") { setEditingPm(false); setPmHandle(plan.pm_slack_handle ?? ""); }}}
                 />
-                <button onClick={handlePmSave} className="text-xs text-indigo-600 font-semibold hover:text-indigo-800">Save</button>
-                <button onClick={() => { setEditingPm(false); setPmHandle(plan.pm_slack_handle ?? ""); }} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+                <button onClick={handlePmSave} className="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700 font-medium transition-colors">Save</button>
+                <button onClick={() => { setEditingPm(false); setPmHandle(plan.pm_slack_handle ?? ""); }} className="text-xs text-gray-400 hover:text-gray-600 px-2">Cancel</button>
               </div>
             ) : (
-              <button onClick={() => setEditingPm(true)} className="text-xs text-gray-400 hover:text-gray-700 transition-colors">
-                {plan.pm_slack_handle ? <span className="text-indigo-600 font-medium">{plan.pm_slack_handle}</span> : <span className="italic">Add PM Slack handle</span>}
+              <button
+                onClick={() => setEditingPm(true)}
+                className="flex items-center gap-2 w-full text-left group"
+              >
+                {plan.pm_slack_handle
+                  ? <span className="text-sm font-semibold text-indigo-600">{plan.pm_slack_handle}</span>
+                  : <span className="text-sm text-gray-400 italic">+ Add Slack handle to receive notifications</span>}
+                <span className="text-[10px] text-gray-300 group-hover:text-indigo-400 transition-colors ml-auto">Edit</span>
               </button>
             )}
           </div>
