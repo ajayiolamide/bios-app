@@ -1,10 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { createServerClient } from "@/lib/supabase/server";
-import {
-  ArrowRight, CheckCircle2, BarChart3, Zap, FileText,
-  Target, TrendingUp, Sparkles,
-} from "lucide-react";
+import { ArrowRight, BarChart3, Zap, FileText, Target, TrendingUp, Sparkles } from "lucide-react";
 
 export default async function HomePage() {
   const supabase = await createServerClient();
@@ -12,164 +9,162 @@ export default async function HomePage() {
   if (user) redirect("/dashboard");
 
   return (
-    <div className="min-h-screen bg-white text-gray-900 font-sans">
+    <div className="min-h-screen bg-[#080810] text-white font-sans antialiased">
+
+      {/* ── Ambient glow ─────────────────────────────────────────────────────── */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-indigo-600/10 rounded-full blur-[120px]" />
+        <div className="absolute top-1/2 -left-40 w-[400px] h-[400px] bg-violet-600/8 rounded-full blur-[100px]" />
+        <div className="absolute top-1/2 -right-40 w-[400px] h-[400px] bg-blue-600/8 rounded-full blur-[100px]" />
+      </div>
 
       {/* ── Nav ──────────────────────────────────────────────────────────────── */}
-      <nav className="flex items-center justify-between px-6 py-5 max-w-6xl mx-auto">
-        <div className="flex items-center gap-2">
+      <nav className="relative z-10 flex items-center justify-between px-6 py-5 max-w-6xl mx-auto border-b border-white/5">
+        <div className="flex items-center gap-2.5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-metrik.svg" alt="Metrik" className="h-7 w-auto" />
-          <span className="font-black text-lg text-gray-900 tracking-tight">Metrik</span>
+          <img src="/logo-metrik.svg" alt="Metrik" className="h-6 w-auto brightness-0 invert" />
+          <span className="font-bold text-base text-white tracking-tight">Metrik</span>
         </div>
-        <div className="flex items-center gap-3">
-          <Link href="/login" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">
+        <div className="flex items-center gap-4">
+          <Link href="/login" className="text-sm text-white/40 hover:text-white/80 transition-colors">
             Sign in
           </Link>
           <Link
             href="/signup"
-            className="flex items-center gap-1.5 text-sm font-semibold bg-indigo-600 text-white px-4 py-2 rounded-xl hover:bg-indigo-700 transition-colors"
+            className="flex items-center gap-1.5 text-sm font-semibold bg-white text-gray-900 px-4 py-2 rounded-lg hover:bg-white/90 transition-colors"
           >
-            Get started <ArrowRight size={13} />
+            Request access <ArrowRight size={13} />
           </Link>
         </div>
       </nav>
 
       {/* ── Hero ─────────────────────────────────────────────────────────────── */}
-      <section className="max-w-6xl mx-auto px-6 pt-16 pb-20 text-center">
-        <div className="inline-flex items-center gap-2 bg-indigo-50 text-indigo-600 text-xs font-semibold px-3 py-1.5 rounded-full border border-indigo-100 mb-8">
-          <span className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75" />
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500" />
-          </span>
-          Beta — free to try, no credit card
+      <section className="relative z-10 max-w-5xl mx-auto px-6 pt-24 pb-24 text-center">
+
+        <div className="inline-flex items-center gap-2 bg-white/5 border border-white/10 text-white/60 text-xs font-medium px-3.5 py-1.5 rounded-full mb-10">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shrink-0" />
+          Early access · Limited to select teams
         </div>
 
-        <h1 className="text-5xl sm:text-6xl font-black text-gray-900 leading-[1.05] tracking-tight mb-5">
-          Know if your features<br />
-          <span className="text-indigo-600">are actually working.</span>
+        <h1 className="text-5xl sm:text-6xl lg:text-7xl font-black leading-[1.03] tracking-tight mb-6">
+          <span className="text-white">Know if your features</span>
+          <br />
+          <span className="bg-gradient-to-r from-indigo-400 via-violet-400 to-blue-400 bg-clip-text text-transparent">
+            are actually working.
+          </span>
         </h1>
-        <p className="text-xl text-gray-500 max-w-2xl mx-auto mb-10 leading-relaxed">
-          Metrik connects your product releases to real business outcomes. Log a feature,
-          get AI-suggested metrics, and see whether it moved the needle — without guessing.
+
+        <p className="text-lg text-white/40 max-w-xl mx-auto mb-12 leading-relaxed">
+          Connect product releases to real business outcomes. Log a feature, get AI-suggested metrics,
+          and know whether it moved the needle — without guessing.
         </p>
 
-        <div className="flex items-center justify-center gap-3 flex-wrap">
+        <div className="flex items-center justify-center gap-4 flex-wrap">
           <Link
             href="/signup"
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-7 py-3.5 rounded-xl transition-colors text-sm shadow-sm"
+            className="flex items-center gap-2 bg-indigo-500 hover:bg-indigo-400 text-white font-semibold px-6 py-3 rounded-lg transition-colors text-sm"
           >
-            Start free <ArrowRight size={15} />
+            Get early access <ArrowRight size={14} />
           </Link>
-          <Link href="/login" className="text-sm text-gray-400 hover:text-gray-700 px-4 py-3.5 transition-colors">
-            Already have an account →
+          <Link href="/login" className="text-sm text-white/30 hover:text-white/60 transition-colors">
+            Sign in →
           </Link>
         </div>
       </section>
 
       {/* ── How it works ─────────────────────────────────────────────────────── */}
-      <section className="bg-gray-50 border-y border-gray-100 py-16">
-        <div className="max-w-6xl mx-auto px-6">
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest text-center mb-10">
-            How it works
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              {
-                icon: Target,
-                color: "bg-indigo-100 text-indigo-600",
-                step: "01",
-                title: "Set a business goal",
-                desc: "Define what your company is trying to achieve — growth, retention, revenue. Metrik keeps every feature aligned to it.",
-              },
-              {
-                icon: Sparkles,
-                color: "bg-violet-100 text-violet-600",
-                step: "02",
-                title: "Log a feature",
-                desc: "Describe what you're building in 8 quick questions. AI suggests the right metrics, KPIs, and guardrails — already named and event-wired.",
-              },
-              {
-                icon: TrendingUp,
-                color: "bg-blue-100 text-blue-600",
-                step: "03",
-                title: "See the real impact",
-                desc: "After launch, Metrik computes whether the feature moved your KPI. Generate a one-click deck to share results with stakeholders.",
-              },
-            ].map(({ icon: Icon, color, step, title, desc }) => (
-              <div key={step} className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
-                <div className={`w-10 h-10 rounded-xl ${color} flex items-center justify-center mb-4`}>
-                  <Icon size={18} />
+      <section className="relative z-10 max-w-6xl mx-auto px-6 pb-24">
+        <p className="text-[11px] font-semibold text-white/25 uppercase tracking-[0.15em] text-center mb-12">
+          How it works
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[
+            {
+              icon: Target,
+              step: "01",
+              title: "Set a business goal",
+              desc: "Define what your company is trying to achieve — growth, retention, revenue. Every feature stays aligned to it.",
+            },
+            {
+              icon: Sparkles,
+              step: "02",
+              title: "Log a feature",
+              desc: "Answer 8 questions. AI suggests the right metrics, KPIs, and guardrails — already named, event-wired, and assigned to a PM.",
+            },
+            {
+              icon: TrendingUp,
+              step: "03",
+              title: "See the real impact",
+              desc: "After launch, Metrik computes whether the feature moved your KPI. One click generates a deck to share with stakeholders.",
+            },
+          ].map(({ icon: Icon, step, title, desc }) => (
+            <div key={step} className="bg-white/[0.03] border border-white/[0.07] rounded-2xl p-6 hover:border-white/[0.12] transition-colors">
+              <div className="flex items-center gap-3 mb-5">
+                <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
+                  <Icon size={15} className="text-indigo-400" />
                 </div>
-                <p className="text-[10px] font-bold text-gray-300 uppercase tracking-widest mb-1">{step}</p>
-                <h3 className="font-bold text-gray-900 mb-2">{title}</h3>
-                <p className="text-sm text-gray-500 leading-relaxed">{desc}</p>
+                <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest">{step}</span>
               </div>
-            ))}
-          </div>
+              <h3 className="font-semibold text-white/90 mb-2 text-sm">{title}</h3>
+              <p className="text-sm text-white/35 leading-relaxed">{desc}</p>
+            </div>
+          ))}
         </div>
       </section>
 
       {/* ── Features ─────────────────────────────────────────────────────────── */}
-      <section className="max-w-6xl mx-auto px-6 py-16">
-        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest text-center mb-10">
-          Everything in the beta
+      <section className="relative z-10 max-w-6xl mx-auto px-6 pb-24">
+        <p className="text-[11px] font-semibold text-white/25 uppercase tracking-[0.15em] text-center mb-12">
+          What&apos;s included
         </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
           {[
-            { icon: Sparkles,  color: "text-indigo-500", label: "AI tracking suggestions per feature" },
-            { icon: Target,    color: "text-violet-500", label: "Business goal → product goal hierarchy" },
-            { icon: TrendingUp,color: "text-blue-500",   label: "Post-launch KPI impact scoring" },
-            { icon: FileText,  color: "text-indigo-500", label: "One-click slide deck generation" },
-            { icon: Zap,       color: "text-violet-500", label: "Mixpanel & Amplitude integration" },
-            { icon: BarChart3, color: "text-blue-500",   label: "Cohort analysis & funnels" },
-          ].map(({ icon: Icon, color, label }) => (
-            <div key={label} className="flex items-center gap-3 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3.5">
-              <Icon size={15} className={`${color} flex-shrink-0`} />
-              <span className="text-sm text-gray-700">{label}</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-xl">
-          {[
-            "Free during beta",
-            "Slack digest (daily / weekly / monthly)",
-            "AI business brief on your dashboard",
-            "Multi-workspace support",
-          ].map(item => (
-            <div key={item} className="flex items-center gap-2">
-              <CheckCircle2 size={13} className="text-indigo-400 flex-shrink-0" />
-              <span className="text-sm text-gray-500">{item}</span>
+            { icon: Sparkles,   label: "AI metric suggestions per feature" },
+            { icon: Target,     label: "Business goal → KPI hierarchy" },
+            { icon: TrendingUp, label: "Post-launch KPI impact scoring" },
+            { icon: FileText,   label: "One-click stakeholder deck" },
+            { icon: Zap,        label: "Mixpanel & Amplitude connector" },
+            { icon: BarChart3,  label: "Cohort analysis & funnels" },
+          ].map(({ icon: Icon, label }) => (
+            <div key={label} className="flex items-center gap-3 bg-white/[0.03] border border-white/[0.06] rounded-xl px-4 py-3.5 hover:border-white/10 transition-colors">
+              <Icon size={14} className="text-indigo-400/70 shrink-0" />
+              <span className="text-sm text-white/50">{label}</span>
             </div>
           ))}
         </div>
       </section>
 
       {/* ── CTA ──────────────────────────────────────────────────────────────── */}
-      <section className="max-w-6xl mx-auto px-6 pb-20">
-        <div className="bg-indigo-600 rounded-3xl px-8 py-14 text-center">
-          <h2 className="text-3xl font-black text-white mb-3 tracking-tight">
-            Ready to see what&apos;s actually working?
-          </h2>
-          <p className="text-indigo-200 text-sm mb-7">
-            Free during beta · Takes 2 minutes to set up · No credit card
-          </p>
-          <Link
-            href="/signup"
-            className="inline-flex items-center gap-2 bg-white text-indigo-700 font-bold px-7 py-3.5 rounded-xl hover:bg-indigo-50 transition-colors text-sm shadow-sm"
-          >
-            Get started free <ArrowRight size={15} />
-          </Link>
+      <section className="relative z-10 max-w-6xl mx-auto px-6 pb-24">
+        <div className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.03] px-8 py-16 text-center">
+          {/* Inner glow */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-[600px] h-[200px] bg-indigo-600/10 blur-[80px] rounded-full" />
+          </div>
+          <div className="relative">
+            <h2 className="text-3xl sm:text-4xl font-black text-white mb-3 tracking-tight">
+              Built for teams that ship fast<br />and measure what matters.
+            </h2>
+            <p className="text-white/35 text-sm mb-8">
+              Early access is limited. No credit card required.
+            </p>
+            <Link
+              href="/signup"
+              className="inline-flex items-center gap-2 bg-white text-gray-900 font-bold px-7 py-3.5 rounded-lg hover:bg-white/90 transition-colors text-sm"
+            >
+              Get early access <ArrowRight size={14} />
+            </Link>
+          </div>
         </div>
       </section>
 
       {/* ── Footer ───────────────────────────────────────────────────────────── */}
-      <footer className="border-t border-gray-100 py-6 px-6 flex items-center justify-between max-w-6xl mx-auto">
-        <span className="text-xs text-gray-400 font-semibold">Metrik</span>
-        <span className="text-xs text-gray-300">Beta 2026 · Built by MyCovergenius</span>
+      <footer className="relative z-10 border-t border-white/5 py-6 px-6 flex items-center justify-between max-w-6xl mx-auto">
+        <span className="text-xs text-white/20 font-semibold">Metrik</span>
+        <span className="text-xs text-white/15">© 2026 MyCovergenius</span>
         <div className="flex items-center gap-4">
-          <Link href="/login" className="text-xs text-gray-400 hover:text-gray-600">Sign in</Link>
-          <Link href="/signup" className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">Get started →</Link>
+          <Link href="/login" className="text-xs text-white/25 hover:text-white/50 transition-colors">Sign in</Link>
+          <Link href="/signup" className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 transition-colors">Request access →</Link>
         </div>
       </footer>
 
