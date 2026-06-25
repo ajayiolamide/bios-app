@@ -19,6 +19,7 @@ export async function GET(req: Request) {
   const today = new Date();
   const dayOfWeek = today.getDay(); // 0=Sun … 6=Sat
   const isMonday = dayOfWeek === 1;
+  const isFirstOfMonth = today.getDate() === 1;
 
   // Fetch all orgs with digests enabled
   const { data: settings } = await supabase
@@ -31,8 +32,9 @@ export async function GET(req: Request) {
   let sent = 0;
   for (const org of settings) {
     if (!org.slack_webhook) continue;
-    // weekly → only on Mondays; daily → every run (cron fires daily at 8am)
+    // daily → every run; weekly → Mondays only; monthly → 1st of month only
     if (org.slack_digest_cadence === "weekly" && !isMonday) continue;
+    if (org.slack_digest_cadence === "monthly" && !isFirstOfMonth) continue;
 
     // Load objectives + goals for this org
     const [{ data: objectives }, { data: goals }] = await Promise.all([
@@ -61,7 +63,7 @@ export async function GET(req: Request) {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function buildDigestBlocks(companyName: string, cadence: string, objectives: any[], goals: any[]) {
-  const label = cadence === "daily" ? "Daily" : "Weekly";
+  const label = cadence === "daily" ? "Daily" : cadence === "monthly" ? "Monthly" : "Weekly";
   const blocks: object[] = [];
 
   blocks.push({

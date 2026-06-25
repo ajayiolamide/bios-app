@@ -605,7 +605,7 @@ export interface Database {
           status: "active" | "archived";
           planned_launch_date: string | null;
           actual_launch_date: string | null;
-          launch_status: "not_launched" | "launched" | "delayed" | "cancelled";
+          launch_status: "ideation" | "design" | "dev" | "uat" | "ready_for_launch" | "deployed" | "launched" | "post_launch" | "rolled_back" | "paused" | "not_launched" | "delayed" | "cancelled";
           created_at: string;
           updated_at: string;
         };

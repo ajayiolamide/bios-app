@@ -11,6 +11,7 @@ import {
   confirmFeatureLaunch,
   updateFeatureLaunchStatus,
   updateFeatureSuggestionFrequency,
+  type FeatureLaunchStatus,
 } from "@/app/actions/feature-metrics";
 import { getBusinessGoals } from "@/app/actions/business-goals";
 import { getKpisByGoal, type MetricWithData } from "@/app/actions/metrics";
@@ -292,21 +293,97 @@ function SuggestionCard({
 
 // ─── Launch status badge ──────────────────────────────────────────────────────
 
-type EffectiveStatus = FeatureMetric["launch_status"] | "scheduled";
+type EffectiveStatus = FeatureLaunchStatus | "scheduled";
+
+// Full lifecycle: Ideation → Design → Dev → UAT → Ready → Deployed → Launched → Post-launch
+// Exception states: Rolled back, Paused
+// Legacy DB values kept for backwards compat: not_launched, delayed, cancelled
+const STATUS_MAP: Record<string, { label: string; cls: string; icon: React.ComponentType<{ size: number }> }> = {
+  ideation:         { label: "Ideation",         cls: "bg-purple-50 text-purple-600 border-purple-200",  icon: Lightbulb },
+  design:           { label: "Design",            cls: "bg-blue-50 text-blue-600 border-blue-200",        icon: Zap },
+  dev:              { label: "Dev",               cls: "bg-yellow-50 text-yellow-700 border-yellow-200",  icon: Zap },
+  uat:              { label: "UAT",               cls: "bg-orange-50 text-orange-600 border-orange-200",  icon: CheckCircle2 },
+  ready_for_launch: { label: "Ready to launch",  cls: "bg-teal-50 text-teal-700 border-teal-200",        icon: Rocket },
+  deployed:         { label: "Deployed",          cls: "bg-indigo-50 text-indigo-700 border-indigo-200",  icon: Rocket },
+  launched:         { label: "Launched ✓",        cls: "bg-green-100 text-green-700 border-green-200",    icon: Rocket },
+  post_launch:      { label: "Post-launch",       cls: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: TrendingUp },
+  rolled_back:      { label: "Rolled back",       cls: "bg-red-100 text-red-600 border-red-200",          icon: XCircle },
+  paused:           { label: "Paused",            cls: "bg-amber-100 text-amber-700 border-amber-200",    icon: RotateCcw },
+  // legacy
+  not_launched:     { label: "Not launched",      cls: "bg-gray-100 text-gray-500 border-gray-200",       icon: Clock },
+  delayed:          { label: "Delayed",           cls: "bg-amber-100 text-amber-700 border-amber-200",    icon: RotateCcw },
+  cancelled:        { label: "Cancelled",         cls: "bg-red-100 text-red-600 border-red-200",          icon: XCircle },
+  scheduled:        { label: "Scheduled",         cls: "bg-blue-100 text-blue-700 border-blue-200",       icon: Calendar },
+};
+
+// Ordered lifecycle pipeline (for the status picker)
+const STATUS_PIPELINE: { value: FeatureLaunchStatus; label: string }[] = [
+  { value: "ideation",         label: "Ideation" },
+  { value: "design",           label: "Design" },
+  { value: "dev",              label: "Dev" },
+  { value: "uat",              label: "UAT" },
+  { value: "ready_for_launch", label: "Ready to launch" },
+  { value: "deployed",         label: "Deployed" },
+  { value: "launched",         label: "Launched" },
+  { value: "post_launch",      label: "Post-launch" },
+  { value: "rolled_back",      label: "Rolled back" },
+  { value: "paused",           label: "Paused" },
+];
 
 function LaunchStatusBadge({ status, scheduledDate }: { status: EffectiveStatus; scheduledDate?: string }) {
-  const map: Record<string, { label: string; cls: string; icon: React.ComponentType<{ size: number }> }> = {
-    not_launched: { label: "Not launched",  cls: "bg-gray-100 text-gray-500 border-gray-200",         icon: Clock },
-    scheduled:    { label: scheduledDate ? `Scheduled ${scheduledDate}` : "Scheduled", cls: "bg-blue-100 text-blue-700 border-blue-200", icon: Calendar },
-    launched:     { label: "Launched ✓",    cls: "bg-green-100 text-green-700 border-green-200",       icon: Rocket },
-    delayed:      { label: "Delayed",       cls: "bg-amber-100 text-amber-700 border-amber-200",       icon: RotateCcw },
-    cancelled:    { label: "Cancelled",     cls: "bg-red-100 text-red-600 border-red-200",             icon: XCircle },
-  };
-  const { label, cls, icon: Icon } = map[status] ?? map.not_launched;
+  const entry = STATUS_MAP[status] ?? STATUS_MAP.not_launched;
+  const label = status === "scheduled" && scheduledDate ? `Scheduled ${scheduledDate}` : entry.label;
+  const Icon = entry.icon;
   return (
-    <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border ${cls}`}>
+    <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full border ${entry.cls}`}>
       <Icon size={9} /> {label}
     </span>
+  );
+}
+
+// Inline status picker — replaces the old confirm/delay buttons
+function StatusPicker({ current, onSelect, saving }: {
+  current: EffectiveStatus;
+  onSelect: (s: FeatureLaunchStatus) => void;
+  saving: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setOpen(v => !v)}
+        disabled={saving}
+        className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-800 border border-indigo-200 hover:border-indigo-400 bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+      >
+        {saving ? <Loader2 size={11} className="animate-spin" /> : null}
+        Change status <ChevronDown size={11} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full mt-1 z-20 bg-white border border-gray-100 rounded-xl shadow-xl overflow-hidden w-44">
+            {STATUS_PIPELINE.map(opt => {
+              const entry = STATUS_MAP[opt.value];
+              const Icon = entry.icon;
+              const isCurrent = opt.value === current;
+              return (
+                <button
+                  key={opt.value}
+                  onClick={() => { onSelect(opt.value); setOpen(false); }}
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-xs text-left transition-colors ${
+                    isCurrent ? "bg-indigo-50 text-indigo-700 font-semibold" : "hover:bg-gray-50 text-gray-700"
+                  }`}
+                >
+                  <Icon size={11} className={isCurrent ? "text-indigo-500" : "text-gray-400"} />
+                  {opt.label}
+                  {isCurrent && <CheckCircle2 size={10} className="ml-auto text-indigo-500 flex-shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -349,18 +426,21 @@ function SavedPlanCard({
   const linkedGoal = goals.find((g) => g.id === plan.business_goal_id);
   const today = new Date().toISOString().slice(0, 10);
 
-  // Compute effective status — auto-launch when planned date has arrived
+  // Derive display status — "scheduled" is a UI-only overlay for a future date on a pre-launch status
+  const prelaunchStatuses: FeatureLaunchStatus[] = ["ideation", "design", "dev", "uat", "ready_for_launch", "not_launched"];
   const effectiveStatus = ((): EffectiveStatus => {
-    if (plan.launch_status !== "not_launched") return plan.launch_status;
-    if (!plan.planned_launch_date) return "not_launched";
-    if (plan.planned_launch_date <= today) return "launched"; // date reached
-    return "scheduled"; // future date set
+    const s = plan.launch_status as FeatureLaunchStatus;
+    if (!prelaunchStatuses.includes(s)) return s; // already an explicit status — show it
+    if (!plan.planned_launch_date) return s;
+    if (plan.planned_launch_date <= today) return "launched"; // date arrived, auto-flip
+    return "scheduled"; // future date set on a pre-launch item
   })();
 
-  // Auto-confirm in DB when effective status flips to launched
+  // Auto-confirm in DB when a pre-launch feature's planned date arrives
   useEffect(() => {
+    const s = plan.launch_status as FeatureLaunchStatus;
     if (
-      plan.launch_status === "not_launched" &&
+      prelaunchStatuses.includes(s) &&
       plan.planned_launch_date &&
       plan.planned_launch_date <= today
     ) {
@@ -369,9 +449,9 @@ function SavedPlanCard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Alert states
-  const isOverdue = effectiveStatus !== "launched" && effectiveStatus !== "scheduled" && plan.planned_launch_date && plan.planned_launch_date < today;
-  const isToday   = plan.launch_status === "not_launched" && plan.planned_launch_date === today;
+  const isLaunched = effectiveStatus === "launched" || effectiveStatus === "post_launch" || effectiveStatus === "deployed";
+  const isOverdue  = !isLaunched && effectiveStatus !== "scheduled" && plan.planned_launch_date && plan.planned_launch_date < today;
+  const isToday    = prelaunchStatuses.includes(plan.launch_status as FeatureLaunchStatus) && plan.planned_launch_date === today;
   const windowCheck = goalWindowCheck(plan.planned_launch_date, linkedGoal);
 
   async function handleSaveDate() {
@@ -389,9 +469,13 @@ function SavedPlanCard({
     onUpdated();
   }
 
-  async function handleDelay() {
+  async function handleStatusChange(newStatus: FeatureLaunchStatus) {
     setSaving(true);
-    await updateFeatureLaunchStatus(plan.id, "delayed");
+    if (newStatus === "launched") {
+      await confirmFeatureLaunch(plan.id);
+    } else {
+      await updateFeatureLaunchStatus(plan.id, newStatus);
+    }
     setSaving(false);
     onUpdated();
   }
@@ -421,10 +505,7 @@ function SavedPlanCard({
               className="text-[11px] font-semibold bg-green-600 text-white px-2.5 py-1 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors">
               ✓ Confirm launch
             </button>
-            <button onClick={handleDelay} disabled={saving}
-              className="text-[11px] font-medium text-amber-600 hover:text-amber-800 px-2 py-1 rounded-lg hover:bg-amber-100 transition-colors">
-              Delay
-            </button>
+            <StatusPicker current={effectiveStatus} onSelect={handleStatusChange} saving={saving} />
           </div>
         </div>
       )}
@@ -503,10 +584,13 @@ function SavedPlanCard({
               <LaunchStatusBadge status={effectiveStatus} scheduledDate={effectiveStatus === "scheduled" ? plan.planned_launch_date ?? undefined : undefined} />
             </div>
 
-            {effectiveStatus === "launched" ? (
-              <p className="text-sm text-green-700 font-medium">
-                🚀 Launched on {plan.actual_launch_date ?? plan.planned_launch_date}
-              </p>
+            {isLaunched ? (
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-green-700 font-medium">
+                  🚀 {effectiveStatus === "post_launch" ? "Post-launch" : "Launched"} on {plan.actual_launch_date ?? plan.planned_launch_date ?? "—"}
+                </p>
+                <StatusPicker current={effectiveStatus} onSelect={handleStatusChange} saving={saving} />
+              </div>
             ) : editingDate ? (
               <div className="flex items-center gap-2">
                 <input type="date" value={dateInput} onChange={e => setDateInput(e.target.value)}
@@ -532,17 +616,11 @@ function SavedPlanCard({
                     : <span className="text-gray-400 italic text-xs">No date set</span>}
                 </span>
                 <div className="flex items-center gap-2">
-                  {/* effectiveStatus is already guaranteed not to be "launched" here —
-                      this whole block only renders in the else-branch of the
-                      effectiveStatus === "launched" ternary above. */}
                   <button onClick={() => setEditingDate(true)}
                     className="text-xs text-indigo-600 hover:text-indigo-800 font-medium px-2 py-1 rounded hover:bg-indigo-50 transition-colors">
                     {plan.planned_launch_date ? "Reschedule" : "Set date"}
                   </button>
-                  <button onClick={handleConfirmLaunch} disabled={saving}
-                    className="text-xs bg-green-600 text-white px-2.5 py-1 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors font-medium">
-                    {saving ? "…" : "✓ Launched"}
-                  </button>
+                  <StatusPicker current={effectiveStatus} onSelect={handleStatusChange} saving={saving} />
                 </div>
               </div>
             )}
@@ -1078,7 +1156,21 @@ export default function FeatureMetricsPage() {
   const [kpisByGoal, setKpisByGoal] = useState<Record<string, MetricWithData[]>>({});
   const [existingEventNames, setExistingEventNames] = useState<string[]>([]);
   const [showWizard, setShowWizard] = useState(false);
+  const [wizardVisible, setWizardVisible] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Smooth slide-in / slide-out for the wizard drawer
+  useEffect(() => {
+    if (showWizard) {
+      const t = setTimeout(() => setWizardVisible(true), 10);
+      return () => clearTimeout(t);
+    } else {
+      setWizardVisible(false);
+    }
+  }, [showWizard]);
+
+  function openWizard() { setShowWizard(true); }
+  function closeWizard() { setWizardVisible(false); setTimeout(() => setShowWizard(false), 300); }
 
   const load = useCallback(async () => {
     if (!currentOrg) return;
@@ -1136,14 +1228,12 @@ export default function FeatureMetricsPage() {
               {goals.filter(g => g.status === "active").length} active goal{goals.filter(g => g.status === "active").length !== 1 ? "s" : ""}
             </div>
           )}
-          {!showWizard && (
-            <button
-              onClick={() => setShowWizard(true)}
-              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
-            >
-              <Plus size={14} /> Log a feature
-            </button>
-          )}
+          <button
+            onClick={openWizard}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
+          >
+            <Plus size={14} /> Log a feature
+          </button>
         </div>
       </div>
 
@@ -1165,15 +1255,41 @@ export default function FeatureMetricsPage() {
         </div>
       )}
 
-      {/* Wizard */}
+      {/* Wizard drawer */}
       {showWizard && (
-        <div className="bg-white border border-gray-100 rounded-2xl p-6">
-          <div className="flex items-center justify-between mb-6">
-            <p className="text-sm font-bold text-gray-700">New feature tracking plan</p>
-            <button onClick={() => setShowWizard(false)} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">Cancel</button>
+        <>
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm transition-opacity duration-300"
+            style={{ opacity: wizardVisible ? 1 : 0 }}
+            onClick={closeWizard}
+          />
+          {/* Panel */}
+          <div
+            className="fixed inset-y-0 right-0 z-50 bg-white shadow-2xl flex flex-col transition-transform duration-300 ease-out"
+            style={{ width: "75%", maxWidth: 680, transform: wizardVisible ? "translateX(0)" : "translateX(100%)" }}
+          >
+            {/* Drawer header */}
+            <div className="flex items-center justify-between px-7 py-5 border-b border-gray-100 flex-shrink-0">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-indigo-100 flex items-center justify-center">
+                  <Sparkles size={14} className="text-indigo-600" />
+                </div>
+                <p className="text-sm font-bold text-gray-800">New feature tracking plan</p>
+              </div>
+              <button
+                onClick={closeWizard}
+                className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            {/* Scrollable body */}
+            <div className="flex-1 overflow-y-auto px-7 py-6">
+              <Wizard goals={goals} kpisByGoal={kpisByGoal} existingEventNames={existingEventNames} onSaved={() => { closeWizard(); load(); }} />
+            </div>
           </div>
-          <Wizard goals={goals} kpisByGoal={kpisByGoal} existingEventNames={existingEventNames} onSaved={() => { setShowWizard(false); load(); }} />
-        </div>
+        </>
       )}
 
       {/* Launch alerts summary */}

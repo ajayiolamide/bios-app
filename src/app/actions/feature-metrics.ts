@@ -393,9 +393,14 @@ export async function confirmFeatureLaunch(
   return { error: error?.message };
 }
 
+export type FeatureLaunchStatus =
+  | "ideation" | "design" | "dev" | "uat" | "ready_for_launch"
+  | "deployed" | "launched" | "post_launch" | "rolled_back" | "paused"
+  | "not_launched" | "delayed" | "cancelled"; // legacy values kept for compat
+
 export async function updateFeatureLaunchStatus(
   id: string,
-  launch_status: "not_launched" | "launched" | "delayed" | "cancelled",
+  launch_status: FeatureLaunchStatus,
   actual_launch_date?: string | null
 ): Promise<{ error?: string }> {
   const admin = createAdminClient();

@@ -126,10 +126,43 @@ function GoalsOverview({ data, labelPlural }: { data: DashboardData; labelPlural
   const activeGoals = goals.filter(g => g.status === "active");
   const unlinked = activeGoals.filter(g => !g.company_objective_id);
 
+  // Attention items: objectives with no linked goals, unlinked goals, goals with no progress data
+  const needsAttention: string[] = [];
+  objectives.forEach(o => {
+    if (!activeGoals.some(g => g.company_objective_id === o.id)) {
+      needsAttention.push(`"${o.title}" has no ${labelPlural.toLowerCase()} linked`);
+    }
+  });
+  if (unlinked.length > 0) needsAttention.push(`${unlinked.length} ${labelPlural.toLowerCase()} not linked to a business goal`);
+  activeGoals.forEach(g => {
+    if (goalProgress[g.id]?.progressRatio === null || goalProgress[g.id] === undefined) {
+      needsAttention.push(`"${g.title}" has no KPI tracking set up`);
+    }
+  });
+  const attentionCount = needsAttention.length;
+
   return (
     <div className="bg-white border border-gray-100 rounded-2xl p-6">
       <div className="flex items-center justify-between mb-1">
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Business Goal → {labelPlural}</p>
+        <div className="flex items-center gap-2">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Business Goal → {labelPlural}</p>
+          {attentionCount > 0 && (
+            <div className="group relative flex items-center">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-400" />
+              </span>
+              {/* Tooltip */}
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 hidden group-hover:block z-10 bg-gray-900 text-white text-[11px] rounded-lg px-3 py-2 w-56 shadow-xl">
+                <p className="font-semibold mb-1">Needs attention ({attentionCount})</p>
+                <ul className="space-y-0.5 opacity-80">
+                  {needsAttention.slice(0, 3).map((msg, i) => <li key={i}>· {msg}</li>)}
+                  {needsAttention.length > 3 && <li>· and {needsAttention.length - 3} more…</li>}
+                </ul>
+              </div>
+            </div>
+          )}
+        </div>
         <Link href="/goals" className="text-xs text-indigo-500 hover:text-indigo-700 flex items-center gap-0.5 transition-colors">
           Manage <ArrowRight size={11} />
         </Link>

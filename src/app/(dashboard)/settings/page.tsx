@@ -256,7 +256,7 @@ export default function SettingsPage() {
       setSecondaryColor((b as BrandSettings & { secondary_color?: string }).secondary_color ?? "#a5b4fc");
       setSlackWebhook(b.slack_webhook ?? "");
       setSlackDigestEnabled((b as BrandSettings & { slack_digest_enabled?: boolean }).slack_digest_enabled ?? false);
-      setSlackDigestCadence(((b as BrandSettings & { slack_digest_cadence?: string }).slack_digest_cadence ?? "weekly") as "daily" | "weekly");
+      setSlackDigestCadence(((b as BrandSettings & { slack_digest_cadence?: string }).slack_digest_cadence ?? "weekly") as "daily" | "weekly" | "monthly");
       setLogoUrl(b.logo_url ?? "");
       setDesignTheme((b as BrandSettings & { design_theme?: string }).design_theme ?? "brand");
     }
@@ -717,16 +717,20 @@ export default function SettingsPage() {
                   </button>
                 </div>
                 {slackDigestEnabled && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <p className="text-xs text-gray-500">Send</p>
-                    {(["daily", "weekly"] as const).map((c) => (
+                    {([
+                      { value: "daily",   label: "Every morning" },
+                      { value: "weekly",  label: "Every Monday"  },
+                      { value: "monthly", label: "1st of month"  },
+                    ] as const).map(({ value, label }) => (
                       <button
-                        key={c}
+                        key={value}
                         type="button"
-                        onClick={() => setSlackDigestCadence(c)}
-                        className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${slackDigestCadence === c ? "bg-indigo-600 text-white" : "bg-white border border-gray-200 text-gray-500 hover:text-gray-800"}`}
+                        onClick={() => setSlackDigestCadence(value)}
+                        className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${slackDigestCadence === value ? "bg-indigo-600 text-white" : "bg-white border border-gray-200 text-gray-500 hover:text-gray-800"}`}
                       >
-                        {c === "daily" ? "Every morning" : "Every Monday"}
+                        {label}
                       </button>
                     ))}
                   </div>

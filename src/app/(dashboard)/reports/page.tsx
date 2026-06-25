@@ -88,30 +88,32 @@ function StatusBadge({ status }: { status: Report["status"] }) {
 // ─── Preview modal ────────────────────────────────────────────────────────────
 
 const SLIDE_TYPE_OPTIONS: { type: SlideContent["type"]; label: string; icon: string }[] = [
-  { type: "title",         label: "Title",         icon: "T" },
-  { type: "big_stat",      label: "Big Stat",      icon: "#" },
-  { type: "bar_chart",     label: "Bar Chart",     icon: "▦" },
-  { type: "line_chart",    label: "Line Chart",    icon: "↗" },
-  { type: "pie_chart",     label: "Pie / Donut",   icon: "◕" },
-  { type: "progress_bars", label: "Progress",      icon: "≡" },
-  { type: "kpi_grid",      label: "KPI Grid",      icon: "⊞" },
-  { type: "insight",       label: "Insight",       icon: "★" },
-  { type: "bullet_list",   label: "Bullet List",   icon: "•" },
-  { type: "action_plan",   label: "Action Plan",   icon: "→" },
-  { type: "closing",       label: "Closing",       icon: "✓" },
+  { type: "title",          label: "Title",         icon: "T" },
+  { type: "big_stat",       label: "Big Stat",      icon: "#" },
+  { type: "stat_narrative", label: "Stat + Story",  icon: "N" },
+  { type: "bar_chart",      label: "Bar Chart",     icon: "▦" },
+  { type: "line_chart",     label: "Line Chart",    icon: "↗" },
+  { type: "pie_chart",      label: "Pie / Donut",   icon: "◕" },
+  { type: "progress_bars",  label: "Progress",      icon: "≡" },
+  { type: "kpi_grid",       label: "KPI Grid",      icon: "⊞" },
+  { type: "insight",        label: "Insight",       icon: "★" },
+  { type: "bullet_list",    label: "Bullet List",   icon: "•" },
+  { type: "action_plan",    label: "Action Plan",   icon: "→" },
+  { type: "closing",        label: "Closing",       icon: "✓" },
 ];
 
 function blankSlide(type: SlideContent["type"]): SlideContent {
-  if (type === "title")         return { type, headline: "New Slide", subtitle: "Add your subtitle here" };
-  if (type === "closing")       return { type, headline: "Thank You", subtitle: "Questions & Discussion" };
-  if (type === "big_stat")      return { type, label: "Metric", value: "0", change: "—", change_direction: "flat", context: "Add context" };
-  if (type === "bar_chart")     return { type, title: "New Chart", subtitle: "", orientation: "vertical", series: [{ label: "Item A", value: 10 }, { label: "Item B", value: 20 }] };
-  if (type === "line_chart")    return { type, title: "Trend", subtitle: "", series: [{ label: "Jan", value: 10 }, { label: "Feb", value: 20 }, { label: "Mar", value: 15 }] };
-  if (type === "pie_chart")     return { type, title: "Breakdown", subtitle: "", style: "pie" as const, segments: [{ label: "Category A", value: 40 }, { label: "Category B", value: 35 }, { label: "Category C", value: 25 }] };
-  if (type === "progress_bars") return { type, title: "Progress", items: [{ label: "Goal", value: 50, target: 100, unit: "%", status: "neutral" as const }] };
-  if (type === "kpi_grid")      return { type, title: "KPIs", kpis: [{ label: "Metric", value: "—", target: "—", status: "neutral" }] };
-  if (type === "insight")       return { type, title: "Key Insight", stat: "0%", stat_label: "metric", body: "Add your insight here.", status: "neutral", stat_width: "balanced" };
-  if (type === "action_plan")   return {
+  if (type === "title")          return { type, headline: "New Slide", subtitle: "Add your subtitle here" };
+  if (type === "closing")        return { type, headline: "Thank You", subtitle: "Questions & Discussion" };
+  if (type === "big_stat")       return { type, label: "Metric", value: "0", change: "—", change_direction: "flat", context: "Add context" };
+  if (type === "stat_narrative") return { type, title: "Key Metric", stat: "0%", stat_label: "of target", change: "—", change_direction: "flat" as const, narrative: "Add the business story behind this number — what's driving it, why it matters, and what happens next.", status: "neutral" as const };
+  if (type === "bar_chart")      return { type, title: "New Chart", subtitle: "", orientation: "vertical", series: [{ label: "Item A", value: 10 }, { label: "Item B", value: 20 }] };
+  if (type === "line_chart")     return { type, title: "Trend", subtitle: "", series: [{ label: "Jan", value: 10 }, { label: "Feb", value: 20 }, { label: "Mar", value: 15 }] };
+  if (type === "pie_chart")      return { type, title: "Breakdown", subtitle: "", style: "pie" as const, segments: [{ label: "Category A", value: 40 }, { label: "Category B", value: 35 }, { label: "Category C", value: 25 }] };
+  if (type === "progress_bars")  return { type, title: "Progress", items: [{ label: "Goal", value: 50, target: 100, unit: "%", status: "neutral" as const }] };
+  if (type === "kpi_grid")       return { type, title: "KPIs", kpis: [{ label: "Metric", value: "—", target: "—", status: "neutral" }] };
+  if (type === "insight")        return { type, title: "Key Insight", stat: "0%", stat_label: "metric", body: "Add your insight here.", status: "neutral", stat_width: "balanced" };
+  if (type === "action_plan")    return {
     type, title: "Recommended Next Steps", subtitle: "Based on what this report surfaced",
     items: [{ department: "Product & Growth", recommendation: "Investigate the drop-off step", rationale: "Tied to the funnel decline shown earlier in this deck", priority: "high" }],
   };
@@ -487,6 +489,18 @@ function SlideEditor({ slide, onChange }: { slide: SlideContent; onChange: (s: S
           }}
           className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-300 resize-none font-mono" />
       </div>
+    </div>
+  );
+
+  if (slide.type === "stat_narrative") return (
+    <div className="space-y-3">
+      {field("Title", slide.title, "title")}
+      {field("Stat (big number)", slide.stat, "stat")}
+      {field("Stat label", slide.stat_label, "stat_label")}
+      {field("Change vs prior period", slide.change, "change")}
+      {sel("Direction", slide.change_direction, "change_direction", ["up", "down", "flat"])}
+      {sel("Status", slide.status, "status", ["positive", "negative", "neutral"])}
+      {field("Narrative (2–3 sentences)", slide.narrative, "narrative", true)}
     </div>
   );
 

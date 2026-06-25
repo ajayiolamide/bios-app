@@ -2880,6 +2880,19 @@ function GoalDrawer({
   goalLabel: string;
   onSaved: () => Promise<void>;
 }) {
+  const [visible, setVisible] = useState(false);
+
+  // Animate in/out: mount immediately on open, then trigger transition
+  useEffect(() => {
+    if (open) {
+      // tiny delay so the initial render is off-screen before we slide in
+      const t = setTimeout(() => setVisible(true), 10);
+      return () => clearTimeout(t);
+    } else {
+      setVisible(false);
+    }
+  }, [open]);
+
   // Close on Escape
   useEffect(() => {
     if (!open) return;
@@ -2888,20 +2901,21 @@ function GoalDrawer({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!open && !visible) return null;
 
   return (
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px]"
+        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-[2px] transition-opacity duration-300"
+        style={{ opacity: visible ? 1 : 0 }}
         onClick={onClose}
       />
 
       {/* Drawer panel — slides in from the right */}
       <div
-        className="fixed inset-y-0 right-0 z-50 flex flex-col bg-white shadow-2xl"
-        style={{ width: "75%" }}
+        className="fixed inset-y-0 right-0 z-50 flex flex-col bg-white shadow-2xl transition-transform duration-300 ease-out"
+        style={{ width: "75%", transform: visible ? "translateX(0)" : "translateX(100%)" }}
       >
         {/* Drawer header */}
         <div className="flex items-start justify-between px-8 pt-7 pb-5 border-b border-gray-100">
