@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { checkEmailAllowed, markEmailUsed } from "@/app/actions/access";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,6 +37,14 @@ export default function SignupPage() {
       return;
     }
 
+    // Check guest list before creating the account
+    const access = await checkEmailAllowed(email);
+    if (!access.allowed) {
+      setError(access.reason ?? "Access denied.");
+      setLoading(false);
+      return;
+    }
+
     const supabase = createClient();
     const { error } = await supabase.auth.signUp({
       email,
@@ -55,6 +64,7 @@ export default function SignupPage() {
       return;
     }
 
+    await markEmailUsed(email);
     setSuccess(true);
     setLoading(false);
   }
