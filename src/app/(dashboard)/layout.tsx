@@ -55,7 +55,24 @@ export default async function DashboardLayout({
 
   return (
     <OrgProvider initialOrgs={orgs}>
-      <div className="flex h-screen overflow-hidden bg-background">
+      {/* Mobile blocker — shown on screens narrower than md (768px) */}
+      <div className="md:hidden fixed inset-0 z-50 flex flex-col items-center justify-center bg-white px-8 text-center">
+        <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center mb-5">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-indigo-500">
+            <rect x="5" y="2" width="14" height="20" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+            <circle cx="12" cy="18" r="1" fill="currentColor"/>
+          </svg>
+        </div>
+        <h2 className="text-lg font-bold text-gray-900 mb-2 tracking-tight">
+          Please use a larger screen
+        </h2>
+        <p className="text-sm text-gray-500 leading-relaxed max-w-xs">
+          Metrik is designed for desktop. Open it on your laptop or desktop for the best experience.
+        </p>
+      </div>
+
+      {/* Main app — hidden on mobile, shown md and above */}
+      <div className="hidden md:flex h-screen overflow-hidden bg-background">
         <Sidebar />
         <div className="flex flex-1 flex-col overflow-hidden">
           <Header user={user} />

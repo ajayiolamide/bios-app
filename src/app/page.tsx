@@ -1,13 +1,7 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
-import { createServerClient } from "@/lib/supabase/server";
 import { ArrowRight, BarChart3, Zap, FileText, Target, TrendingUp, Sparkles } from "lucide-react";
 
-export default async function HomePage() {
-  const supabase = await createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (user) redirect("/dashboard");
-
+export default function HomePage() {
   return (
     <div className="min-h-screen bg-white text-gray-900 font-sans antialiased">
 
