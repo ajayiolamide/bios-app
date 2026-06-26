@@ -14,10 +14,9 @@ export default function HomePage() {
 
       {/* ── Nav ──────────────────────────────────────────────────────────────── */}
       <nav className="relative z-10 flex items-center justify-between px-8 py-5 max-w-6xl mx-auto">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo-metrik.svg" alt="Metrik" className="h-6 w-auto" />
-          <span className="font-bold text-base text-gray-900 tracking-tight">Metrik</span>
         </div>
         <div className="flex items-center gap-5">
           <Link href="/login" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">
@@ -145,7 +144,6 @@ export default function HomePage() {
       {/* ── Footer ───────────────────────────────────────────────────────────── */}
       <footer className="relative z-10 border-t border-gray-100 py-6 px-8 flex items-center justify-between max-w-6xl mx-auto">
         <span className="text-xs text-gray-400 font-semibold">Metrik</span>
-        <span className="text-xs text-gray-300">© 2026 MyCovergenius</span>
         <div className="flex items-center gap-4">
           <Link href="/login" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">Sign in</Link>
           <Link href="/signup" className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 transition-colors">Get started →</Link>
