@@ -89,7 +89,7 @@ export default function HomePage() {
           ].map(({ icon: Icon, step, title, desc }) => (
             <div key={step} className="bg-gray-50 border border-gray-100 rounded-2xl p-6 hover:border-gray-200 transition-colors">
               <div className="flex items-center gap-3 mb-5">
-                <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-violet-100 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center">
                   <Icon size={14} className="text-indigo-500" />
                 </div>
                 <span className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">{step}</span>

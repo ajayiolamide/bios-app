@@ -12,7 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { BarChart3, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 
 export default function CreateWorkspacePage() {
   const router = useRouter();
@@ -39,34 +39,26 @@ export default function CreateWorkspacePage() {
   }
 
   return (
-    <Card className="border-slate-700 bg-slate-800/50 backdrop-blur-sm">
+    <Card className="border-gray-100 bg-white shadow-sm">
       <CardHeader className="space-y-3 text-center">
         <div className="flex justify-center">
-          <div className="flex items-center justify-center rounded-xl bg-blue-600 p-3">
-            <BarChart3 className="h-6 w-6 text-white" />
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo-metrik.svg" alt="Metrik" className="h-7 w-auto" />
         </div>
-        {/* Bigger, more confident headline — same correction as the Goals
-            page first-run state: say the one thing plainly, in a size that
-            reads as a real first moment rather than a generic form title. */}
-        <CardTitle className="text-3xl font-bold text-white tracking-tight">
+        <CardTitle className="text-2xl font-bold text-gray-900 tracking-tight">
           Create your workspace
         </CardTitle>
-        <CardDescription className="text-slate-400">
-          Where your team&apos;s analytics will live. Invite people after this.
+        <CardDescription className="text-gray-500">
+          Where your team&apos;s analytics will live.
         </CardDescription>
       </CardHeader>
 
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-2">
-            <Label htmlFor="name" className="text-slate-300">
+            <Label htmlFor="name" className="text-gray-700">
               Organization name
             </Label>
-            {/* Heading-style underlined field instead of a boxed input with
-                an icon inset — same sparse, "this is the one thing that
-                matters right now" treatment as the name fields in the Goals
-                wizards, applied to the very first field anyone fills in. */}
             <input
               id="name"
               name="name"
@@ -77,15 +69,15 @@ export default function CreateWorkspacePage() {
               maxLength={60}
               disabled={pending}
               autoFocus
-              className="w-full border-0 border-b border-slate-600 bg-transparent px-0 py-1.5 text-xl font-semibold text-white placeholder:text-slate-500 placeholder:font-normal focus:outline-none focus:border-blue-500 transition-colors disabled:opacity-50"
+              className="w-full border-0 border-b border-gray-200 bg-transparent px-0 py-1.5 text-xl font-semibold text-gray-900 placeholder:text-gray-400 placeholder:font-normal focus:outline-none focus:border-indigo-500 transition-colors disabled:opacity-50"
             />
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-gray-400">
               This will be your company or team name inside Metrik.
             </p>
           </div>
 
           {error && (
-            <div className="rounded-md bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-400">
+            <div className="rounded-md bg-red-50 border border-red-100 px-3 py-2 text-sm text-red-600">
               {error}
             </div>
           )}
@@ -93,7 +85,7 @@ export default function CreateWorkspacePage() {
           <Button
             type="submit"
             disabled={pending}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
           >
             {pending ? (
               <>
@@ -105,10 +97,7 @@ export default function CreateWorkspacePage() {
             )}
           </Button>
 
-          {/* "What happens next" — this used to be a dead-end form with no
-              sense of where it leads. One line, so it doesn't compete with
-              the button above it. */}
-          <p className="text-xs text-slate-500 text-center">
+          <p className="text-xs text-gray-400 text-center">
             Next, we&apos;ll help you set your first goal.
           </p>
         </form>

@@ -61,19 +61,19 @@ export default function SignupPage() {
 
   if (success) {
     return (
-      <Card className="border-slate-700 bg-slate-800/50 backdrop-blur-sm">
+      <Card className="border-gray-100 bg-white shadow-sm">
         <CardContent className="pt-8 pb-8 text-center space-y-4">
           <div className="flex justify-center">
-            <CheckCircle2 className="h-12 w-12 text-green-400" />
+            <CheckCircle2 className="h-12 w-12 text-indigo-500" />
           </div>
-          <h2 className="text-xl font-semibold text-white">Check your email</h2>
-          <p className="text-slate-400">
+          <h2 className="text-xl font-semibold text-gray-900">Check your email</h2>
+          <p className="text-gray-500">
             We sent a confirmation link to{" "}
-            <span className="text-white font-medium">{email}</span>. Click it to
+            <span className="text-gray-900 font-medium">{email}</span>. Click it to
             activate your account.
           </p>
           <Link href="/login">
-            <Button variant="outline" className="border-slate-600 text-slate-300 hover:bg-slate-700">
+            <Button variant="outline" className="border-gray-200 text-gray-600 hover:bg-gray-50">
               Back to login
             </Button>
           </Link>
@@ -83,21 +83,21 @@ export default function SignupPage() {
   }
 
   return (
-    <Card className="border-slate-700 bg-slate-800/50 backdrop-blur-sm">
+    <Card className="border-gray-100 bg-white shadow-sm">
       <CardHeader className="space-y-3 text-center">
         <div className="flex justify-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo-metrik-white.svg" alt="Metrik" className="h-9 w-auto" />
+          <img src="/logo-metrik.svg" alt="Metrik" className="h-7 w-auto" />
         </div>
-        <CardTitle className="text-2xl text-white">Create your account</CardTitle>
-        <CardDescription className="text-slate-400">
+        <CardTitle className="text-2xl text-gray-900 tracking-tight">Create your account</CardTitle>
+        <CardDescription className="text-gray-500">
           Get started with Metrik
         </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSignup} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="fullName" className="text-slate-300">
+            <Label htmlFor="fullName" className="text-gray-700">
               Full name
             </Label>
             <Input
@@ -107,11 +107,11 @@ export default function SignupPage() {
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
               required
-              className="border-slate-600 bg-slate-700/50 text-white placeholder:text-slate-500 focus-visible:ring-blue-500"
+              className="border-gray-200 bg-gray-50 text-gray-900 placeholder:text-gray-400 focus-visible:ring-indigo-500"
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="orgName" className="text-slate-300">
+            <Label htmlFor="orgName" className="text-gray-700">
               Organization name
             </Label>
             <Input
@@ -121,11 +121,11 @@ export default function SignupPage() {
               value={orgName}
               onChange={(e) => setOrgName(e.target.value)}
               required
-              className="border-slate-600 bg-slate-700/50 text-white placeholder:text-slate-500 focus-visible:ring-blue-500"
+              className="border-gray-200 bg-gray-50 text-gray-900 placeholder:text-gray-400 focus-visible:ring-indigo-500"
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="email" className="text-slate-300">
+            <Label htmlFor="email" className="text-gray-700">
               Work email
             </Label>
             <Input
@@ -135,11 +135,11 @@ export default function SignupPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="border-slate-600 bg-slate-700/50 text-white placeholder:text-slate-500 focus-visible:ring-blue-500"
+              className="border-gray-200 bg-gray-50 text-gray-900 placeholder:text-gray-400 focus-visible:ring-indigo-500"
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password" className="text-slate-300">
+            <Label htmlFor="password" className="text-gray-700">
               Password
             </Label>
             <Input
@@ -149,19 +149,19 @@ export default function SignupPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="border-slate-600 bg-slate-700/50 text-white placeholder:text-slate-500 focus-visible:ring-blue-500"
+              className="border-gray-200 bg-gray-50 text-gray-900 placeholder:text-gray-400 focus-visible:ring-indigo-500"
             />
           </div>
 
           {error && (
-            <div className="rounded-md bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-400">
+            <div className="rounded-md bg-red-50 border border-red-100 px-3 py-2 text-sm text-red-600">
               {error}
             </div>
           )}
 
           <Button
             type="submit"
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white"
             disabled={loading}
           >
             {loading ? (
@@ -176,11 +176,11 @@ export default function SignupPage() {
         </form>
       </CardContent>
       <CardFooter className="justify-center">
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-gray-500">
           Already have an account?{" "}
           <Link
             href="/login"
-            className="text-blue-400 hover:text-blue-300 font-medium"
+            className="text-indigo-600 hover:text-indigo-700 font-medium"
           >
             Sign in
           </Link>
