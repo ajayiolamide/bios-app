@@ -1,7 +1,22 @@
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
-import { ArrowRight, BarChart3, Zap, FileText, Target, TrendingUp, Sparkles } from "lucide-react";
+import { ArrowRight, BarChart3, Zap, FileText, Target, TrendingUp, Sparkles, CheckCircle2, Loader2 } from "lucide-react";
+import { joinWaitlist } from "@/app/actions/waitlist";
 
 export default function HomePage() {
+  const [email, setEmail] = useState("");
+  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
+  const [message, setMessage] = useState("");
+
+  async function handleWaitlist(e: React.FormEvent) {
+    e.preventDefault();
+    setStatus("loading");
+    const result = await joinWaitlist(email);
+    setStatus(result.success ? "success" : "error");
+    setMessage(result.message);
+  }
   return (
     <div className="min-h-screen bg-white text-gray-900 font-sans antialiased">
 
@@ -23,10 +38,10 @@ export default function HomePage() {
             Sign in
           </Link>
           <Link
-            href="/signup"
+            href="/login"
             className="flex items-center gap-1.5 text-sm font-semibold bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
           >
-            Get started <ArrowRight size={13} />
+            Sign in <ArrowRight size={13} />
           </Link>
         </div>
       </nav>
@@ -48,17 +63,37 @@ export default function HomePage() {
           impact after launch, and tells you exactly what moved the needle.
         </p>
 
-        <div className="flex items-center justify-center gap-3 flex-wrap">
-          <Link
-            href="/signup"
-            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-6 py-3 rounded-lg transition-colors text-sm"
-          >
-            Get early access <ArrowRight size={14} />
-          </Link>
-          <Link href="/login" className="text-sm text-gray-400 hover:text-gray-700 transition-colors">
-            Already have an account →
-          </Link>
-        </div>
+        {status === "success" ? (
+          <div className="flex items-center justify-center gap-2 text-sm text-green-600 bg-green-50 border border-green-100 rounded-xl px-5 py-3 max-w-sm mx-auto">
+            <CheckCircle2 size={15} className="shrink-0" />
+            {message}
+          </div>
+        ) : (
+          <form onSubmit={handleWaitlist} className="flex flex-col sm:flex-row items-center gap-2 max-w-md mx-auto">
+            <input
+              type="email"
+              required
+              placeholder="you@company.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full sm:flex-1 border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 text-sm px-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+            <button
+              type="submit"
+              disabled={status === "loading"}
+              className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-semibold px-5 py-3 rounded-lg transition-colors text-sm shrink-0"
+            >
+              {status === "loading" ? <Loader2 size={14} className="animate-spin" /> : <>Join waitlist <ArrowRight size={14} /></>}
+            </button>
+          </form>
+        )}
+        {status === "error" && (
+          <p className="text-xs text-red-500 mt-2">{message}</p>
+        )}
+        <p className="text-xs text-gray-400 mt-3">
+          Already have an account?{" "}
+          <Link href="/login" className="text-indigo-500 hover:text-indigo-600">Sign in →</Link>
+        </p>
       </section>
 
       {/* ── How it works ─────────────────────────────────────────────────────── */}
@@ -133,10 +168,11 @@ export default function HomePage() {
             Early access is limited. Takes 2 minutes to set up. No credit card required.
           </p>
           <Link
-            href="/signup"
+            href="#"
+            onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: "smooth" }); }}
             className="inline-flex items-center gap-2 bg-gray-900 text-white font-semibold px-7 py-3.5 rounded-lg hover:bg-gray-700 transition-colors text-sm"
           >
-            Get early access <ArrowRight size={14} />
+            Join the waitlist <ArrowRight size={14} />
           </Link>
         </div>
       </section>
@@ -146,7 +182,7 @@ export default function HomePage() {
         <span className="text-xs text-gray-400 font-semibold">Metrik</span>
         <div className="flex items-center gap-4">
           <Link href="/login" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">Sign in</Link>
-          <Link href="/signup" className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 transition-colors">Get started →</Link>
+          <Link href="/login" className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 transition-colors">Sign in →</Link>
         </div>
       </footer>
 
