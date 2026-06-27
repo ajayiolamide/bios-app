@@ -10,6 +10,7 @@ import {
 import { useOrg } from "@/contexts/org-context";
 import { createClient } from "@/lib/supabase/client";
 import { QuickInsight } from "./quick-insight";
+import { GettingStarted } from "./getting-started";
 import { getDashboardData, type DashboardData } from "@/app/actions/dashboard";
 import { getFeatureImpactSummaries } from "@/app/actions/feature-impact";
 import { getGoalProgress } from "@/app/actions/metrics";
@@ -322,6 +323,14 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      {/* ── Getting started checklist (auto-hides when all done or dismissed) ── */}
+      <GettingStarted
+        hasGoal={data.objectives.length > 0 || data.goals.length > 0}
+        hasFeature={featureCount > 0}
+        hasData={eventCount > 0}
+        hasReport={doneReports > 0}
+      />
 
       {/* ── Empty state: nothing set up at all ───────────────────────────────── */}
       {/* One card, one action — replaces what used to be two separate "no
