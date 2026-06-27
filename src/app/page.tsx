@@ -131,7 +131,7 @@ function WaitlistChat() {
         </div>
 
         {/* ── Messages — scrolls after max-height ──────────── */}
-        <div ref={msgsRef} className="overflow-y-auto px-6 py-5 flex flex-col gap-4" style={{ maxHeight: "240px" }}>
+        <div ref={msgsRef} className="overflow-y-auto px-6 py-4 flex flex-col gap-3" style={{ maxHeight: "240px" }}>
           {msgs.map((msg) => (
             <div key={msg.id}>
 
@@ -174,7 +174,7 @@ function WaitlistChat() {
                     </p>
                     <div className="flex flex-wrap gap-1.5">
                       {msg.preview.kpis.map((k) => (
-                        <span key={k} className="text-[11px] text-indigo-600 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-full">
+                        <span key={k} className="text-[11px] text-indigo-500 bg-indigo-50/80 px-2.5 py-1 rounded-full">
                           {k}
                         </span>
                       ))}
@@ -190,12 +190,13 @@ function WaitlistChat() {
 
         {/* ── Bottom input area ────────────────────────────── */}
         {phase !== "done" && (
-          <div className="border-t border-gray-100 px-5 pt-3.5 pb-4 shrink-0">
+          <div className="px-5 pb-5 pt-3 shrink-0">
 
             {/* Describe input */}
             {phase === "describe" && (
               <>
-                <div className="flex items-end gap-3 mb-3">
+                <div className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-gray-50/60 px-4 py-3 mb-3"
+                  style={{ boxShadow: "inset 0 1px 2px rgba(0,0,0,0.03)" }}>
                   <textarea
                     ref={textareaRef}
                     rows={1}
@@ -203,20 +204,20 @@ function WaitlistChat() {
                     autoFocus
                     onChange={(e) => {
                       setInput(e.target.value);
-                      e.target.style.height = "24px";
-                      e.target.style.height = `${Math.min(e.target.scrollHeight, 96)}px`;
+                      e.target.style.height = "22px";
+                      e.target.style.height = `${Math.min(e.target.scrollHeight, 88)}px`;
                     }}
                     onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitDescription(); } }}
                     placeholder="Describe your goal…"
-                    className="flex-1 text-[14px] text-gray-700 placeholder:text-gray-300 resize-none focus:outline-none leading-relaxed overflow-hidden"
-                    style={{ height: "24px" }}
+                    className="flex-1 text-[14px] text-gray-700 placeholder:text-gray-400 resize-none focus:outline-none leading-relaxed overflow-hidden bg-transparent"
+                    style={{ height: "22px" }}
                   />
                   <button
                     onClick={submitDescription}
                     disabled={!input.trim()}
-                    className="w-9 h-9 flex items-center justify-center bg-indigo-600 hover:bg-indigo-700 disabled:opacity-20 text-white rounded-xl transition-all shrink-0"
+                    className="w-8 h-8 flex items-center justify-center bg-indigo-600 hover:bg-indigo-700 disabled:opacity-20 text-white rounded-xl transition-all shrink-0"
                   >
-                    <ArrowUp size={15} />
+                    <ArrowUp size={14} />
                   </button>
                 </div>
                 {/* Chips below input */}
@@ -225,7 +226,7 @@ function WaitlistChat() {
                     <button
                       key={c}
                       onClick={() => { setInput(c); textareaRef.current?.focus(); }}
-                      className="text-[12px] text-gray-500 bg-gray-50 border border-gray-200 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-600 px-3 py-1.5 rounded-full transition-all"
+                      className="text-[12px] text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 border border-gray-200 px-3 py-1 rounded-full transition-all"
                     >
                       {c}
                     </button>
@@ -236,15 +237,18 @@ function WaitlistChat() {
 
             {/* Thinking */}
             {phase === "thinking" && (
-              <div className="flex items-center gap-2 text-[13px] text-gray-400 h-9">
-                <Loader2 size={14} className="animate-spin text-indigo-400" />
+              <div className="flex items-center gap-2 text-[13px] text-gray-400 rounded-2xl border border-gray-200 bg-gray-50/60 px-4 py-3"
+                style={{ boxShadow: "inset 0 1px 2px rgba(0,0,0,0.03)" }}>
+                <Loader2 size={13} className="animate-spin text-indigo-400" />
                 Structuring your goal…
               </div>
             )}
 
             {/* Email input */}
             {phase === "email" && (
-              <form onSubmit={submitEmail} className="flex gap-2.5">
+              <form onSubmit={submitEmail}
+                className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-gray-50/60 px-4 py-3"
+                style={{ boxShadow: "inset 0 1px 2px rgba(0,0,0,0.03)" }}>
                 <input
                   autoFocus
                   type="email"
@@ -252,18 +256,18 @@ function WaitlistChat() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="your@email.com"
-                  className="flex-1 text-[14px] text-gray-700 placeholder:text-gray-300 focus:outline-none"
+                  className="flex-1 text-[14px] text-gray-700 placeholder:text-gray-400 focus:outline-none bg-transparent"
                 />
                 <button
                   type="submit"
                   disabled={emailLoading}
-                  className="flex items-center gap-1.5 text-[13px] font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white px-5 py-2 rounded-xl transition-colors shrink-0"
+                  className="flex items-center gap-1.5 text-[12px] font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white px-4 py-1.5 rounded-xl transition-colors shrink-0"
                 >
-                  {emailLoading ? <Loader2 size={13} className="animate-spin" /> : <>Join <ArrowRight size={13} /></>}
+                  {emailLoading ? <Loader2 size={12} className="animate-spin" /> : <>Join <ArrowRight size={12} /></>}
                 </button>
               </form>
             )}
-            {emailError && <p className="text-[11px] text-red-500 mt-1.5">{emailError}</p>}
+            {emailError && <p className="text-[11px] text-red-500 mt-2">{emailError}</p>}
 
           </div>
         )}
