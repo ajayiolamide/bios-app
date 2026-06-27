@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { joinWaitlist } from "@/app/actions/waitlist";
 
-// ── Keyword-based goal preview ───────────────────────────────────────────────
+// ── Goal preview generator ────────────────────────────────────────────────────
 
 interface GoalPreview {
   title: string;
@@ -20,49 +20,19 @@ interface GoalPreview {
 function generatePreview(description: string): GoalPreview {
   const t = description.toLowerCase();
   if (/churn|retain|cancel|los(e|ing)|keep/.test(t))
-    return {
-      title: "Reduce Customer Churn",
-      target: "< 3% monthly churn rate",
-      timeframe: "Q3 2026",
-      kpis: ["Monthly churn rate", "30-day retention by cohort", "Feature adoption depth"],
-    };
+    return { title: "Reduce Customer Churn", target: "< 3% monthly churn rate", timeframe: "Q3 2026", kpis: ["Monthly churn rate", "30-day retention by cohort", "Feature adoption depth"] };
   if (/activat|onboard|first.value|time.to.value|sign.?up|get started/.test(t))
-    return {
-      title: "Improve User Activation",
-      target: "60% activation within 7 days",
-      timeframe: "Q3 2026",
-      kpis: ["7-day activation rate", "Time to first key action", "Onboarding completion rate"],
-    };
+    return { title: "Improve User Activation", target: "60% activation within 7 days", timeframe: "Q3 2026", kpis: ["7-day activation rate", "Time to first key action", "Onboarding completion rate"] };
   if (/engag|dau|mau|daily|weekly|active.user|session|stickin/.test(t))
-    return {
-      title: "Increase Product Engagement",
-      target: "40% DAU / MAU ratio",
-      timeframe: "Q3 2026",
-      kpis: ["Daily active users", "Feature depth score", "Session frequency per user"],
-    };
+    return { title: "Increase Product Engagement", target: "40% DAU / MAU ratio", timeframe: "Q3 2026", kpis: ["Daily active users", "Feature depth score", "Session frequency per user"] };
   if (/convert|trial|paid|upgrade|subscri/.test(t))
-    return {
-      title: "Grow Trial-to-Paid Conversion",
-      target: "25% trial conversion rate",
-      timeframe: "Q3 2026",
-      kpis: ["Trial-to-paid rate", "Time to upgrade", "Feature engagement pre-conversion"],
-    };
+    return { title: "Grow Trial-to-Paid Conversion", target: "25% trial conversion rate", timeframe: "Q3 2026", kpis: ["Trial-to-paid rate", "Time to upgrade", "Feature engagement pre-conversion"] };
   if (/revenue|arr|mrr|sales|grow|scale/.test(t))
-    return {
-      title: "Accelerate Revenue Growth",
-      target: "+40% MRR this quarter",
-      timeframe: "Q3 2026",
-      kpis: ["New MRR from feature adoption", "Expansion revenue", "Revenue per feature released"],
-    };
-  return {
-    title: "Improve Core Product Outcomes",
-    target: "Primary KPI +30%",
-    timeframe: "Q3 2026",
-    kpis: ["Primary success metric", "Feature impact score", "User satisfaction trend"],
-  };
+    return { title: "Accelerate Revenue Growth", target: "+40% MRR this quarter", timeframe: "Q3 2026", kpis: ["New MRR from feature adoption", "Expansion revenue", "Revenue per feature released"] };
+  return { title: "Improve Core Product Outcomes", target: "Primary KPI +30%", timeframe: "Q3 2026", kpis: ["Primary success metric", "Feature impact score", "User satisfaction trend"] };
 }
 
-// ── Chat widget ──────────────────────────────────────────────────────────────
+// ── Chat widget ───────────────────────────────────────────────────────────────
 
 type ChatStep = "prompt" | "thinking" | "preview" | "email" | "done";
 
@@ -79,64 +49,57 @@ function WaitlistChat() {
   function submitDescription() {
     if (!description.trim()) return;
     setStep("thinking");
-    setTimeout(() => {
-      setPreview(generatePreview(description));
-      setStep("preview");
-    }, 1600);
+    setTimeout(() => { setPreview(generatePreview(description)); setStep("preview"); }, 1600);
   }
 
   async function submitEmail(e: React.FormEvent) {
     e.preventDefault();
     setEmailStatus("loading");
     const result = await joinWaitlist(email, description);
-    if (result.success) {
-      setStep("done");
-    } else {
-      setEmailStatus("error");
-      setEmailError(result.message);
-    }
+    if (result.success) { setStep("done"); } else { setEmailStatus("error"); setEmailError(result.message); }
   }
 
   return (
-    <div className="w-full max-w-[480px] mx-auto">
-      <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+    <div className="relative max-w-2xl mx-auto mt-10">
+      {/* Ambient glow behind card */}
+      <div className="absolute -inset-8 bg-[radial-gradient(ellipse_70%_60%_at_50%_50%,rgba(99,102,241,0.13),transparent)] pointer-events-none -z-10" />
 
-        {/* ── Card header ────────────────────────────────────── */}
-        <div className="flex items-center gap-2 px-5 py-3 border-b border-gray-100">
-          <div className="w-5 h-5 rounded-md bg-indigo-600 flex items-center justify-center shrink-0">
-            <Sparkles size={10} className="text-white" />
+      <div className="bg-white border border-gray-200/80 rounded-2xl shadow-[0_8px_60px_rgba(99,102,241,0.10),0_2px_20px_rgba(0,0,0,0.06)] overflow-hidden">
+
+        {/* ── Header ───────────────────────────────────────── */}
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100">
+          <div className="w-7 h-7 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
+            <Sparkles size={13} className="text-white" />
           </div>
-          <span className="text-xs font-semibold text-gray-700">Metrik AI</span>
-          <span className="ml-auto text-[10px] text-gray-400 tabular-nums">Early access</span>
+          <span className="text-[14px] font-semibold text-gray-800">Metrik AI</span>
+          <div className="ml-auto flex items-center gap-1.5">
+            <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+            <span className="text-xs text-gray-400">Early access</span>
+          </div>
         </div>
 
-        {/* ── Step: prompt ───────────────────────────────────── */}
+        {/* ── Prompt ───────────────────────────────────────── */}
         {step === "prompt" && (
-          <div className="px-5 py-5">
-            <p className="text-sm text-gray-600 mb-3 leading-relaxed">
+          <div className="px-6 pt-6 pb-5">
+            <p className="text-[15px] font-medium text-gray-800 mb-4">
               What is your team working toward this quarter?
             </p>
             <textarea
               autoFocus
-              rows={3}
+              rows={2}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  submitDescription();
-                }
-              }}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitDescription(); } }}
               placeholder="e.g. We want to reduce churn by improving the onboarding experience for new users…"
-              className="w-full text-sm text-gray-900 placeholder:text-gray-400 resize-none focus:outline-none leading-relaxed"
+              className="w-full text-[14px] text-gray-800 placeholder:text-gray-300 resize-none focus:outline-none leading-relaxed"
             />
-            <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-              <div className="flex gap-1.5 flex-wrap">
+            <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-100">
+              <div className="flex gap-2 flex-wrap">
                 {CHIPS.map((c) => (
                   <button
                     key={c}
                     onClick={() => setDescription(c)}
-                    className="text-[11px] text-indigo-500 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-full transition-colors"
+                    className="text-[12px] text-gray-500 bg-white border border-gray-200 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-600 px-3 py-1.5 rounded-full transition-all"
                   >
                     {c}
                   </button>
@@ -145,154 +108,142 @@ function WaitlistChat() {
               <button
                 onClick={submitDescription}
                 disabled={!description.trim()}
-                className="flex items-center gap-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white px-3 py-1.5 rounded-lg transition-colors shrink-0 ml-3"
+                className="flex items-center gap-2 text-[13px] font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-30 text-white px-4 py-2 rounded-xl transition-colors shrink-0 ml-4"
               >
-                <Send size={11} /> Send
+                <Send size={12} /> Send
               </button>
             </div>
           </div>
         )}
 
-        {/* ── Step: thinking ─────────────────────────────────── */}
+        {/* ── Thinking ─────────────────────────────────────── */}
         {step === "thinking" && (
-          <div className="px-5 py-5 flex flex-col gap-3">
-            {/* user bubble */}
+          <div className="px-6 pt-6 pb-6 flex flex-col gap-5">
             <div className="flex justify-end">
-              <div className="max-w-[78%] bg-indigo-50 rounded-2xl rounded-tr-sm px-3.5 py-2.5">
-                <p className="text-xs text-indigo-800 leading-relaxed">{description}</p>
+              <div className="bg-indigo-50 text-indigo-800 text-[13px] rounded-2xl rounded-tr-sm px-4 py-2.5 max-w-[75%] leading-relaxed">
+                {description}
               </div>
             </div>
-            {/* typing dots */}
-            <div className="flex items-center gap-2">
-              <div className="w-5 h-5 rounded-md bg-indigo-600 flex items-center justify-center shrink-0">
-                <Sparkles size={10} className="text-white" />
+            <div className="flex items-center gap-3">
+              <div className="w-7 h-7 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
+                <Sparkles size={13} className="text-white" />
               </div>
-              <div className="flex gap-1 items-center">
-                {[0, 150, 300].map((d) => (
-                  <span
-                    key={d}
-                    className="w-1.5 h-1.5 rounded-full bg-gray-300 animate-bounce"
-                    style={{ animationDelay: `${d}ms` }}
-                  />
+              <div className="flex gap-1.5 items-center">
+                {[0, 140, 280].map((d) => (
+                  <span key={d} className="w-2 h-2 rounded-full bg-indigo-200 animate-bounce" style={{ animationDelay: `${d}ms` }} />
                 ))}
               </div>
             </div>
           </div>
         )}
 
-        {/* ── Step: preview ──────────────────────────────────── */}
+        {/* ── Preview ──────────────────────────────────────── */}
         {step === "preview" && preview && (
-          <div className="px-5 py-5 flex flex-col gap-3">
-            {/* user bubble */}
+          <div className="px-6 pt-6 pb-6 flex flex-col gap-5">
+            {/* User bubble */}
             <div className="flex justify-end">
-              <div className="max-w-[78%] bg-indigo-50 rounded-2xl rounded-tr-sm px-3.5 py-2.5">
-                <p className="text-xs text-indigo-800 leading-relaxed">{description}</p>
+              <div className="bg-indigo-50 text-indigo-800 text-[13px] rounded-2xl rounded-tr-sm px-4 py-2.5 max-w-[75%] leading-relaxed">
+                {description}
               </div>
             </div>
-            {/* AI response */}
-            <div className="flex gap-2.5">
-              <div className="w-5 h-5 rounded-md bg-indigo-600 flex items-center justify-center shrink-0 mt-0.5">
-                <Sparkles size={10} className="text-white" />
+
+            {/* AI label */}
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
+                <Sparkles size={13} className="text-white" />
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-500 mb-2.5">Here&apos;s how Metrik would structure this:</p>
-                <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-3">
-                  <div>
-                    <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Business Goal</span>
-                    <p className="text-sm font-semibold text-gray-900 mt-0.5">{preview.title}</p>
-                  </div>
-                  <div className="flex gap-6">
-                    <div>
-                      <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Target</span>
-                      <p className="text-xs text-gray-700 mt-0.5">{preview.target}</p>
-                    </div>
-                    <div>
-                      <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Timeframe</span>
-                      <p className="text-xs text-gray-700 mt-0.5">{preview.timeframe}</p>
-                    </div>
-                  </div>
-                  <div>
-                    <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">KPIs to Track</span>
-                    <ul className="mt-1.5 space-y-1.5">
-                      {preview.kpis.map((k) => (
-                        <li key={k} className="flex items-center gap-1.5 text-xs text-gray-600">
-                          <CheckCircle2 size={11} className="text-indigo-400 shrink-0" />
-                          {k}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+              <span className="text-[13px] text-gray-500">Here&apos;s how Metrik would structure this goal:</span>
+            </div>
+
+            {/* Goal card */}
+            <div className="rounded-2xl border border-gray-200/80 overflow-hidden bg-gradient-to-br from-white to-indigo-50/40">
+              <div className="px-6 pt-5 pb-4 border-b border-gray-100/80">
+                <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-[0.18em] mb-1">Business Goal</p>
+                <h3 className="text-[20px] font-bold text-gray-900 leading-tight">{preview.title}</h3>
+              </div>
+              <div className="grid grid-cols-2 divide-x divide-gray-100 border-b border-gray-100">
+                <div className="px-6 py-4">
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Target</p>
+                  <p className="text-[13px] font-medium text-gray-700">{preview.target}</p>
                 </div>
-                <button
-                  onClick={() => setStep("email")}
-                  className="mt-3 flex items-center gap-1 text-xs font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
-                >
-                  Get early access to track this <ArrowRight size={11} />
-                </button>
+                <div className="px-6 py-4">
+                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Timeframe</p>
+                  <p className="text-[13px] font-medium text-gray-700">{preview.timeframe}</p>
+                </div>
               </div>
+              <div className="px-6 py-4">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-3">KPIs to Track</p>
+                <div className="flex flex-col gap-2">
+                  {preview.kpis.map((k) => (
+                    <div key={k} className="flex items-center gap-2.5 text-[13px] text-gray-600">
+                      <CheckCircle2 size={14} className="text-indigo-400 shrink-0" />
+                      {k}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* CTA */}
+            <div className="flex justify-end">
+              <button
+                onClick={() => setStep("email")}
+                className="flex items-center gap-2 text-[13px] font-semibold bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl transition-colors"
+              >
+                Get early access to track this <ArrowRight size={13} />
+              </button>
             </div>
           </div>
         )}
 
-        {/* ── Step: email ────────────────────────────────────── */}
+        {/* ── Email ────────────────────────────────────────── */}
         {step === "email" && preview && (
-          <div className="px-5 py-5 flex flex-col gap-3">
-            {/* condensed thread */}
+          <div className="px-6 pt-6 pb-6 flex flex-col gap-5">
             <div className="flex justify-end">
-              <div className="max-w-[78%] bg-indigo-50 rounded-2xl rounded-tr-sm px-3.5 py-2.5">
-                <p className="text-xs text-indigo-800 leading-relaxed">{description}</p>
+              <div className="bg-indigo-50 text-indigo-800 text-[13px] rounded-2xl rounded-tr-sm px-4 py-2.5 max-w-[75%] leading-relaxed">
+                {description}
               </div>
             </div>
-            <div className="flex gap-2.5">
-              <div className="w-5 h-5 rounded-md bg-indigo-600 flex items-center justify-center shrink-0 mt-0.5">
-                <Sparkles size={10} className="text-white" />
+            <div className="flex items-start gap-3">
+              <div className="w-7 h-7 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0 mt-0.5">
+                <Sparkles size={13} className="text-white" />
               </div>
-              <p className="text-xs text-gray-500 leading-relaxed">
-                <span className="font-medium text-gray-700">{preview.title}</span> is ready.{" "}
-                Enter your email and we&apos;ll set this up when your spot opens.
+              <p className="text-[13px] text-gray-600 leading-relaxed pt-0.5">
+                <span className="font-semibold text-gray-800">{preview.title}</span> is ready. Enter your work email and we&apos;ll set this up when your spot opens.
               </p>
             </div>
-            <form onSubmit={submitEmail} className="flex gap-2 mt-0.5">
+            <form onSubmit={submitEmail} className="flex gap-2.5">
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@company.com"
-                className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500 min-w-0"
+                className="flex-1 text-[14px] border border-gray-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 min-w-0 transition-shadow"
               />
               <button
                 type="submit"
                 disabled={emailStatus === "loading"}
-                className="flex items-center gap-1.5 text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white px-3.5 py-2 rounded-lg transition-colors shrink-0"
+                className="flex items-center gap-2 text-[13px] font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white px-5 py-2.5 rounded-xl transition-colors shrink-0"
               >
-                {emailStatus === "loading"
-                  ? <Loader2 size={12} className="animate-spin" />
-                  : <>Join <ArrowRight size={11} /></>}
+                {emailStatus === "loading" ? <Loader2 size={13} className="animate-spin" /> : <>Join waitlist <ArrowRight size={13} /></>}
               </button>
             </form>
-            {emailStatus === "error" && (
-              <p className="text-xs text-red-500 -mt-1">{emailError}</p>
-            )}
+            {emailStatus === "error" && <p className="text-xs text-red-500 -mt-2">{emailError}</p>}
           </div>
         )}
 
-        {/* ── Step: done ─────────────────────────────────────── */}
+        {/* ── Done ─────────────────────────────────────────── */}
         {step === "done" && (
-          <div className="px-5 py-8 flex flex-col items-center gap-3 text-center">
-            <div className="w-10 h-10 rounded-full bg-green-50 border border-green-100 flex items-center justify-center">
-              <CheckCircle2 size={20} className="text-green-500" />
+          <div className="px-6 py-12 flex flex-col items-center text-center">
+            <div className="w-14 h-14 rounded-2xl bg-green-50 border border-green-100 flex items-center justify-center mb-5">
+              <CheckCircle2 size={26} className="text-green-500" />
             </div>
-            <div>
-              <p className="text-sm font-semibold text-gray-900">You&apos;re on the list.</p>
-              <p className="text-xs text-gray-400 mt-1 max-w-[260px] mx-auto leading-relaxed">
-                We&apos;ll reach out when your spot is ready so you can start tracking your goal.
-              </p>
-            </div>
-            <Link
-              href="/login"
-              className="text-xs text-indigo-500 hover:text-indigo-700 transition-colors mt-1"
-            >
+            <p className="text-[17px] font-semibold text-gray-900 mb-2">You&apos;re on the list.</p>
+            <p className="text-[13px] text-gray-400 leading-relaxed max-w-xs">
+              We&apos;ll reach out when your spot is ready so you can start tracking your goal.
+            </p>
+            <Link href="/login" className="mt-5 text-[13px] text-indigo-500 hover:text-indigo-700 transition-colors">
               Already have access? Sign in →
             </Link>
           </div>
@@ -300,11 +251,9 @@ function WaitlistChat() {
       </div>
 
       {step === "prompt" && (
-        <p className="text-xs text-gray-400 mt-3 text-center">
+        <p className="text-xs text-gray-400 mt-4 text-center">
           Already have an account?{" "}
-          <Link href="/login" className="text-indigo-500 hover:text-indigo-600">
-            Sign in →
-          </Link>
+          <Link href="/login" className="text-indigo-500 hover:text-indigo-600">Sign in →</Link>
         </p>
       )}
     </div>
@@ -317,77 +266,49 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-white text-gray-900 font-sans antialiased">
 
-      {/* ── Background ───────────────────────────────────────────────────────── */}
+      {/* Background */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_90%_55%_at_50%_-5%,rgba(99,102,241,0.11),transparent)]" />
         <div className="absolute top-[30%] -left-[10%] w-[500px] h-[400px] bg-[radial-gradient(ellipse,rgba(99,102,241,0.05),transparent_70%)]" />
         <div className="absolute top-[20%] -right-[10%] w-[400px] h-[350px] bg-[radial-gradient(ellipse,rgba(139,92,246,0.04),transparent_70%)]" />
       </div>
 
-      {/* ── Nav ──────────────────────────────────────────────────────────────── */}
+      {/* Nav */}
       <nav className="relative z-10 flex items-center justify-between px-8 py-5 max-w-6xl mx-auto">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo-metrik.svg" alt="Metrik" className="h-6 w-auto" />
         <div className="flex items-center gap-5">
-          <Link href="/login" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">
-            Sign in
-          </Link>
-          <Link
-            href="/login"
-            className="flex items-center gap-1.5 text-sm font-semibold bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors"
-          >
+          <Link href="/login" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Sign in</Link>
+          <Link href="/login" className="flex items-center gap-1.5 text-sm font-semibold bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors">
             Sign in <ArrowRight size={13} />
           </Link>
         </div>
       </nav>
 
-      {/* ── Hero ─────────────────────────────────────────────────────────────── */}
-      <section className="relative z-10 max-w-4xl mx-auto px-8 pt-16 pb-20 text-center">
-
+      {/* Hero */}
+      <section className="relative z-10 max-w-4xl mx-auto px-8 pt-16 pb-24 text-center">
         <div className="inline-flex items-center gap-2 bg-indigo-50 border border-indigo-100 text-indigo-600 text-xs font-medium px-3.5 py-1.5 rounded-full mb-8">
           <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 shrink-0" />
           Early access · Limited spots available
         </div>
-
         <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 leading-[1.1] tracking-tight mb-5">
           Turn feature releases into<br />business outcomes, with AI.
         </h1>
-
-        <p className="text-lg text-gray-500 max-w-xl mx-auto mb-10 leading-relaxed">
+        <p className="text-lg text-gray-500 max-w-xl mx-auto mb-0 leading-relaxed">
           Set a goal. Log a feature. Metrik&apos;s AI suggests the right metrics,
           tracks impact after launch, and tells you exactly what moved the needle.
         </p>
-
-        {/* ── AI chat card ───────────────────────────────────────────────────── */}
         <WaitlistChat />
-
       </section>
 
-      {/* ── How it works ─────────────────────────────────────────────────────── */}
+      {/* How it works */}
       <section className="relative z-10 max-w-6xl mx-auto px-8 pb-20">
-        <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-[0.15em] text-center mb-10">
-          How it works
-        </p>
+        <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-[0.15em] text-center mb-10">How it works</p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {[
-            {
-              icon: Target,
-              step: "01",
-              title: "Set a business goal",
-              desc: "Define what your company is trying to achieve. Every feature your team ships stays tied to that goal.",
-            },
-            {
-              icon: Sparkles,
-              step: "02",
-              title: "Log a feature",
-              desc: "Answer 8 questions. Metrik suggests the right metrics, KPIs, and guardrails — already named and event-wired.",
-            },
-            {
-              icon: TrendingUp,
-              step: "03",
-              title: "See the real impact",
-              desc: "After launch, Metrik computes whether the feature moved your KPI and generates a shareable stakeholder deck.",
-            },
+            { icon: Target, step: "01", title: "Set a business goal", desc: "Define what your company is trying to achieve. Every feature your team ships stays tied to that goal." },
+            { icon: Sparkles, step: "02", title: "Log a feature", desc: "Answer 8 questions. Metrik suggests the right metrics, KPIs, and guardrails — already named and event-wired." },
+            { icon: TrendingUp, step: "03", title: "See the real impact", desc: "After launch, Metrik computes whether the feature moved your KPI and generates a shareable stakeholder deck." },
           ].map(({ icon: Icon, step, title, desc }) => (
             <div key={step} className="bg-gray-50 border border-gray-100 rounded-2xl p-6 hover:border-gray-200 transition-colors">
               <div className="flex items-center gap-3 mb-5">
@@ -403,19 +324,17 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── Features ─────────────────────────────────────────────────────────── */}
+      {/* Features */}
       <section className="relative z-10 max-w-6xl mx-auto px-8 pb-20">
-        <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-[0.15em] text-center mb-10">
-          What&apos;s included
-        </p>
+        <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-[0.15em] text-center mb-10">What&apos;s included</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
           {[
-            { icon: Sparkles,   label: "AI metric suggestions per feature" },
-            { icon: Target,     label: "Business goal → KPI hierarchy" },
+            { icon: Sparkles, label: "AI metric suggestions per feature" },
+            { icon: Target, label: "Business goal → KPI hierarchy" },
             { icon: TrendingUp, label: "Post-launch KPI impact scoring" },
-            { icon: FileText,   label: "One-click stakeholder deck" },
-            { icon: Zap,        label: "Mixpanel & Amplitude connector" },
-            { icon: BarChart3,  label: "Cohort analysis & funnels" },
+            { icon: FileText, label: "One-click stakeholder deck" },
+            { icon: Zap, label: "Mixpanel & Amplitude connector" },
+            { icon: BarChart3, label: "Cohort analysis & funnels" },
           ].map(({ icon: Icon, label }) => (
             <div key={label} className="flex items-center gap-3 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3.5 hover:border-gray-200 transition-colors">
               <Icon size={14} className="text-indigo-400 shrink-0" />
@@ -425,15 +344,11 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── CTA ──────────────────────────────────────────────────────────────── */}
+      {/* CTA */}
       <section className="relative z-10 max-w-6xl mx-auto px-8 pb-24">
         <div className="bg-[radial-gradient(ellipse_at_center,rgba(139,92,246,0.06),transparent_70%)] border border-gray-100 rounded-2xl px-8 py-16 text-center">
-          <h2 className="text-3xl font-bold text-gray-900 mb-3 tracking-tight">
-            Built for teams that care about outcomes.
-          </h2>
-          <p className="text-gray-400 text-sm mb-8 max-w-md mx-auto">
-            Early access is limited. Takes 2 minutes to set up. No credit card required.
-          </p>
+          <h2 className="text-3xl font-bold text-gray-900 mb-3 tracking-tight">Built for teams that care about outcomes.</h2>
+          <p className="text-gray-400 text-sm mb-8 max-w-md mx-auto">Early access is limited. Takes 2 minutes to set up. No credit card required.</p>
           <Link
             href="#"
             onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: "smooth" }); }}
@@ -444,7 +359,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── Footer ───────────────────────────────────────────────────────────── */}
+      {/* Footer */}
       <footer className="relative z-10 border-t border-gray-100 py-6 px-8 flex items-center justify-between max-w-6xl mx-auto">
         <span className="text-xs text-gray-400 font-semibold">Metrik</span>
         <div className="flex items-center gap-4">
@@ -452,7 +367,6 @@ export default function HomePage() {
           <Link href="/login" className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 transition-colors">Sign in →</Link>
         </div>
       </footer>
-
     </div>
   );
 }
