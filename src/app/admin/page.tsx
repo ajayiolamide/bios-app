@@ -30,6 +30,10 @@ export default async function AdminPage() {
   const totalFeatures= users.reduce((s, u) => s + u.features, 0);
   const totalReports = users.reduce((s, u) => s + u.reports, 0);
 
+  // Filter the admin's own email out of the guest list — it's an owner entry, not an invite
+  const guestListEmails = allowedEmails.filter(e => e.email !== ADMIN_EMAIL);
+  const pendingInvites  = guestListEmails.filter(e => !e.used).length;
+
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
       {/* Header */}
@@ -81,22 +85,32 @@ export default async function AdminPage() {
           <AdminTable users={users} />
         </div>
 
+        {/* Guest list — invite management */}
+        <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-50 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-bold text-gray-800">Invites &amp; access</p>
+              <p className="text-[11px] text-gray-400 mt-0.5">
+                Invited emails can sign up. Invited users do <strong>not</strong> receive an email automatically — share the sign-up link separately.
+              </p>
+            </div>
+            <div className="text-right flex-shrink-0 ml-4">
+              <p className="text-xs text-gray-400">{guestListEmails.length} invited</p>
+              {pendingInvites > 0 && (
+                <p className="text-[11px] text-amber-500 font-medium">{pendingInvites} pending</p>
+              )}
+            </div>
+          </div>
+          <GuestListTable rows={guestListEmails} />
+        </div>
+
         {/* Waitlist */}
         <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-50 flex items-center justify-between">
             <p className="text-sm font-bold text-gray-800">Waitlist</p>
-            <p className="text-xs text-gray-400">{waitlist.length} total</p>
+            <p className="text-xs text-gray-400">{waitlist.length} waiting</p>
           </div>
           <WaitlistTable rows={waitlist} />
-        </div>
-
-        {/* Guest list */}
-        <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-50 flex items-center justify-between">
-            <p className="text-sm font-bold text-gray-800">Guest list (allowed emails)</p>
-            <p className="text-xs text-gray-400">{allowedEmails.length} total</p>
-          </div>
-          <GuestListTable rows={allowedEmails} />
         </div>
 
       </div>

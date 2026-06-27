@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { CheckCircle2, XCircle, Loader2, UserPlus, Mail } from "lucide-react";
-import { approveWaitlistEmail, rejectWaitlistEmail, addAllowedEmail } from "@/app/actions/admin";
+import { CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { approveWaitlistEmail, rejectWaitlistEmail } from "@/app/actions/admin";
 
 type WaitlistRow = { email: string; joined_at: string };
 
@@ -10,12 +10,6 @@ export function WaitlistTable({ rows }: { rows: WaitlistRow[] }) {
   const [items, setItems] = useState(rows);
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
-
-  // "Invite" form state
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteNote, setInviteNote]   = useState("");
-  const [invitePending, startInvite]  = useTransition();
-  const [inviteMsg, setInviteMsg]     = useState<string | null>(null);
 
   function handleApprove(email: string) {
     setPendingEmail(email);
@@ -42,22 +36,6 @@ export function WaitlistTable({ rows }: { rows: WaitlistRow[] }) {
         // no-op
       } finally {
         setPendingEmail(null);
-      }
-    });
-  }
-
-  function handleInvite(e: React.FormEvent) {
-    e.preventDefault();
-    if (!inviteEmail.includes("@")) return;
-    setInviteMsg(null);
-    startInvite(async () => {
-      try {
-        await addAllowedEmail(inviteEmail, inviteNote || undefined);
-        setInviteMsg(`${inviteEmail} added to guest list.`);
-        setInviteEmail("");
-        setInviteNote("");
-      } catch (err) {
-        setInviteMsg((err as Error).message ?? "Something went wrong.");
       }
     });
   }
@@ -113,44 +91,6 @@ export function WaitlistTable({ rows }: { rows: WaitlistRow[] }) {
           })}
         </tbody>
       </table>
-
-      {/* Quick invite form */}
-      <div className="px-6 py-4 border-t border-gray-50 bg-gray-50/50">
-        <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-          <UserPlus size={11} /> Invite directly (skip waitlist)
-        </p>
-        <form onSubmit={handleInvite} className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <Mail size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-            <input
-              type="email"
-              required
-              placeholder="email@company.com"
-              value={inviteEmail}
-              onChange={e => setInviteEmail(e.target.value)}
-              className="w-full pl-8 pr-3 py-2 text-sm border border-gray-200 rounded-lg bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
-          <input
-            type="text"
-            placeholder="Note (optional)"
-            value={inviteNote}
-            onChange={e => setInviteNote(e.target.value)}
-            className="w-36 px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-          <button
-            type="submit"
-            disabled={invitePending}
-            className="flex items-center gap-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white px-4 py-2 rounded-lg transition-colors shrink-0"
-          >
-            {invitePending ? <Loader2 size={13} className="animate-spin" /> : <UserPlus size={13} />}
-            Invite
-          </button>
-        </form>
-        {inviteMsg && (
-          <p className="text-xs text-gray-500 mt-2">{inviteMsg}</p>
-        )}
-      </div>
     </div>
   );
 }
