@@ -3,6 +3,8 @@ import Link from "next/link";
 import { createServerClient } from "@/lib/supabase/server";
 import { getAdminData, getWaitlist, getAllowedEmails } from "@/app/actions/admin";
 import { AdminTable } from "./admin-table";
+import { WaitlistTable } from "./waitlist-table";
+import { GuestListTable } from "./guest-list-table";
 import { ShieldCheck, Users, BarChart3, FileText, Lightbulb } from "lucide-react";
 
 const ADMIN_EMAIL = "ajayiibrahimme@gmail.com";
@@ -85,25 +87,7 @@ export default async function AdminPage() {
             <p className="text-sm font-bold text-gray-800">Waitlist</p>
             <p className="text-xs text-gray-400">{waitlist.length} total</p>
           </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100">
-                <th className="text-left px-6 py-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Email</th>
-                <th className="text-left px-6 py-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Joined</th>
-              </tr>
-            </thead>
-            <tbody>
-              {waitlist.length === 0 && (
-                <tr><td colSpan={2} className="px-6 py-6 text-center text-gray-400 text-sm">No signups yet.</td></tr>
-              )}
-              {waitlist.map((row) => (
-                <tr key={row.email} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                  <td className="px-6 py-3.5 font-medium text-gray-900">{row.email}</td>
-                  <td className="px-6 py-3.5 text-gray-400 text-xs">{new Date(row.joined_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <WaitlistTable rows={waitlist} />
         </div>
 
         {/* Guest list */}
@@ -112,29 +96,7 @@ export default async function AdminPage() {
             <p className="text-sm font-bold text-gray-800">Guest list (allowed emails)</p>
             <p className="text-xs text-gray-400">{allowedEmails.length} total</p>
           </div>
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100">
-                {["Email", "Note", "Invited", "Signed up"].map((h) => (
-                  <th key={h} className="text-left px-6 py-3 text-[11px] font-semibold text-gray-400 uppercase tracking-wider">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {allowedEmails.map((row) => (
-                <tr key={row.email} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                  <td className="px-6 py-3.5 font-medium text-gray-900">{row.email}</td>
-                  <td className="px-6 py-3.5 text-gray-400">{row.note ?? "—"}</td>
-                  <td className="px-6 py-3.5 text-gray-400 text-xs">{new Date(row.invited_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}</td>
-                  <td className="px-6 py-3.5">
-                    {row.used
-                      ? <span className="text-xs font-medium text-green-600 bg-green-50 border border-green-100 px-2 py-0.5 rounded-full">Yes</span>
-                      : <span className="text-xs text-gray-400">Pending</span>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <GuestListTable rows={allowedEmails} />
         </div>
 
       </div>

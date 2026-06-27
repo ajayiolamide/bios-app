@@ -141,3 +141,49 @@ export async function getAllowedEmails() {
     .order("invited_at", { ascending: false });
   return data ?? [];
 }
+
+// ─── Approve a waitlist email → add to guest list ─────────────────────────────
+export async function approveWaitlistEmail(email: string) {
+  await assertAdmin();
+  const admin = getAdminClient();
+  const { error } = await admin
+    .from("allowed_emails")
+    .upsert({ email: email.toLowerCase().trim(), note: "Approved from waitlist" }, { onConflict: "email", ignoreDuplicates: true });
+  if (error) throw new Error(error.message);
+  revalidatePath("/admin");
+}
+
+// ─── Reject / remove from waitlist ───────────────────────────────────────────
+export async function rejectWaitlistEmail(email: string) {
+  await assertAdmin();
+  const admin = getAdminClient();
+  const { error } = await admin
+    .from("waitlist")
+    .delete()
+    .eq("email", email.toLowerCase().trim());
+  if (error) throw new Error(error.message);
+  revalidatePath("/admin");
+}
+
+// ─── Remove from guest list ───────────────────────────────────────────────────
+export async function removeAllowedEmail(email: string) {
+  await assertAdmin();
+  const admin = getAdminClient();
+  const { error } = await admin
+    .from("allowed_emails")
+    .delete()
+    .eq("email", email.toLowerCase().trim());
+  if (error) throw new Error(error.message);
+  revalidatePath("/admin");
+}
+
+// ─── Invite email directly to guest list ─────────────────────────────────────
+export async function addAllowedEmail(email: string, note?: string) {
+  await assertAdmin();
+  const admin = getAdminClient();
+  const { error } = await admin
+    .from("allowed_emails")
+    .upsert({ email: email.toLowerCase().trim(), note: note ?? null }, { onConflict: "email", ignoreDuplicates: true });
+  if (error) throw new Error(error.message);
+  revalidatePath("/admin");
+}
