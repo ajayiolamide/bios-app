@@ -602,7 +602,35 @@ export async function planReport(
     const featureOnly = biosSections.features && !biosSections.goals && !biosSections.funnelsKpis && !biosSections.funnels;
     if (featureOnly) {
       scopeRestrictionBlock += `FEATURE FOCUS MODE: Build EVERY slide around the specific features listed in FEATURE TRACKING PLANS above — their KPIs, events, launch status, and success/failure signals. Do NOT pad with generic product or business metrics that are not explicitly tied to one of these features. If a slide cannot be grounded in a specific feature from the list, omit it.\n`;
+
+      // Strip sheet data entirely — it contains org-wide metrics (NSM, etc.) that have
+      // nothing to do with individual feature tracking. Keeping it in the prompt causes
+      // the AI to mix sheet numbers into feature slides even when the scope instruction
+      // says not to. Zeroing it out here makes the instruction enforceable.
+      filteredRows = [];
     }
+  }
+
+  // Per-feature slide depth instruction (only in featureOnly mode)
+  let perFeatureBlock = "";
+  // effectiveSlideHint may be bumped above the template default to fit one slide per feature
+  let effectiveSlideHint = template.slide_hint;
+  if (
+    biosSections?.features &&
+    !biosSections?.goals &&
+    !biosSections?.funnelsKpis &&
+    !biosSections?.funnels &&
+    biosContext?.features?.length
+  ) {
+    const n = biosContext.features.length;
+    // Ensure there's slide budget for each feature (plus title + action_plan + closing)
+    effectiveSlideHint = Math.max(template.slide_hint, n + 3);
+    perFeatureBlock = `\nFEATURE SLIDE ALLOCATION: You MUST generate at least one dedicated slide per feature (${n} feature${n === 1 ? "" : "s"} listed above = minimum ${n} feature slide${n === 1 ? "" : "s"} required). For EACH feature slide include ALL of:
+1. Feature name + launch status (e.g. "in_progress", "launched", "paused")
+2. Its primary KPI with target vs current state — if the KPI has no measured value yet, write "Not yet measured" and explain what to look for
+3. Impact verdict if available (from FEATURE IMPACT section) — cite the actual lift or trend figure
+4. One concrete insight or recommendation specific to this feature (what should the team do next?)
+Do NOT combine multiple features on a single slide unless they are direct A/B variants of each other, and label such slides explicitly as a comparison. If you run out of slide budget, exceed the suggested count rather than omit a feature.\n`;
   }
 
   // Build BIOS context block
@@ -802,7 +830,7 @@ export async function planReport(
   // Build per-slide guide block
   let slideGuidesBlock = "";
   if (slideGuides && slideGuides.some(g => g.focus || (g.mustInclude && g.mustInclude.length > 0) || g.chartType)) {
-    const slideCount = template.slide_hint;
+    const slideCount = effectiveSlideHint;
     const lines: string[] = [`\nPER-SLIDE GUIDE (hard constraints — map each position to the correct slide):`];
     lines.push(`- Slide 1: title (cover slide — always)`);
     for (let i = 2; i <= slideCount - 1; i++) {
@@ -843,18 +871,18 @@ export async function planReport(
 COMPANY: ${companyName}
 REPORT: ${template.name}
 PERIOD: ${period}
-SLIDES: ${template.slide_hint}
+SLIDES: ${effectiveSlideHint}
 AUDIENCE: ${template.instructions}
 STRICT PERIOD RULE: This report is explicitly for ${period} — not today's date, not the most recent date in any data below.
 Never name, imply, or compute a stat for any month/quarter/date other than ${period} anywhere in the deck (titles, narration, chart labels, captions).
 The data below was not necessarily pre-filtered to ${period} and may include other dates — if so, silently treat it as the closest available stand-in for ${period} rather than calling out the month it actually came from.
-${scopeRestrictionBlock}${biosBlock}${sourceConfigBlock}${biggestMoversBlock}${slideGuidesBlock}
+${scopeRestrictionBlock}${perFeatureBlock}${biosBlock}${sourceConfigBlock}${biggestMoversBlock}${slideGuidesBlock}
 SHEET DATA (${filteredRows.length} rows)${filteredRows.length === 0 ? " — no sheet data provided, use internal Metrik data above" : ""}:
 ${filteredRows.length > 0 ? `Headers: ${headers}\n---\n${csvPreview}\n---` : "(none)"}
 
 ${slideGuidesBlock
-  ? `Generate exactly ${template.slide_hint} slides as JSON — a per-slide guide above specifies what goes in each position.`
-  : `Generate up to ${template.slide_hint} slides as JSON — that number is a ceiling, not a quota. Only include a slide if it presents a genuinely distinct fact, metric, or recommendation that no earlier slide already covers. Restating the same headline number or finding again in a different chart type just to reach ${template.slide_hint} slides is a real failure mode here — if there isn't enough distinct content for all ${template.slide_hint}, generate fewer instead of padding. The mandatory title (slide 1) and closing (last slide) don't count toward what needs to be "distinct."`
+  ? `Generate exactly ${effectiveSlideHint} slides as JSON — a per-slide guide above specifies what goes in each position.`
+  : `Generate up to ${effectiveSlideHint} slides as JSON — that number is a ceiling, not a quota. Only include a slide if it presents a genuinely distinct fact, metric, or recommendation that no earlier slide already covers. Restating the same headline number or finding again in a different chart type just to reach ${effectiveSlideHint} slides is a real failure mode here — if there isn't enough distinct content for all ${effectiveSlideHint}, generate fewer instead of padding. The mandatory title (slide 1) and closing (last slide) don't count toward what needs to be "distinct."`
 }
 
 DESIGN PHILOSOPHY — follow strictly:
@@ -869,7 +897,7 @@ DESIGN PHILOSOPHY — follow strictly:
 - insight slides: 2 sentences max + one headline stat (no long paragraphs).
 - bullet_list: use ONLY for non-numeric slides (agenda, simple list). Max 5 bullets, each under 10 words.
 - NO slide should be text-only if data is available — always pair text with a number or chart.
-- action_plan (second-to-last slide, right before closing — REQUIRED if ${template.slide_hint} >= 4 slides): based on what this specific deck actually shows (which metrics are down, which funnel steps are leaking, which KPI is off track, which insight is negative), decide which departments/roles are realistically responsible for fixing it, and write one concrete recommendation per department. Be selective — only include a department if the data in THIS deck actually implicates it. Do not pad with departments that have no basis in the data. 2-4 items max. Examples of how to reason about it (do not copy literally, derive from the actual numbers above): a funnel/activation drop-off → "Product & Growth"; a feature with low adoption after launch → "Product Design"; a channel/campaign underperforming → "Marketing"; a metric trending well and needs scaling → "Leadership/Stakeholders" (only if genuinely warranted). If nothing in the data is concerning enough to need departmental follow-up, it is fine to have only 1-2 items, or to skip action_plan and use bullet_list instead.
+- action_plan (second-to-last slide, right before closing — REQUIRED if ${effectiveSlideHint} >= 4 slides): based on what this specific deck actually shows (which metrics are down, which funnel steps are leaking, which KPI is off track, which insight is negative), decide which departments/roles are realistically responsible for fixing it, and write one concrete recommendation per department. Be selective — only include a department if the data in THIS deck actually implicates it. Do not pad with departments that have no basis in the data. 2-4 items max. Examples of how to reason about it (do not copy literally, derive from the actual numbers above): a funnel/activation drop-off → "Product & Growth"; a feature with low adoption after launch → "Product Design"; a channel/campaign underperforming → "Marketing"; a metric trending well and needs scaling → "Leadership/Stakeholders" (only if genuinely warranted). If nothing in the data is concerning enough to need departmental follow-up, it is fine to have only 1-2 items, or to skip action_plan and use bullet_list instead.
   If a FEATURE IMPACT block is present above, prioritize it over speculation: a "likely_negative" or "inconclusive" verdict on a feature that was supposed to move a goal is a much stronger, more specific basis for a recommendation than inferring from sheet data alone — cite the actual lift/trend numbers in the rationale. A "likely_positive" verdict can justify a "scale this up" recommendation rather than a fix-it one.
 
 SLIDE TYPE SCHEMAS:

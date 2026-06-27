@@ -3162,15 +3162,6 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
 
   const previewState = activePreview ? planStates[activePreview.templateId] : null;
 
-  const includedLabels = ([
-    biosSections.goals && "Goals", biosSections.features && "Features", biosSections.funnelsKpis && "KPIs",
-  ].filter(Boolean) as string[]);
-  const setupSummary = [
-    selected ? `Sheet: ${selected.source.name}` : sourcesWithData.length > 0 ? "No sheet data" : null,
-    `Period: ${period}`,
-    `Includes: ${includedLabels.length > 0 ? includedLabels.join(", ") : "none"}`,
-    `Theme: ${THEMES.find(t => t.id === theme)?.label}`,
-  ].filter(Boolean).join("  ·  ");
 
   return (
     <div className="space-y-5 max-w-2xl">
@@ -3182,131 +3173,119 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
         </div>
       )}
 
-      {/* Report setup — sheet data, period, Metrik data toggles, theme.
-          These used to be four separate full-height cards, each with its own
-          number circle and border, even though none of them is a multi-step
-          task on its own — they're all single quick choices. Stacking four
-          equal-weight cards made the page read as much longer than the actual
-          amount of decision-making involved, so they're one card now with
-          light dividers between sections instead. */}
-      <StepCard step={1} title="Report setup" hint="A few quick choices before the AI plans anything" collapsible summary={setupSummary}>
+      {/* ── Step 1: Report setup ─────────────────────────────────────────────────
+          Always visible (not collapsible). Two-column grid for period + sheet
+          keeps it compact so users don't scroll past it and start step 2
+          without configuring it first. */}
+      <StepCard step={1} title="Configure report" hint="Set the period and scope — then pick a template below">
         <div className="space-y-4">
-          {sourcesWithData.length > 0 && (
+
+          {/* Row 1: Period + Sheet data side by side */}
+          <div className={`grid gap-3 ${sourcesWithData.length > 0 ? "grid-cols-2" : "grid-cols-1"}`}>
+            {/* Period */}
             <div>
-              <div className="flex items-center justify-between mb-1.5">
-                <p className="text-xs font-semibold text-gray-600">Google Sheet data</p>
-                <span className="text-[10px] text-gray-400">Optional</span>
-              </div>
-              <select value={selectedSourceId} onChange={e => setSelectedSourceId(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
-                <option value="">— Don't include sheet data —</option>
-                {sourcesWithData.map(s => <option key={s.source.id} value={s.source.id}>{s.source.name}</option>)}
-              </select>
-              {selectedSourceId && (
-                <div className={`mt-2 text-xs rounded-lg px-3 py-2 flex items-center gap-2 ${isFiltered ? "bg-indigo-50 text-indigo-700" : "bg-gray-50 text-gray-500"}`}>
-                  <Filter size={11} />
-                  {isFiltered
-                    ? <span>Using <strong>{filteredRows.length}</strong> filtered rows of {totalRows}. Change filter on the <strong>Data</strong> tab.</span>
-                    : <span>Using all <strong>{totalRows}</strong> rows. Filter by month/period on the <strong>Data</strong> tab first.</span>}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className={sourcesWithData.length > 0 ? "pt-4 border-t border-gray-100" : ""}>
-            <p className="text-xs font-semibold text-gray-600 mb-1.5">Report period</p>
-            {(() => {
-              const now = new Date();
-              const month = (offset: number) => {
-                const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
-                return { name: d.toLocaleString("default", { month: "long" }), year: d.getFullYear(), d };
-              };
-              const months = Array.from({ length: 13 }, (_, i) => month(-i)); // current + 12 back
-              const fmt = (m: ReturnType<typeof month>) => `${m.name} ${m.year}`;
-
-              const options: { label: string; value: string }[] = [];
-
-              // Individual months (current + 6 back)
-              months.slice(0, 7).forEach(m => options.push({ label: fmt(m), value: fmt(m) }));
-
-              options.push({ label: "──────────", value: "" }); // divider
-
-              // Rolling 2-month ranges
-              for (let i = 0; i < 6; i++) {
-                const end = months[i], start = months[i + 1];
-                const label = start.year === end.year
-                  ? `${start.name} – ${end.name} ${end.year}`
-                  : `${start.name} ${start.year} – ${end.name} ${end.year}`;
-                options.push({ label, value: label });
-              }
-
-              options.push({ label: "──────────", value: "" }); // divider
-
-              // Rolling 3-month / quarter windows
-              for (let i = 0; i < 4; i++) {
-                const end = months[i], start = months[i + 2];
-                const label = start.year === end.year
-                  ? `${start.name} – ${end.name} ${end.year}`
-                  : `${start.name} ${start.year} – ${end.name} ${end.year}`;
-                options.push({ label, value: label });
-              }
-
-              options.push({ label: "──────────", value: "" }); // divider
-
-              // Named quarters
-              const curQ = Math.floor(now.getMonth() / 3) + 1;
-              for (let q = curQ; q >= 1; q--) {
-                options.push({ label: `Q${q} ${now.getFullYear()}`, value: `Q${q} ${now.getFullYear()}` });
-              }
-              if (curQ > 0) {
-                for (let q = 4; q >= 1; q--) {
-                  options.push({ label: `Q${q} ${now.getFullYear() - 1}`, value: `Q${q} ${now.getFullYear() - 1}` });
+              <p className="text-xs font-semibold text-gray-600 mb-1.5">Period</p>
+              {(() => {
+                const now = new Date();
+                const month = (offset: number) => {
+                  const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+                  return { name: d.toLocaleString("default", { month: "long" }), year: d.getFullYear(), d };
+                };
+                const months = Array.from({ length: 13 }, (_, i) => month(-i));
+                const fmt = (m: ReturnType<typeof month>) => `${m.name} ${m.year}`;
+                const options: { label: string; value: string }[] = [];
+                months.slice(0, 7).forEach(m => options.push({ label: fmt(m), value: fmt(m) }));
+                options.push({ label: "──────────", value: "" });
+                for (let i = 0; i < 6; i++) {
+                  const end = months[i], start = months[i + 1];
+                  const label = start.year === end.year
+                    ? `${start.name} – ${end.name} ${end.year}`
+                    : `${start.name} ${start.year} – ${end.name} ${end.year}`;
+                  options.push({ label, value: label });
                 }
-              }
+                options.push({ label: "──────────", value: "" });
+                for (let i = 0; i < 4; i++) {
+                  const end = months[i], start = months[i + 2];
+                  const label = start.year === end.year
+                    ? `${start.name} – ${end.name} ${end.year}`
+                    : `${start.name} ${start.year} – ${end.name} ${end.year}`;
+                  options.push({ label, value: label });
+                }
+                options.push({ label: "──────────", value: "" });
+                const curQ = Math.floor(now.getMonth() / 3) + 1;
+                for (let q = curQ; q >= 1; q--) {
+                  options.push({ label: `Q${q} ${now.getFullYear()}`, value: `Q${q} ${now.getFullYear()}` });
+                }
+                if (curQ > 0) {
+                  for (let q = 4; q >= 1; q--) {
+                    options.push({ label: `Q${q} ${now.getFullYear() - 1}`, value: `Q${q} ${now.getFullYear() - 1}` });
+                  }
+                }
+                options.push({ label: "──────────", value: "" });
+                options.push({ label: "Custom…", value: "__custom__" });
 
-              options.push({ label: "──────────", value: "" }); // divider
-              options.push({ label: "Custom…", value: "__custom__" });
+                return customPeriod ? (
+                  <div className="flex gap-2">
+                    <input
+                      autoFocus
+                      value={period}
+                      onChange={e => setPeriod(e.target.value)}
+                      placeholder="e.g. H1 2026"
+                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                    />
+                    <button onClick={() => setCustomPeriod(false)}
+                      className="text-xs text-gray-400 hover:text-gray-600 px-2">← Back</button>
+                  </div>
+                ) : (
+                  <select
+                    value={options.find(o => o.value === period) ? period : "__custom__"}
+                    onChange={e => {
+                      if (e.target.value === "__custom__") { setCustomPeriod(true); return; }
+                      if (!e.target.value) return;
+                      setPeriod(e.target.value);
+                    }}
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                  >
+                    {options.map((o, i) => (
+                      <option key={i} value={o.value} disabled={!o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                );
+              })()}
+            </div>
 
-              return customPeriod ? (
-                <div className="flex gap-2">
-                  <input
-                    autoFocus
-                    value={period}
-                    onChange={e => setPeriod(e.target.value)}
-                    placeholder="e.g. H1 2026 or Jan – Mar 2026"
-                    className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                  />
-                  <button onClick={() => setCustomPeriod(false)}
-                    className="text-xs text-gray-400 hover:text-gray-600 px-2">← Back</button>
+            {/* Sheet data — only shown when sources exist */}
+            {sourcesWithData.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <p className="text-xs font-semibold text-gray-600">Sheet data</p>
+                  <span className="text-[10px] text-gray-400">Optional</span>
                 </div>
-              ) : (
-                <select
-                  value={options.find(o => o.value === period) ? period : "__custom__"}
-                  onChange={e => {
-                    if (e.target.value === "__custom__") { setCustomPeriod(true); return; }
-                    if (!e.target.value) return; // divider
-                    setPeriod(e.target.value);
-                  }}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
-                >
-                  {options.map((o, i) => (
-                    <option key={i} value={o.value} disabled={!o.value}>{o.label}</option>
-                  ))}
+                <select value={selectedSourceId} onChange={e => setSelectedSourceId(e.target.value)}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                  <option value="">— None —</option>
+                  {sourcesWithData.map(s => <option key={s.source.id} value={s.source.id}>{s.source.name}</option>)}
                 </select>
-              );
-            })()}
-            <p className="text-xs text-gray-400 mt-2">Current selection: <span className="font-medium text-gray-600">{period}</span></p>
+                {selectedSourceId && (
+                  <p className={`mt-1.5 text-[11px] flex items-center gap-1 ${isFiltered ? "text-indigo-600" : "text-gray-400"}`}>
+                    <Filter size={10} />
+                    {isFiltered
+                      ? <span><strong>{filteredRows.length}</strong> of {totalRows} rows (filtered)</span>
+                      : <span>All {totalRows} rows · filter on <strong>Data</strong> tab</span>}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
-          <div className="pt-4 border-t border-gray-100 space-y-3">
-            <div className="flex items-center justify-between">
+          {/* Row 2: Scope presets */}
+          <div className="pt-3 border-t border-gray-100">
+            <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-semibold text-gray-600">Report scope</p>
               {!hasAnyDataSource && (
                 <span className="text-[11px] text-red-500 font-medium">Select at least one</span>
               )}
             </div>
-
-            {/* Quick-pick presets — one click sets the right combination */}
             <div className="flex flex-wrap gap-1.5">
               {([
                 { label: "Full Review",      set: { goals: true,  features: true,  funnelsKpis: true,  funnels: true  } },
@@ -3317,45 +3296,30 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
               ] as { label: string; set: BiosSections }[]).map(({ label, set }) => {
                 const isActive = JSON.stringify(biosSections) === JSON.stringify(set);
                 return (
-                  <button
-                    key={label}
-                    type="button"
-                    onClick={() => setBiosSections(set)}
+                  <button key={label} type="button" onClick={() => setBiosSections(set)}
                     className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
                       isActive ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600"
-                    }`}
-                  >
+                    }`}>
                     {label}
                   </button>
                 );
               })}
             </div>
-
           </div>
 
-          {/* Saved cohorts — these live only in this browser's local storage
-              (Cohort Builder never persisted them to the database), so they
-              can't be fetched server-side like Goals/Features/Funnels above.
-              Each selected cohort's CURRENT result is computed here on the
-              client when a report is planned, then folded into the same
-              free-text briefing-notes channel saved AI insights already use
-              below — no separate plumbing needed in planReport itself. */}
+          {/* Row 3: Saved cohorts (only shown when any exist) */}
           {savedCohorts.length > 0 && (
-            <div className="pt-4 border-t border-gray-100">
-              <p className="text-xs font-semibold text-gray-600 mb-2">Include saved cohorts (current state)</p>
+            <div className="pt-3 border-t border-gray-100">
+              <p className="text-xs font-semibold text-gray-600 mb-2">Include saved cohorts</p>
               <div className="flex flex-wrap gap-2">
                 {savedCohorts.map(c => {
                   const checked = selectedCohortIds.includes(c.id);
                   return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      title={c.filter.description}
+                    <button key={c.id} type="button" title={c.filter.description}
                       onClick={() => setSelectedCohortIds(prev => checked ? prev.filter(id => id !== c.id) : [...prev, c.id])}
                       className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
                         checked ? "bg-indigo-50 border-indigo-200 text-indigo-700" : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
-                      }`}
-                    >
+                      }`}>
                       {checked && <CheckCircle2 size={12} />}
                       <Bookmark size={11} />
                       {c.name}
@@ -3368,13 +3332,6 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
 
         </div>
       </StepCard>
-
-      {/* Divider between setup and the per-template work */}
-      <div className="flex items-center gap-3 pt-1">
-        <div className="h-px flex-1 bg-gray-100" />
-        <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider">Then, plan & build</p>
-        <div className="h-px flex-1 bg-gray-100" />
-      </div>
 
       {/* Templates — horizontal pill tabs */}
       <StepCard step={2} title="Pick a template" hint="Plan with AI, preview the deck, then build it">
