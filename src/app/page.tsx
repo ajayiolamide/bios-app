@@ -33,8 +33,7 @@ type Msg =
   | { id: string; role: "ai"; text: string }
   | { id: string; role: "user"; text: string }
   | { id: string; role: "thinking" }
-  | { id: string; role: "goal"; preview: GoalPreview }
-  | { id: string; role: "done" };
+  | { id: string; role: "goal"; preview: GoalPreview };
 
 type Phase = "describe" | "thinking" | "email" | "done";
 
@@ -53,6 +52,7 @@ function WaitlistChat() {
   const [email, setEmail] = useState("");
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailError, setEmailError] = useState("");
+  const [toast, setToast] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const msgsRef = useRef<HTMLDivElement>(null);
 
@@ -90,8 +90,18 @@ function WaitlistChat() {
     setEmailLoading(true);
     const result = await joinWaitlist(email, description);
     setEmailLoading(false);
-    if (result.success) { push({ id: uid(), role: "done" }); setPhase("done"); }
-    else setEmailError(result.message);
+    if (result.success) {
+      setToast(true);
+      setTimeout(() => {
+        setToast(false);
+        setMsgs([{ id: "welcome", role: "ai", text: "What is your team working toward this quarter? Describe your goal in plain English — the outcome you want, the problem you're solving." }]);
+        setPhase("describe");
+        setDescription("");
+        setEmail("");
+        setEmailError("");
+      }, 2800);
+      setPhase("done");
+    } else setEmailError(result.message);
   }
 
   return (
@@ -121,7 +131,7 @@ function WaitlistChat() {
         </div>
 
         {/* ── Messages — scrolls after max-height ──────────── */}
-        <div ref={msgsRef} className="overflow-y-auto px-6 py-5 flex flex-col gap-4" style={{ maxHeight: "300px" }}>
+        <div ref={msgsRef} className="overflow-y-auto px-6 py-5 flex flex-col gap-4" style={{ maxHeight: "240px" }}>
           {msgs.map((msg) => (
             <div key={msg.id}>
 
@@ -136,7 +146,7 @@ function WaitlistChat() {
 
               {msg.role === "user" && (
                 <div className="flex justify-end">
-                  <div className="bg-indigo-600 text-white text-[13px] rounded-2xl rounded-tr-sm px-4 py-3 max-w-[76%] leading-relaxed">
+                  <div className="bg-gray-100 text-gray-700 text-[13px] rounded-2xl rounded-tr-sm px-4 py-3 max-w-[76%] leading-relaxed">
                     {msg.text}
                   </div>
                 </div>
@@ -158,8 +168,8 @@ function WaitlistChat() {
               {msg.role === "goal" && (
                 <div className="ml-10">
                   <div className="rounded-xl border border-gray-100 bg-gray-50/60 px-4 py-3.5">
-                    <p className="text-[15px] font-bold text-gray-900 mb-1.5">{msg.preview.title}</p>
-                    <p className="text-[12px] text-gray-400 mb-3">
+                    <p className="text-[15px] font-bold text-gray-900 mb-1.5 text-left">{msg.preview.title}</p>
+                    <p className="text-[12px] text-gray-400 mb-3 text-left">
                       {msg.preview.target} <span className="mx-1.5 text-gray-300">·</span> {msg.preview.timeframe}
                     </p>
                     <div className="flex flex-wrap gap-1.5">
@@ -173,17 +183,6 @@ function WaitlistChat() {
                 </div>
               )}
 
-              {msg.role === "done" && (
-                <div className="flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-xl bg-green-50 border border-green-100 flex items-center justify-center shrink-0 mt-0.5">
-                    <CheckCircle2 size={12} className="text-green-600" />
-                  </div>
-                  <div>
-                    <p className="text-[14px] font-semibold text-gray-800">You&apos;re on the list.</p>
-                    <p className="text-[13px] text-gray-400 mt-0.5 leading-relaxed">We&apos;ll reach out when your spot is ready.</p>
-                  </div>
-                </div>
-              )}
 
             </div>
           ))}
@@ -274,6 +273,14 @@ function WaitlistChat() {
         Already have an account?{" "}
         <Link href="/login" className="text-indigo-500 hover:text-indigo-600 transition-colors">Sign in →</Link>
       </p>
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 bg-gray-900 text-white text-[13px] font-medium px-5 py-3 rounded-full shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <CheckCircle2 size={14} className="text-green-400 shrink-0" />
+          You&apos;re on the list — we&apos;ll be in touch.
+        </div>
+      )}
     </div>
   );
 }
