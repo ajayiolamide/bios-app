@@ -54,10 +54,13 @@ function WaitlistChat() {
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailError, setEmailError] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const msgsRef = useRef<HTMLDivElement>(null);
 
+  // Scroll the messages DIV — not the page
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (msgsRef.current) {
+      msgsRef.current.scrollTop = msgsRef.current.scrollHeight;
+    }
   }, [msgs]);
 
   function push(...m: Msg[]) { setMsgs(p => [...p, ...m]); }
@@ -92,17 +95,15 @@ function WaitlistChat() {
   }
 
   return (
-    <div className="relative max-w-[700px] mx-auto mt-10">
+    <div className="relative max-w-[820px] mx-auto mt-10">
 
-      {/* Glow layers */}
-      <div className="absolute -inset-px rounded-2xl pointer-events-none"
-        style={{ boxShadow: "0 0 0 1px rgba(99,102,241,0.18), 0 0 80px rgba(99,102,241,0.18), 0 0 30px rgba(99,102,241,0.10)" }} />
-      <div className="absolute -inset-10 -z-10 rounded-3xl pointer-events-none"
-        style={{ background: "radial-gradient(ellipse 70% 60% at 50% 50%, rgba(99,102,241,0.10), transparent)" }} />
+      {/* Soft glow sits behind — not on — the card */}
+      <div className="absolute -inset-10 -z-10 pointer-events-none"
+        style={{ background: "radial-gradient(ellipse 80% 55% at 50% 50%, rgba(99,102,241,0.10), transparent)" }} />
 
-      {/* Card — auto height, grows with conversation */}
+      {/* Card — auto height, subtle engraved feel */}
       <div className="relative bg-white rounded-2xl overflow-hidden flex flex-col"
-        style={{ border: "1px solid rgba(99,102,241,0.14)" }}>
+        style={{ border: "1px solid rgba(0,0,0,0.09)", boxShadow: "0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.9)" }}>
 
         {/* ── Header ───────────────────────────────────────── */}
         <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100/80 shrink-0">
@@ -120,7 +121,7 @@ function WaitlistChat() {
         </div>
 
         {/* ── Messages — scrolls after max-height ──────────── */}
-        <div className="overflow-y-auto px-6 py-5 flex flex-col gap-4" style={{ maxHeight: "380px" }}>
+        <div ref={msgsRef} className="overflow-y-auto px-6 py-5 flex flex-col gap-4" style={{ maxHeight: "300px" }}>
           {msgs.map((msg) => (
             <div key={msg.id}>
 
@@ -156,31 +157,17 @@ function WaitlistChat() {
 
               {msg.role === "goal" && (
                 <div className="ml-10">
-                  <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(99,102,241,0.14)" }}>
-                    <div className="px-5 pt-4 pb-3 border-b border-gray-100">
-                      <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-[0.18em] mb-1.5">Business Goal</p>
-                      <p className="text-[17px] font-bold text-gray-900 leading-snug">{msg.preview.title}</p>
-                    </div>
-                    <div className="grid grid-cols-2 divide-x divide-gray-100 border-b border-gray-100">
-                      <div className="px-5 py-3">
-                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Target</p>
-                        <p className="text-[13px] font-medium text-gray-700">{msg.preview.target}</p>
-                      </div>
-                      <div className="px-5 py-3">
-                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Timeframe</p>
-                        <p className="text-[13px] font-medium text-gray-700">{msg.preview.timeframe}</p>
-                      </div>
-                    </div>
-                    <div className="px-5 py-4">
-                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-3">KPIs to Track</p>
-                      <div className="flex flex-col gap-2">
-                        {msg.preview.kpis.map((k) => (
-                          <div key={k} className="flex items-center gap-2 text-[13px] text-gray-600">
-                            <CheckCircle2 size={13} className="text-indigo-400 shrink-0" />
-                            {k}
-                          </div>
-                        ))}
-                      </div>
+                  <div className="rounded-xl border border-gray-100 bg-gray-50/60 px-4 py-3.5">
+                    <p className="text-[15px] font-bold text-gray-900 mb-1.5">{msg.preview.title}</p>
+                    <p className="text-[12px] text-gray-400 mb-3">
+                      {msg.preview.target} <span className="mx-1.5 text-gray-300">·</span> {msg.preview.timeframe}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {msg.preview.kpis.map((k) => (
+                        <span key={k} className="text-[11px] text-indigo-600 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-full">
+                          {k}
+                        </span>
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -200,7 +187,6 @@ function WaitlistChat() {
 
             </div>
           ))}
-          <div ref={bottomRef} />
         </div>
 
         {/* ── Bottom input area ────────────────────────────── */}
