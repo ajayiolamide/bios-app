@@ -10,12 +10,7 @@ import { joinWaitlist } from "@/app/actions/waitlist";
 
 // ── Goal preview ──────────────────────────────────────────────────────────────
 
-interface GoalPreview {
-  title: string;
-  target: string;
-  timeframe: string;
-  kpis: string[];
-}
+interface GoalPreview { title: string; target: string; timeframe: string; kpis: string[] }
 
 function generatePreview(d: string): GoalPreview {
   const t = d.toLowerCase();
@@ -24,11 +19,11 @@ function generatePreview(d: string): GoalPreview {
   if (/activat|onboard|first.value|sign.?up|get started/.test(t))
     return { title: "Improve User Activation", target: "60% activation within 7 days", timeframe: "Q3 2026", kpis: ["7-day activation rate", "Time to first key action", "Onboarding completion rate"] };
   if (/engag|dau|mau|daily|weekly|active.user|session/.test(t))
-    return { title: "Increase Product Engagement", target: "40% DAU / MAU ratio", timeframe: "Q3 2026", kpis: ["Daily active users", "Feature depth score", "Session frequency per user"] };
+    return { title: "Increase Product Engagement", target: "40% DAU / MAU ratio", timeframe: "Q3 2026", kpis: ["Daily active users", "Feature depth score", "Sessions per user per week"] };
   if (/convert|trial|paid|upgrade|subscri/.test(t))
-    return { title: "Grow Trial-to-Paid Conversion", target: "25% trial conversion rate", timeframe: "Q3 2026", kpis: ["Trial-to-paid rate", "Time to upgrade", "Feature engagement pre-conversion"] };
+    return { title: "Grow Trial-to-Paid Conversion", target: "25% trial conversion rate", timeframe: "Q3 2026", kpis: ["Trial-to-paid rate", "Time to upgrade", "Feature engagement before conversion"] };
   if (/revenue|arr|mrr|sales|grow|scale/.test(t))
-    return { title: "Accelerate Revenue Growth", target: "+40% MRR this quarter", timeframe: "Q3 2026", kpis: ["New MRR from feature adoption", "Expansion revenue", "Revenue per feature released"] };
+    return { title: "Accelerate Revenue Growth", target: "+40% MRR this quarter", timeframe: "Q3 2026", kpis: ["New MRR from features", "Expansion revenue", "Revenue per feature released"] };
   return { title: "Improve Core Product Outcomes", target: "Primary KPI +30%", timeframe: "Q3 2026", kpis: ["Primary success metric", "Feature impact score", "User satisfaction trend"] };
 }
 
@@ -44,7 +39,6 @@ type Msg =
 type Phase = "describe" | "thinking" | "email" | "done";
 
 const CHIPS = ["Reduce churn", "Grow MRR", "Improve activation", "Increase engagement"];
-
 const uid = () => Math.random().toString(36).slice(2);
 
 // ── Chat widget ───────────────────────────────────────────────────────────────
@@ -66,36 +60,23 @@ function WaitlistChat() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [msgs]);
 
-  function push(...newMsgs: Msg[]) {
-    setMsgs((prev) => [...prev, ...newMsgs]);
-  }
-
-  function autoResize(el: HTMLTextAreaElement) {
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
-  }
+  function push(...m: Msg[]) { setMsgs(p => [...p, ...m]); }
 
   function submitDescription() {
     const text = input.trim();
     if (!text || phase !== "describe") return;
     setDescription(text);
     setInput("");
-    if (textareaRef.current) textareaRef.current.style.height = "22px";
-    push({ id: uid(), role: "user", text });
-    setPhase("thinking");
+    if (textareaRef.current) { textareaRef.current.style.height = "24px"; }
     const thinkId = uid();
-    push({ id: thinkId, role: "thinking" });
-
+    push({ id: uid(), role: "user", text }, { id: thinkId, role: "thinking" });
+    setPhase("thinking");
     setTimeout(() => {
       const preview = generatePreview(text);
-      setMsgs((prev) =>
-        prev
-          .filter((m) => m.id !== thinkId)
-          .concat([
-            { id: uid(), role: "goal", preview },
-            { id: uid(), role: "ai", text: "Here's your goal, structured and ready to track. Drop your email and I'll hold your spot." },
-          ])
-      );
+      setMsgs(p => p.filter(m => m.id !== thinkId).concat([
+        { id: uid(), role: "goal", preview },
+        { id: uid(), role: "ai", text: "Here's your goal structured and ready to track. Drop your work email and I'll hold your spot." },
+      ]));
       setPhase("email");
     }, 1700);
   }
@@ -106,52 +87,55 @@ function WaitlistChat() {
     setEmailLoading(true);
     const result = await joinWaitlist(email, description);
     setEmailLoading(false);
-    if (result.success) {
-      push({ id: uid(), role: "done" });
-      setPhase("done");
-    } else {
-      setEmailError(result.message);
-    }
+    if (result.success) { push({ id: uid(), role: "done" }); setPhase("done"); }
+    else setEmailError(result.message);
   }
 
-  const isFirstPrompt = phase === "describe" && msgs.length === 1;
-
   return (
-    <div className="relative max-w-[680px] mx-auto mt-10">
-      {/* Soft ambient glow — doesn't lift the card, sits behind it */}
-      <div className="absolute -inset-10 bg-[radial-gradient(ellipse_60%_50%_at_50%_50%,rgba(99,102,241,0.09),transparent)] pointer-events-none -z-10" />
+    <div className="relative max-w-[700px] mx-auto mt-10">
 
-      <div className="bg-white border border-gray-200/90 rounded-2xl overflow-hidden flex flex-col h-[460px]">
+      {/* Glow layers */}
+      <div className="absolute -inset-px rounded-2xl pointer-events-none"
+        style={{ boxShadow: "0 0 0 1px rgba(99,102,241,0.18), 0 0 80px rgba(99,102,241,0.18), 0 0 30px rgba(99,102,241,0.10)" }} />
+      <div className="absolute -inset-10 -z-10 rounded-3xl pointer-events-none"
+        style={{ background: "radial-gradient(ellipse 70% 60% at 50% 50%, rgba(99,102,241,0.10), transparent)" }} />
+
+      {/* Card */}
+      <div className="relative bg-white rounded-2xl overflow-hidden flex flex-col"
+        style={{ height: "560px", border: "1px solid rgba(99,102,241,0.12)" }}>
 
         {/* ── Header ───────────────────────────────────────── */}
-        <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 shrink-0">
-          <div className="w-7 h-7 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
-            <Sparkles size={13} className="text-white" />
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100/80 shrink-0">
+          <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
+            <Sparkles size={14} className="text-white" />
           </div>
-          <span className="text-[14px] font-semibold text-gray-800">Metrik AI</span>
+          <span className="text-[15px] font-semibold text-gray-800">Metrik AI</span>
           <div className="ml-auto flex items-center gap-2">
-            <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-60" />
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+            </span>
             <span className="text-[12px] text-gray-400">Early access</span>
           </div>
         </div>
 
-        {/* ── Messages (scrollable) ─────────────────────────── */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-4">
+        {/* ── Messages ─────────────────────────────────────── */}
+        <div className="flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-5 min-h-0">
           {msgs.map((msg) => (
             <div key={msg.id}>
 
               {msg.role === "ai" && (
                 <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0 mt-0.5">
-                    <Sparkles size={11} className="text-indigo-500" />
+                  <div className="w-7 h-7 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center shrink-0 mt-0.5">
+                    <Sparkles size={12} className="text-indigo-500" />
                   </div>
-                  <p className="text-[14px] text-gray-600 leading-[1.65] pt-0.5 max-w-[90%]">{msg.text}</p>
+                  <p className="text-[14px] text-gray-600 leading-[1.7] pt-0.5">{msg.text}</p>
                 </div>
               )}
 
               {msg.role === "user" && (
                 <div className="flex justify-end">
-                  <div className="bg-indigo-600 text-white text-[13px] rounded-2xl rounded-tr-sm px-4 py-2.5 max-w-[78%] leading-relaxed">
+                  <div className="bg-indigo-600 text-white text-[13px] rounded-2xl rounded-tr-sm px-4 py-3 max-w-[76%] leading-relaxed">
                     {msg.text}
                   </div>
                 </div>
@@ -159,32 +143,32 @@ function WaitlistChat() {
 
               {msg.role === "thinking" && (
                 <div className="flex items-center gap-3">
-                  <div className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
-                    <Sparkles size={11} className="text-indigo-500" />
+                  <div className="w-7 h-7 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center shrink-0">
+                    <Sparkles size={12} className="text-indigo-500" />
                   </div>
                   <div className="flex gap-1.5 items-center">
                     {[0, 130, 260].map((d) => (
-                      <span key={d} className="w-1.5 h-1.5 rounded-full bg-indigo-300 animate-bounce" style={{ animationDelay: `${d}ms` }} />
+                      <span key={d} className="w-2 h-2 rounded-full bg-indigo-200 animate-bounce" style={{ animationDelay: `${d}ms` }} />
                     ))}
                   </div>
                 </div>
               )}
 
               {msg.role === "goal" && (
-                <div className="ml-9">
-                  <div className="rounded-xl border border-gray-200 overflow-hidden text-left">
-                    <div className="px-5 pt-4 pb-3.5 border-b border-gray-100">
-                      <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-[0.16em] mb-1.5">Business Goal</p>
-                      <p className="text-[16px] font-bold text-gray-900 leading-snug">{msg.preview.title}</p>
+                <div className="ml-10">
+                  <div className="rounded-xl overflow-hidden" style={{ border: "1px solid rgba(99,102,241,0.14)" }}>
+                    <div className="px-5 pt-4 pb-3 border-b border-gray-100">
+                      <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-[0.18em] mb-1.5">Business Goal</p>
+                      <p className="text-[17px] font-bold text-gray-900 leading-snug">{msg.preview.title}</p>
                     </div>
                     <div className="grid grid-cols-2 divide-x divide-gray-100 border-b border-gray-100">
                       <div className="px-5 py-3">
-                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Target</p>
-                        <p className="text-[13px] text-gray-700 font-medium">{msg.preview.target}</p>
+                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Target</p>
+                        <p className="text-[13px] font-medium text-gray-700">{msg.preview.target}</p>
                       </div>
                       <div className="px-5 py-3">
-                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Timeframe</p>
-                        <p className="text-[13px] text-gray-700 font-medium">{msg.preview.timeframe}</p>
+                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Timeframe</p>
+                        <p className="text-[13px] font-medium text-gray-700">{msg.preview.timeframe}</p>
                       </div>
                     </div>
                     <div className="px-5 py-4">
@@ -204,12 +188,12 @@ function WaitlistChat() {
 
               {msg.role === "done" && (
                 <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-lg bg-green-100 flex items-center justify-center shrink-0 mt-0.5">
-                    <CheckCircle2 size={11} className="text-green-600" />
+                  <div className="w-7 h-7 rounded-xl bg-green-50 border border-green-100 flex items-center justify-center shrink-0 mt-0.5">
+                    <CheckCircle2 size={12} className="text-green-600" />
                   </div>
                   <div>
                     <p className="text-[14px] font-semibold text-gray-800">You&apos;re on the list.</p>
-                    <p className="text-[13px] text-gray-400 mt-0.5 leading-relaxed">We&apos;ll reach out when your spot is ready.</p>
+                    <p className="text-[13px] text-gray-400 mt-0.5 leading-relaxed">We&apos;ll reach out when your spot is ready to set up your goal.</p>
                     <Link href="/login" className="text-[13px] text-indigo-500 hover:text-indigo-700 transition-colors mt-1.5 inline-block">
                       Already have access? Sign in →
                     </Link>
@@ -222,60 +206,63 @@ function WaitlistChat() {
           <div ref={bottomRef} />
         </div>
 
-        {/* ── Input area ───────────────────────────────────── */}
+        {/* ── Bottom input area ────────────────────────────── */}
         {phase !== "done" && (
-          <div className="border-t border-gray-100 px-4 py-3 shrink-0">
+          <div className="border-t border-gray-100 px-5 pt-4 pb-5 shrink-0">
 
-            {/* Quick chips — only when nothing typed yet */}
-            {isFirstPrompt && (
-              <div className="flex gap-1.5 flex-wrap mb-2.5">
-                {CHIPS.map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => { setInput(c); textareaRef.current?.focus(); }}
-                    className="text-[11px] text-gray-500 bg-gray-50 border border-gray-200 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-600 px-2.5 py-1 rounded-full transition-all"
-                  >
-                    {c}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Description input */}
+            {/* Describe input */}
             {phase === "describe" && (
-              <div className="flex items-end gap-2.5">
-                <textarea
-                  ref={textareaRef}
-                  rows={1}
-                  value={input}
-                  autoFocus
-                  onChange={(e) => { setInput(e.target.value); autoResize(e.target); }}
-                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitDescription(); } }}
-                  placeholder="Describe your goal…"
-                  className="flex-1 text-[14px] text-gray-800 placeholder:text-gray-400 resize-none focus:outline-none leading-relaxed overflow-hidden"
-                  style={{ height: "22px" }}
-                />
-                <button
-                  onClick={submitDescription}
-                  disabled={!input.trim()}
-                  className="w-8 h-8 flex items-center justify-center bg-indigo-600 hover:bg-indigo-700 disabled:opacity-30 text-white rounded-xl transition-colors shrink-0 mb-0.5"
-                >
-                  <ArrowUp size={14} />
-                </button>
-              </div>
+              <>
+                <div className="flex items-end gap-3 mb-3">
+                  <textarea
+                    ref={textareaRef}
+                    rows={1}
+                    value={input}
+                    autoFocus
+                    onChange={(e) => {
+                      setInput(e.target.value);
+                      e.target.style.height = "24px";
+                      e.target.style.height = `${Math.min(e.target.scrollHeight, 96)}px`;
+                    }}
+                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitDescription(); } }}
+                    placeholder="Describe your goal…"
+                    className="flex-1 text-[14px] text-gray-700 placeholder:text-gray-300 resize-none focus:outline-none leading-relaxed overflow-hidden"
+                    style={{ height: "24px" }}
+                  />
+                  <button
+                    onClick={submitDescription}
+                    disabled={!input.trim()}
+                    className="w-9 h-9 flex items-center justify-center bg-indigo-600 hover:bg-indigo-700 disabled:opacity-20 text-white rounded-xl transition-all shrink-0"
+                  >
+                    <ArrowUp size={15} />
+                  </button>
+                </div>
+                {/* Chips below input */}
+                <div className="flex gap-2 flex-wrap">
+                  {CHIPS.map((c) => (
+                    <button
+                      key={c}
+                      onClick={() => { setInput(c); textareaRef.current?.focus(); }}
+                      className="text-[12px] text-gray-500 bg-gray-50 border border-gray-200 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-600 px-3 py-1.5 rounded-full transition-all"
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
 
-            {/* Thinking state */}
+            {/* Thinking */}
             {phase === "thinking" && (
-              <div className="flex items-center gap-2 text-[13px] text-gray-400 h-[22px]">
-                <Loader2 size={13} className="animate-spin text-indigo-400" />
+              <div className="flex items-center gap-2 text-[13px] text-gray-400 h-9">
+                <Loader2 size={14} className="animate-spin text-indigo-400" />
                 Structuring your goal…
               </div>
             )}
 
             {/* Email input */}
             {phase === "email" && (
-              <form onSubmit={submitEmail} className="flex items-center gap-2.5">
+              <form onSubmit={submitEmail} className="flex gap-2.5">
                 <input
                   autoFocus
                   type="email"
@@ -283,15 +270,14 @@ function WaitlistChat() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="your@email.com"
-                  className="flex-1 text-[14px] text-gray-800 placeholder:text-gray-400 focus:outline-none"
-                  style={{ height: "22px" }}
+                  className="flex-1 text-[14px] text-gray-700 placeholder:text-gray-300 focus:outline-none"
                 />
                 <button
                   type="submit"
                   disabled={emailLoading}
-                  className="flex items-center gap-1.5 text-[12px] font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white px-4 py-1.5 rounded-xl transition-colors shrink-0"
+                  className="flex items-center gap-1.5 text-[13px] font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white px-5 py-2 rounded-xl transition-colors shrink-0"
                 >
-                  {emailLoading ? <Loader2 size={12} className="animate-spin" /> : <>Join <ArrowRight size={12} /></>}
+                  {emailLoading ? <Loader2 size={13} className="animate-spin" /> : <>Join <ArrowRight size={13} /></>}
                 </button>
               </form>
             )}
@@ -302,7 +288,7 @@ function WaitlistChat() {
       </div>
 
       {phase === "describe" && (
-        <p className="text-[12px] text-gray-400 mt-3 text-center">
+        <p className="text-[12px] text-gray-400 mt-4 text-center">
           Already have an account?{" "}
           <Link href="/login" className="text-indigo-500 hover:text-indigo-600 transition-colors">Sign in →</Link>
         </p>
@@ -317,9 +303,8 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-white text-gray-900 font-sans antialiased">
 
-      {/* Background */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_90%_50%_at_50%_-5%,rgba(99,102,241,0.09),transparent)]" />
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute inset-0" style={{ background: "radial-gradient(ellipse 90% 50% at 50% -5%, rgba(99,102,241,0.09), transparent)" }} />
       </div>
 
       {/* Nav */}
@@ -336,23 +321,18 @@ export default function HomePage() {
 
       {/* Hero */}
       <section className="relative z-10 max-w-4xl mx-auto px-8 pt-14 pb-24 text-center">
-
         <div className="inline-flex items-center gap-2 bg-indigo-50 border border-indigo-100 text-indigo-600 text-xs font-medium px-3.5 py-1.5 rounded-full mb-8">
           <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 shrink-0" />
           Early access · Limited spots available
         </div>
-
         <h1 className="text-[44px] sm:text-5xl font-bold text-gray-900 leading-[1.1] tracking-tight mb-5">
           Turn feature releases into<br />business outcomes, with AI.
         </h1>
-
         <p className="text-[17px] text-gray-400 max-w-lg mx-auto leading-relaxed">
           Set a goal. Log a feature. Metrik&apos;s AI tracks impact after launch
           and tells you exactly what moved the needle.
         </p>
-
         <WaitlistChat />
-
       </section>
 
       {/* How it works */}
@@ -421,7 +401,6 @@ export default function HomePage() {
           <Link href="/login" className="text-xs font-medium text-indigo-600 hover:text-indigo-700 transition-colors">Sign in →</Link>
         </div>
       </footer>
-
     </div>
   );
 }
