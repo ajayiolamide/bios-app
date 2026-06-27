@@ -6,6 +6,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { ArrowRight, Loader2, CheckCircle2, Zap, Target, Lightbulb, Send } from "lucide-react";
 import { proposeObjectiveFromDescription, createCompanyObjective } from "@/app/actions/company-objectives";
+import { getWaitlistGoalDescription } from "@/app/actions/waitlist";
 
 const PROMPT_CHIPS = [
   "Grow revenue by reducing checkout friction",
@@ -51,6 +52,11 @@ export default function OnboardingPage() {
         .from("organizations").select("id").eq("owner_id", user.id)
         .order("created_at", { ascending: false }).limit(1).single();
       if (org) setOrgId(org.id);
+      // Pre-fill goal from what they typed on the landing page waitlist form
+      if (user.email) {
+        const saved = await getWaitlistGoalDescription(user.email);
+        if (saved) setDescription(saved);
+      }
     });
     setTimeout(() => textareaRef.current?.focus(), 150);
   }, [router]);

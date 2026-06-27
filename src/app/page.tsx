@@ -88,7 +88,7 @@ function WaitlistChat() {
   async function submitEmail(e: React.FormEvent) {
     e.preventDefault();
     setEmailStatus("loading");
-    const result = await joinWaitlist(email);
+    const result = await joinWaitlist(email, description);
     if (result.success) {
       setStep("done");
     } else {
