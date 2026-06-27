@@ -80,6 +80,10 @@ export type BiosContext = {
   // every reason to quietly drop it rather than write a number-free slide.
   goalProgress?: Record<string, GoalProgress>;
   features?: FeatureMetric[];
+  // Actual metrics rows linked to features (feature_metric_id IS NOT NULL).
+  // Fetched alongside features so the AI gets real event names, aggregations,
+  // and targets per feature — not just the feature name and success blurb.
+  featureKpis?: Metric[];
   metrics?: Metric[];
   featureImpact?: FeatureImpactResult[];
   funnels?: FunnelSummary[];
@@ -133,6 +137,21 @@ export async function getBiosReportData(
       getFeatureImpactSummaries(orgId)
         .then((summaries) => { result.featureImpact = summaries.filter(s => s.status === "computed"); })
         .catch(() => { result.featureImpact = []; })
+    );
+    // Fetch the actual metrics/KPI rows that are linked to specific features
+    // (feature_metric_id IS NOT NULL). This is how the AI knows which events
+    // to reference per feature — the suggestions JSONB has planned targets,
+    // but these rows are the live tracking config (event name, aggregation,
+    // target value, guardrails, etc.). Without this, "Feature Metrics" reports
+    // only got feature names + a 80-char success blurb — nothing numeric.
+    promises.push(
+      admin
+        .from("metrics")
+        .select("*")
+        .eq("organization_id", orgId)
+        .not("feature_metric_id", "is", null)
+        .then(({ data }) => { result.featureKpis = (data ?? []) as Metric[]; })
+        .catch(() => { result.featureKpis = []; })
     );
   }
 
@@ -576,6 +595,14 @@ export async function planReport(
     if (biosSections.funnels) included.push("User Journeys / Funnels"); else excluded.push("User Journeys / Funnels");
     const excl = excluded.length > 0 ? ` Do NOT generate any slides about: ${excluded.join(", ")}.` : "";
     scopeRestrictionBlock = `\nSCOPE RESTRICTION: This report covers ONLY: ${included.join(", ")}.${excl} Slides that reference excluded sections will be rejected — strictly omit them.\n`;
+
+    // When Feature Metrics is the only selected scope, be explicit: every slide
+    // must reference specific features and their KPIs/events — not general metrics
+    // from the broader metrics library (those are in a separate "KPIs & Metrics" section).
+    const featureOnly = biosSections.features && !biosSections.goals && !biosSections.funnelsKpis && !biosSections.funnels;
+    if (featureOnly) {
+      scopeRestrictionBlock += `FEATURE FOCUS MODE: Build EVERY slide around the specific features listed in FEATURE TRACKING PLANS above — their KPIs, events, launch status, and success/failure signals. Do NOT pad with generic product or business metrics that are not explicitly tied to one of these features. If a slide cannot be grounded in a specific feature from the list, omit it.\n`;
+    }
   }
 
   // Build BIOS context block
@@ -598,11 +625,76 @@ export async function planReport(
     }
 
     if (biosContext.features && biosContext.features.length > 0) {
-      parts.push(`FEATURE TRACKING PLANS (${biosContext.features.length}):\n` +
-        biosContext.features.slice(0, 10).map(f =>
-          `- ${f.feature_name} (${f.sector}) — ${(f.success_definition ?? "").slice(0, 80)}`
-        ).join("\n")
-      );
+      // Build a lookup from feature_metric_id → metrics[] so we can attach
+      // the real tracked KPIs/guardrails to each feature in the prompt.
+      const featureKpiMap: Record<string, Metric[]> = {};
+      (biosContext.featureKpis ?? []).forEach(m => {
+        if (m.feature_metric_id) {
+          featureKpiMap[m.feature_metric_id] = featureKpiMap[m.feature_metric_id] ?? [];
+          featureKpiMap[m.feature_metric_id].push(m);
+        }
+      });
+
+      const featureLines = biosContext.features.slice(0, 10).map(f => {
+        const lines: string[] = [];
+        const launchParts = [
+          f.launch_status ? `status: ${f.launch_status.replace(/_/g, " ")}` : null,
+          f.actual_launch_date ? `launched: ${f.actual_launch_date}` : f.planned_launch_date ? `planned launch: ${f.planned_launch_date}` : null,
+        ].filter(Boolean);
+        const launchStr = launchParts.length > 0 ? ` [${launchParts.join(", ")}]` : "";
+        lines.push(`- ${f.feature_name} (${f.sector ?? "general"})${launchStr}`);
+        if (f.success_definition) lines.push(`  Success: ${f.success_definition}`);
+        if (f.failure_definition) lines.push(`  Failure signal: ${f.failure_definition}`);
+
+        // Prefer linked actual metrics rows — these have real event names + targets
+        const linkedMetrics = featureKpiMap[f.id] ?? [];
+        if (linkedMetrics.length > 0) {
+          const kpis     = linkedMetrics.filter(m => m.kind === "kpi");
+          const metrics  = linkedMetrics.filter(m => m.kind === "metric");
+          const guards   = linkedMetrics.filter(m => m.kind === "guardrail");
+          const formatM  = (m: Metric) => {
+            const parts: string[] = [`[${m.kind?.toUpperCase() ?? "KPI"}] ${m.name}`];
+            if (m.event_name) parts.push(`event: ${m.event_name}`);
+            if (m.denominator_event_name) parts.push(`÷ ${m.denominator_event_name}`);
+            if (m.target) parts.push(`target: ${m.target}`);
+            if (m.target_value != null) parts.push(`target value: ${m.target_value}`);
+            return `    ${parts.join(" | ")}`;
+          };
+          if (kpis.length > 0) {
+            lines.push(`  KPIs (${kpis.length}):`);
+            kpis.forEach(m => lines.push(formatM(m)));
+          }
+          if (metrics.length > 0) {
+            lines.push(`  Metrics (${metrics.length}):`);
+            metrics.forEach(m => lines.push(formatM(m)));
+          }
+          if (guards.length > 0) {
+            lines.push(`  Guardrails (${guards.length}):`);
+            guards.forEach(m => lines.push(formatM(m)));
+          }
+        } else if (f.suggestions && f.suggestions.length > 0) {
+          // Fall back to AI-suggested planned metrics from feature setup wizard
+          const kpis    = f.suggestions.filter(s => s.type === "kpi");
+          const metrics = f.suggestions.filter(s => s.type === "metric");
+          const guards  = f.suggestions.filter(s => s.type === "guardrail");
+          const formatS = (s: { name: string; event_name: string | null; target: string | null; type: string }) =>
+            `    [${s.type.toUpperCase()}] ${s.name}${s.event_name ? ` | event: ${s.event_name}` : ""}${s.target ? ` | target: ${s.target}` : ""}`;
+          if (kpis.length > 0) {
+            lines.push(`  Planned KPIs (${kpis.length}) — not yet linked to live tracking:`);
+            kpis.slice(0, 5).forEach(s => lines.push(formatS(s)));
+          }
+          if (metrics.length > 0) {
+            lines.push(`  Planned metrics (${metrics.length}):`);
+            metrics.slice(0, 4).forEach(s => lines.push(formatS(s)));
+          }
+          if (guards.length > 0) {
+            lines.push(`  Planned guardrails: ${guards.map(g => g.name + (g.event_name ? ` (${g.event_name})` : "")).join(", ")}`);
+          }
+        }
+        return lines.join("\n");
+      });
+
+      parts.push(`FEATURE TRACKING PLANS (${biosContext.features.length}):\n${featureLines.join("\n\n")}`);
     }
 
     if (biosContext.featureImpact && biosContext.featureImpact.length > 0) {
