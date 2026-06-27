@@ -100,9 +100,9 @@ function WaitlistChat() {
       <div className="absolute -inset-10 -z-10 rounded-3xl pointer-events-none"
         style={{ background: "radial-gradient(ellipse 70% 60% at 50% 50%, rgba(99,102,241,0.10), transparent)" }} />
 
-      {/* Card */}
+      {/* Card — auto height, grows with conversation */}
       <div className="relative bg-white rounded-2xl overflow-hidden flex flex-col"
-        style={{ height: "560px", border: "1px solid rgba(99,102,241,0.12)" }}>
+        style={{ border: "1px solid rgba(99,102,241,0.14)" }}>
 
         {/* ── Header ───────────────────────────────────────── */}
         <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100/80 shrink-0">
@@ -119,8 +119,8 @@ function WaitlistChat() {
           </div>
         </div>
 
-        {/* ── Messages ─────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto px-6 py-6 flex flex-col gap-5 min-h-0">
+        {/* ── Messages — scrolls after max-height ──────────── */}
+        <div className="overflow-y-auto px-6 py-5 flex flex-col gap-4" style={{ maxHeight: "380px" }}>
           {msgs.map((msg) => (
             <div key={msg.id}>
 
@@ -129,7 +129,7 @@ function WaitlistChat() {
                   <div className="w-7 h-7 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center shrink-0 mt-0.5">
                     <Sparkles size={12} className="text-indigo-500" />
                   </div>
-                  <p className="text-[14px] text-gray-600 leading-[1.7] pt-0.5">{msg.text}</p>
+                  <p className="text-[14px] text-gray-600 leading-[1.7] pt-0.5 text-left">{msg.text}</p>
                 </div>
               )}
 
@@ -193,10 +193,7 @@ function WaitlistChat() {
                   </div>
                   <div>
                     <p className="text-[14px] font-semibold text-gray-800">You&apos;re on the list.</p>
-                    <p className="text-[13px] text-gray-400 mt-0.5 leading-relaxed">We&apos;ll reach out when your spot is ready to set up your goal.</p>
-                    <Link href="/login" className="text-[13px] text-indigo-500 hover:text-indigo-700 transition-colors mt-1.5 inline-block">
-                      Already have access? Sign in →
-                    </Link>
+                    <p className="text-[13px] text-gray-400 mt-0.5 leading-relaxed">We&apos;ll reach out when your spot is ready.</p>
                   </div>
                 </div>
               )}
@@ -208,7 +205,7 @@ function WaitlistChat() {
 
         {/* ── Bottom input area ────────────────────────────── */}
         {phase !== "done" && (
-          <div className="border-t border-gray-100 px-5 pt-4 pb-5 shrink-0">
+          <div className="border-t border-gray-100 px-5 pt-3.5 pb-4 shrink-0">
 
             {/* Describe input */}
             {phase === "describe" && (
@@ -287,12 +284,10 @@ function WaitlistChat() {
         )}
       </div>
 
-      {phase === "describe" && (
-        <p className="text-[12px] text-gray-400 mt-4 text-center">
-          Already have an account?{" "}
-          <Link href="/login" className="text-indigo-500 hover:text-indigo-600 transition-colors">Sign in →</Link>
-        </p>
-      )}
+      <p className="text-[12px] text-gray-400 mt-3 text-center">
+        Already have an account?{" "}
+        <Link href="/login" className="text-indigo-500 hover:text-indigo-600 transition-colors">Sign in →</Link>
+      </p>
     </div>
   );
 }
