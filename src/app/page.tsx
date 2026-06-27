@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import {
   ArrowRight, BarChart3, Zap, FileText, Target, TrendingUp,
-  Sparkles, CheckCircle2, Send, Loader2,
+  Sparkles, CheckCircle2, Loader2, ArrowUp,
 } from "lucide-react";
 import { joinWaitlist } from "@/app/actions/waitlist";
 
-// ── Goal preview generator ────────────────────────────────────────────────────
+// ── Goal preview ──────────────────────────────────────────────────────────────
 
 interface GoalPreview {
   title: string;
@@ -17,13 +17,13 @@ interface GoalPreview {
   kpis: string[];
 }
 
-function generatePreview(description: string): GoalPreview {
-  const t = description.toLowerCase();
+function generatePreview(d: string): GoalPreview {
+  const t = d.toLowerCase();
   if (/churn|retain|cancel|los(e|ing)|keep/.test(t))
     return { title: "Reduce Customer Churn", target: "< 3% monthly churn rate", timeframe: "Q3 2026", kpis: ["Monthly churn rate", "30-day retention by cohort", "Feature adoption depth"] };
-  if (/activat|onboard|first.value|time.to.value|sign.?up|get started/.test(t))
+  if (/activat|onboard|first.value|sign.?up|get started/.test(t))
     return { title: "Improve User Activation", target: "60% activation within 7 days", timeframe: "Q3 2026", kpis: ["7-day activation rate", "Time to first key action", "Onboarding completion rate"] };
-  if (/engag|dau|mau|daily|weekly|active.user|session|stickin/.test(t))
+  if (/engag|dau|mau|daily|weekly|active.user|session/.test(t))
     return { title: "Increase Product Engagement", target: "40% DAU / MAU ratio", timeframe: "Q3 2026", kpis: ["Daily active users", "Feature depth score", "Session frequency per user"] };
   if (/convert|trial|paid|upgrade|subscri/.test(t))
     return { title: "Grow Trial-to-Paid Conversion", target: "25% trial conversion rate", timeframe: "Q3 2026", kpis: ["Trial-to-paid rate", "Time to upgrade", "Feature engagement pre-conversion"] };
@@ -32,228 +32,279 @@ function generatePreview(description: string): GoalPreview {
   return { title: "Improve Core Product Outcomes", target: "Primary KPI +30%", timeframe: "Q3 2026", kpis: ["Primary success metric", "Feature impact score", "User satisfaction trend"] };
 }
 
-// ── Chat widget ───────────────────────────────────────────────────────────────
+// ── Chat types ────────────────────────────────────────────────────────────────
 
-type ChatStep = "prompt" | "thinking" | "preview" | "email" | "done";
+type Msg =
+  | { id: string; role: "ai"; text: string }
+  | { id: string; role: "user"; text: string }
+  | { id: string; role: "thinking" }
+  | { id: string; role: "goal"; preview: GoalPreview }
+  | { id: string; role: "done" };
+
+type Phase = "describe" | "thinking" | "email" | "done";
 
 const CHIPS = ["Reduce churn", "Grow MRR", "Improve activation", "Increase engagement"];
 
+const uid = () => Math.random().toString(36).slice(2);
+
+// ── Chat widget ───────────────────────────────────────────────────────────────
+
 function WaitlistChat() {
-  const [step, setStep] = useState<ChatStep>("prompt");
+  const [phase, setPhase] = useState<Phase>("describe");
+  const [msgs, setMsgs] = useState<Msg[]>([
+    { id: "welcome", role: "ai", text: "What is your team working toward this quarter? Describe your goal in plain English — the outcome you want, the problem you're solving." },
+  ]);
+  const [input, setInput] = useState("");
   const [description, setDescription] = useState("");
-  const [preview, setPreview] = useState<GoalPreview | null>(null);
   const [email, setEmail] = useState("");
-  const [emailStatus, setEmailStatus] = useState<"idle" | "loading" | "error">("idle");
+  const [emailLoading, setEmailLoading] = useState(false);
   const [emailError, setEmailError] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [msgs]);
+
+  function push(...newMsgs: Msg[]) {
+    setMsgs((prev) => [...prev, ...newMsgs]);
+  }
+
+  function autoResize(el: HTMLTextAreaElement) {
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 96)}px`;
+  }
 
   function submitDescription() {
-    if (!description.trim()) return;
-    setStep("thinking");
-    setTimeout(() => { setPreview(generatePreview(description)); setStep("preview"); }, 1600);
+    const text = input.trim();
+    if (!text || phase !== "describe") return;
+    setDescription(text);
+    setInput("");
+    if (textareaRef.current) textareaRef.current.style.height = "22px";
+    push({ id: uid(), role: "user", text });
+    setPhase("thinking");
+    const thinkId = uid();
+    push({ id: thinkId, role: "thinking" });
+
+    setTimeout(() => {
+      const preview = generatePreview(text);
+      setMsgs((prev) =>
+        prev
+          .filter((m) => m.id !== thinkId)
+          .concat([
+            { id: uid(), role: "goal", preview },
+            { id: uid(), role: "ai", text: "Here's your goal, structured and ready to track. Drop your email and I'll hold your spot." },
+          ])
+      );
+      setPhase("email");
+    }, 1700);
   }
 
   async function submitEmail(e: React.FormEvent) {
     e.preventDefault();
-    setEmailStatus("loading");
+    if (!email.trim() || emailLoading) return;
+    setEmailLoading(true);
     const result = await joinWaitlist(email, description);
-    if (result.success) { setStep("done"); } else { setEmailStatus("error"); setEmailError(result.message); }
+    setEmailLoading(false);
+    if (result.success) {
+      push({ id: uid(), role: "done" });
+      setPhase("done");
+    } else {
+      setEmailError(result.message);
+    }
   }
 
-  return (
-    <div className="relative max-w-2xl mx-auto mt-10">
-      {/* Ambient glow behind card */}
-      <div className="absolute -inset-8 bg-[radial-gradient(ellipse_70%_60%_at_50%_50%,rgba(99,102,241,0.13),transparent)] pointer-events-none -z-10" />
+  const isFirstPrompt = phase === "describe" && msgs.length === 1;
 
-      <div className="bg-white border border-gray-200/80 rounded-2xl shadow-[0_8px_60px_rgba(99,102,241,0.10),0_2px_20px_rgba(0,0,0,0.06)] overflow-hidden">
+  return (
+    <div className="relative max-w-[680px] mx-auto mt-10">
+      {/* Soft ambient glow — doesn't lift the card, sits behind it */}
+      <div className="absolute -inset-10 bg-[radial-gradient(ellipse_60%_50%_at_50%_50%,rgba(99,102,241,0.09),transparent)] pointer-events-none -z-10" />
+
+      <div className="bg-white border border-gray-200/90 rounded-2xl overflow-hidden flex flex-col h-[460px]">
 
         {/* ── Header ───────────────────────────────────────── */}
-        <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100">
+        <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100 shrink-0">
           <div className="w-7 h-7 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
             <Sparkles size={13} className="text-white" />
           </div>
           <span className="text-[14px] font-semibold text-gray-800">Metrik AI</span>
-          <div className="ml-auto flex items-center gap-1.5">
+          <div className="ml-auto flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-            <span className="text-xs text-gray-400">Early access</span>
+            <span className="text-[12px] text-gray-400">Early access</span>
           </div>
         </div>
 
-        {/* ── Prompt ───────────────────────────────────────── */}
-        {step === "prompt" && (
-          <div className="px-6 pt-6 pb-5">
-            <p className="text-[15px] font-medium text-gray-800 mb-4">
-              What is your team working toward this quarter?
-            </p>
-            <textarea
-              autoFocus
-              rows={2}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitDescription(); } }}
-              placeholder="e.g. We want to reduce churn by improving the onboarding experience for new users…"
-              className="w-full text-[14px] text-gray-800 placeholder:text-gray-300 resize-none focus:outline-none leading-relaxed"
-            />
-            <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-100">
-              <div className="flex gap-2 flex-wrap">
+        {/* ── Messages (scrollable) ─────────────────────────── */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-4">
+          {msgs.map((msg) => (
+            <div key={msg.id}>
+
+              {msg.role === "ai" && (
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0 mt-0.5">
+                    <Sparkles size={11} className="text-indigo-500" />
+                  </div>
+                  <p className="text-[14px] text-gray-600 leading-[1.65] pt-0.5 max-w-[90%]">{msg.text}</p>
+                </div>
+              )}
+
+              {msg.role === "user" && (
+                <div className="flex justify-end">
+                  <div className="bg-indigo-600 text-white text-[13px] rounded-2xl rounded-tr-sm px-4 py-2.5 max-w-[78%] leading-relaxed">
+                    {msg.text}
+                  </div>
+                </div>
+              )}
+
+              {msg.role === "thinking" && (
+                <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center shrink-0">
+                    <Sparkles size={11} className="text-indigo-500" />
+                  </div>
+                  <div className="flex gap-1.5 items-center">
+                    {[0, 130, 260].map((d) => (
+                      <span key={d} className="w-1.5 h-1.5 rounded-full bg-indigo-300 animate-bounce" style={{ animationDelay: `${d}ms` }} />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {msg.role === "goal" && (
+                <div className="ml-9">
+                  <div className="rounded-xl border border-gray-200 overflow-hidden text-left">
+                    <div className="px-5 pt-4 pb-3.5 border-b border-gray-100">
+                      <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-[0.16em] mb-1.5">Business Goal</p>
+                      <p className="text-[16px] font-bold text-gray-900 leading-snug">{msg.preview.title}</p>
+                    </div>
+                    <div className="grid grid-cols-2 divide-x divide-gray-100 border-b border-gray-100">
+                      <div className="px-5 py-3">
+                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Target</p>
+                        <p className="text-[13px] text-gray-700 font-medium">{msg.preview.target}</p>
+                      </div>
+                      <div className="px-5 py-3">
+                        <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Timeframe</p>
+                        <p className="text-[13px] text-gray-700 font-medium">{msg.preview.timeframe}</p>
+                      </div>
+                    </div>
+                    <div className="px-5 py-4">
+                      <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-3">KPIs to Track</p>
+                      <div className="flex flex-col gap-2">
+                        {msg.preview.kpis.map((k) => (
+                          <div key={k} className="flex items-center gap-2 text-[13px] text-gray-600">
+                            <CheckCircle2 size={13} className="text-indigo-400 shrink-0" />
+                            {k}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {msg.role === "done" && (
+                <div className="flex items-start gap-3">
+                  <div className="w-6 h-6 rounded-lg bg-green-100 flex items-center justify-center shrink-0 mt-0.5">
+                    <CheckCircle2 size={11} className="text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-[14px] font-semibold text-gray-800">You&apos;re on the list.</p>
+                    <p className="text-[13px] text-gray-400 mt-0.5 leading-relaxed">We&apos;ll reach out when your spot is ready.</p>
+                    <Link href="/login" className="text-[13px] text-indigo-500 hover:text-indigo-700 transition-colors mt-1.5 inline-block">
+                      Already have access? Sign in →
+                    </Link>
+                  </div>
+                </div>
+              )}
+
+            </div>
+          ))}
+          <div ref={bottomRef} />
+        </div>
+
+        {/* ── Input area ───────────────────────────────────── */}
+        {phase !== "done" && (
+          <div className="border-t border-gray-100 px-4 py-3 shrink-0">
+
+            {/* Quick chips — only when nothing typed yet */}
+            {isFirstPrompt && (
+              <div className="flex gap-1.5 flex-wrap mb-2.5">
                 {CHIPS.map((c) => (
                   <button
                     key={c}
-                    onClick={() => setDescription(c)}
-                    className="text-[12px] text-gray-500 bg-white border border-gray-200 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-600 px-3 py-1.5 rounded-full transition-all"
+                    onClick={() => { setInput(c); textareaRef.current?.focus(); }}
+                    className="text-[11px] text-gray-500 bg-gray-50 border border-gray-200 hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-600 px-2.5 py-1 rounded-full transition-all"
                   >
                     {c}
                   </button>
                 ))}
               </div>
-              <button
-                onClick={submitDescription}
-                disabled={!description.trim()}
-                className="flex items-center gap-2 text-[13px] font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-30 text-white px-4 py-2 rounded-xl transition-colors shrink-0 ml-4"
-              >
-                <Send size={12} /> Send
-              </button>
-            </div>
-          </div>
-        )}
+            )}
 
-        {/* ── Thinking ─────────────────────────────────────── */}
-        {step === "thinking" && (
-          <div className="px-6 pt-6 pb-6 flex flex-col gap-5">
-            <div className="flex justify-end">
-              <div className="bg-indigo-50 text-indigo-800 text-[13px] rounded-2xl rounded-tr-sm px-4 py-2.5 max-w-[75%] leading-relaxed">
-                {description}
+            {/* Description input */}
+            {phase === "describe" && (
+              <div className="flex items-end gap-2.5">
+                <textarea
+                  ref={textareaRef}
+                  rows={1}
+                  value={input}
+                  autoFocus
+                  onChange={(e) => { setInput(e.target.value); autoResize(e.target); }}
+                  onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitDescription(); } }}
+                  placeholder="Describe your goal…"
+                  className="flex-1 text-[14px] text-gray-800 placeholder:text-gray-400 resize-none focus:outline-none leading-relaxed overflow-hidden"
+                  style={{ height: "22px" }}
+                />
+                <button
+                  onClick={submitDescription}
+                  disabled={!input.trim()}
+                  className="w-8 h-8 flex items-center justify-center bg-indigo-600 hover:bg-indigo-700 disabled:opacity-30 text-white rounded-xl transition-colors shrink-0 mb-0.5"
+                >
+                  <ArrowUp size={14} />
+                </button>
               </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="w-7 h-7 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
-                <Sparkles size={13} className="text-white" />
-              </div>
-              <div className="flex gap-1.5 items-center">
-                {[0, 140, 280].map((d) => (
-                  <span key={d} className="w-2 h-2 rounded-full bg-indigo-200 animate-bounce" style={{ animationDelay: `${d}ms` }} />
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+            )}
 
-        {/* ── Preview ──────────────────────────────────────── */}
-        {step === "preview" && preview && (
-          <div className="px-6 pt-6 pb-6 flex flex-col gap-5">
-            {/* User bubble */}
-            <div className="flex justify-end">
-              <div className="bg-indigo-50 text-indigo-800 text-[13px] rounded-2xl rounded-tr-sm px-4 py-2.5 max-w-[75%] leading-relaxed">
-                {description}
+            {/* Thinking state */}
+            {phase === "thinking" && (
+              <div className="flex items-center gap-2 text-[13px] text-gray-400 h-[22px]">
+                <Loader2 size={13} className="animate-spin text-indigo-400" />
+                Structuring your goal…
               </div>
-            </div>
+            )}
 
-            {/* AI label */}
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
-                <Sparkles size={13} className="text-white" />
-              </div>
-              <span className="text-[13px] text-gray-500">Here&apos;s how Metrik would structure this goal:</span>
-            </div>
+            {/* Email input */}
+            {phase === "email" && (
+              <form onSubmit={submitEmail} className="flex items-center gap-2.5">
+                <input
+                  autoFocus
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="your@email.com"
+                  className="flex-1 text-[14px] text-gray-800 placeholder:text-gray-400 focus:outline-none"
+                  style={{ height: "22px" }}
+                />
+                <button
+                  type="submit"
+                  disabled={emailLoading}
+                  className="flex items-center gap-1.5 text-[12px] font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white px-4 py-1.5 rounded-xl transition-colors shrink-0"
+                >
+                  {emailLoading ? <Loader2 size={12} className="animate-spin" /> : <>Join <ArrowRight size={12} /></>}
+                </button>
+              </form>
+            )}
+            {emailError && <p className="text-[11px] text-red-500 mt-1.5">{emailError}</p>}
 
-            {/* Goal card */}
-            <div className="rounded-2xl border border-gray-200/80 overflow-hidden bg-gradient-to-br from-white to-indigo-50/40">
-              <div className="px-6 pt-5 pb-4 border-b border-gray-100/80">
-                <p className="text-[10px] font-bold text-indigo-400 uppercase tracking-[0.18em] mb-1">Business Goal</p>
-                <h3 className="text-[20px] font-bold text-gray-900 leading-tight">{preview.title}</h3>
-              </div>
-              <div className="grid grid-cols-2 divide-x divide-gray-100 border-b border-gray-100">
-                <div className="px-6 py-4">
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Target</p>
-                  <p className="text-[13px] font-medium text-gray-700">{preview.target}</p>
-                </div>
-                <div className="px-6 py-4">
-                  <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Timeframe</p>
-                  <p className="text-[13px] font-medium text-gray-700">{preview.timeframe}</p>
-                </div>
-              </div>
-              <div className="px-6 py-4">
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-3">KPIs to Track</p>
-                <div className="flex flex-col gap-2">
-                  {preview.kpis.map((k) => (
-                    <div key={k} className="flex items-center gap-2.5 text-[13px] text-gray-600">
-                      <CheckCircle2 size={14} className="text-indigo-400 shrink-0" />
-                      {k}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* CTA */}
-            <div className="flex justify-end">
-              <button
-                onClick={() => setStep("email")}
-                className="flex items-center gap-2 text-[13px] font-semibold bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-xl transition-colors"
-              >
-                Get early access to track this <ArrowRight size={13} />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ── Email ────────────────────────────────────────── */}
-        {step === "email" && preview && (
-          <div className="px-6 pt-6 pb-6 flex flex-col gap-5">
-            <div className="flex justify-end">
-              <div className="bg-indigo-50 text-indigo-800 text-[13px] rounded-2xl rounded-tr-sm px-4 py-2.5 max-w-[75%] leading-relaxed">
-                {description}
-              </div>
-            </div>
-            <div className="flex items-start gap-3">
-              <div className="w-7 h-7 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0 mt-0.5">
-                <Sparkles size={13} className="text-white" />
-              </div>
-              <p className="text-[13px] text-gray-600 leading-relaxed pt-0.5">
-                <span className="font-semibold text-gray-800">{preview.title}</span> is ready. Enter your work email and we&apos;ll set this up when your spot opens.
-              </p>
-            </div>
-            <form onSubmit={submitEmail} className="flex gap-2.5">
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@company.com"
-                className="flex-1 text-[14px] border border-gray-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-400 min-w-0 transition-shadow"
-              />
-              <button
-                type="submit"
-                disabled={emailStatus === "loading"}
-                className="flex items-center gap-2 text-[13px] font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white px-5 py-2.5 rounded-xl transition-colors shrink-0"
-              >
-                {emailStatus === "loading" ? <Loader2 size={13} className="animate-spin" /> : <>Join waitlist <ArrowRight size={13} /></>}
-              </button>
-            </form>
-            {emailStatus === "error" && <p className="text-xs text-red-500 -mt-2">{emailError}</p>}
-          </div>
-        )}
-
-        {/* ── Done ─────────────────────────────────────────── */}
-        {step === "done" && (
-          <div className="px-6 py-12 flex flex-col items-center text-center">
-            <div className="w-14 h-14 rounded-2xl bg-green-50 border border-green-100 flex items-center justify-center mb-5">
-              <CheckCircle2 size={26} className="text-green-500" />
-            </div>
-            <p className="text-[17px] font-semibold text-gray-900 mb-2">You&apos;re on the list.</p>
-            <p className="text-[13px] text-gray-400 leading-relaxed max-w-xs">
-              We&apos;ll reach out when your spot is ready so you can start tracking your goal.
-            </p>
-            <Link href="/login" className="mt-5 text-[13px] text-indigo-500 hover:text-indigo-700 transition-colors">
-              Already have access? Sign in →
-            </Link>
           </div>
         )}
       </div>
 
-      {step === "prompt" && (
-        <p className="text-xs text-gray-400 mt-4 text-center">
+      {phase === "describe" && (
+        <p className="text-[12px] text-gray-400 mt-3 text-center">
           Already have an account?{" "}
-          <Link href="/login" className="text-indigo-500 hover:text-indigo-600">Sign in →</Link>
+          <Link href="/login" className="text-indigo-500 hover:text-indigo-600 transition-colors">Sign in →</Link>
         </p>
       )}
     </div>
@@ -268,9 +319,7 @@ export default function HomePage() {
 
       {/* Background */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_90%_55%_at_50%_-5%,rgba(99,102,241,0.11),transparent)]" />
-        <div className="absolute top-[30%] -left-[10%] w-[500px] h-[400px] bg-[radial-gradient(ellipse,rgba(99,102,241,0.05),transparent_70%)]" />
-        <div className="absolute top-[20%] -right-[10%] w-[400px] h-[350px] bg-[radial-gradient(ellipse,rgba(139,92,246,0.04),transparent_70%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_90%_50%_at_50%_-5%,rgba(99,102,241,0.09),transparent)]" />
       </div>
 
       {/* Nav */}
@@ -278,56 +327,61 @@ export default function HomePage() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo-metrik.svg" alt="Metrik" className="h-6 w-auto" />
         <div className="flex items-center gap-5">
-          <Link href="/login" className="text-sm text-gray-500 hover:text-gray-800 transition-colors">Sign in</Link>
-          <Link href="/login" className="flex items-center gap-1.5 text-sm font-semibold bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors">
+          <Link href="/login" className="text-sm text-gray-500 hover:text-gray-700 transition-colors">Sign in</Link>
+          <Link href="/login" className="flex items-center gap-1.5 text-sm font-medium bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors">
             Sign in <ArrowRight size={13} />
           </Link>
         </div>
       </nav>
 
       {/* Hero */}
-      <section className="relative z-10 max-w-4xl mx-auto px-8 pt-16 pb-24 text-center">
+      <section className="relative z-10 max-w-4xl mx-auto px-8 pt-14 pb-24 text-center">
+
         <div className="inline-flex items-center gap-2 bg-indigo-50 border border-indigo-100 text-indigo-600 text-xs font-medium px-3.5 py-1.5 rounded-full mb-8">
           <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 shrink-0" />
           Early access · Limited spots available
         </div>
-        <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 leading-[1.1] tracking-tight mb-5">
+
+        <h1 className="text-[44px] sm:text-5xl font-bold text-gray-900 leading-[1.1] tracking-tight mb-5">
           Turn feature releases into<br />business outcomes, with AI.
         </h1>
-        <p className="text-lg text-gray-500 max-w-xl mx-auto mb-0 leading-relaxed">
-          Set a goal. Log a feature. Metrik&apos;s AI suggests the right metrics,
-          tracks impact after launch, and tells you exactly what moved the needle.
+
+        <p className="text-[17px] text-gray-400 max-w-lg mx-auto leading-relaxed">
+          Set a goal. Log a feature. Metrik&apos;s AI tracks impact after launch
+          and tells you exactly what moved the needle.
         </p>
+
         <WaitlistChat />
+
       </section>
 
       {/* How it works */}
-      <section className="relative z-10 max-w-6xl mx-auto px-8 pb-20">
+      <section className="relative z-10 max-w-5xl mx-auto px-8 pb-20">
         <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-[0.15em] text-center mb-10">How it works</p>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           {[
             { icon: Target, step: "01", title: "Set a business goal", desc: "Define what your company is trying to achieve. Every feature your team ships stays tied to that goal." },
             { icon: Sparkles, step: "02", title: "Log a feature", desc: "Answer 8 questions. Metrik suggests the right metrics, KPIs, and guardrails — already named and event-wired." },
             { icon: TrendingUp, step: "03", title: "See the real impact", desc: "After launch, Metrik computes whether the feature moved your KPI and generates a shareable stakeholder deck." },
           ].map(({ icon: Icon, step, title, desc }) => (
-            <div key={step} className="bg-gray-50 border border-gray-100 rounded-2xl p-6 hover:border-gray-200 transition-colors">
-              <div className="flex items-center gap-3 mb-5">
-                <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center">
+            <div key={step} className="bg-gray-50/70 border border-gray-100 rounded-2xl p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-8 h-8 rounded-lg bg-white border border-gray-200 flex items-center justify-center">
                   <Icon size={14} className="text-indigo-500" />
                 </div>
                 <span className="text-[10px] font-bold text-gray-300 uppercase tracking-widest">{step}</span>
               </div>
-              <h3 className="font-semibold text-gray-900 mb-2 text-sm">{title}</h3>
-              <p className="text-sm text-gray-500 leading-relaxed">{desc}</p>
+              <h3 className="font-semibold text-gray-800 mb-1.5 text-[14px]">{title}</h3>
+              <p className="text-[13px] text-gray-400 leading-relaxed">{desc}</p>
             </div>
           ))}
         </div>
       </section>
 
       {/* Features */}
-      <section className="relative z-10 max-w-6xl mx-auto px-8 pb-20">
+      <section className="relative z-10 max-w-5xl mx-auto px-8 pb-20">
         <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-[0.15em] text-center mb-10">What&apos;s included</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
           {[
             { icon: Sparkles, label: "AI metric suggestions per feature" },
             { icon: Target, label: "Business goal → KPI hierarchy" },
@@ -336,23 +390,23 @@ export default function HomePage() {
             { icon: Zap, label: "Mixpanel & Amplitude connector" },
             { icon: BarChart3, label: "Cohort analysis & funnels" },
           ].map(({ icon: Icon, label }) => (
-            <div key={label} className="flex items-center gap-3 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3.5 hover:border-gray-200 transition-colors">
+            <div key={label} className="flex items-center gap-3 bg-gray-50/70 border border-gray-100 rounded-xl px-4 py-3.5">
               <Icon size={14} className="text-indigo-400 shrink-0" />
-              <span className="text-sm text-gray-600">{label}</span>
+              <span className="text-[13px] text-gray-500">{label}</span>
             </div>
           ))}
         </div>
       </section>
 
       {/* CTA */}
-      <section className="relative z-10 max-w-6xl mx-auto px-8 pb-24">
-        <div className="bg-[radial-gradient(ellipse_at_center,rgba(139,92,246,0.06),transparent_70%)] border border-gray-100 rounded-2xl px-8 py-16 text-center">
-          <h2 className="text-3xl font-bold text-gray-900 mb-3 tracking-tight">Built for teams that care about outcomes.</h2>
-          <p className="text-gray-400 text-sm mb-8 max-w-md mx-auto">Early access is limited. Takes 2 minutes to set up. No credit card required.</p>
+      <section className="relative z-10 max-w-5xl mx-auto px-8 pb-24">
+        <div className="border border-gray-100 rounded-2xl px-8 py-14 text-center bg-gray-50/50">
+          <h2 className="text-[28px] font-bold text-gray-900 mb-3 tracking-tight">Built for teams that care about outcomes.</h2>
+          <p className="text-gray-400 text-[14px] mb-8 max-w-sm mx-auto leading-relaxed">Early access is limited. Takes 2 minutes to set up. No credit card required.</p>
           <Link
             href="#"
             onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: "smooth" }); }}
-            className="inline-flex items-center gap-2 bg-gray-900 text-white font-semibold px-7 py-3.5 rounded-lg hover:bg-gray-700 transition-colors text-sm"
+            className="inline-flex items-center gap-2 bg-gray-900 text-white font-medium px-6 py-3 rounded-xl hover:bg-gray-700 transition-colors text-[14px]"
           >
             Join the waitlist <ArrowRight size={14} />
           </Link>
@@ -360,13 +414,14 @@ export default function HomePage() {
       </section>
 
       {/* Footer */}
-      <footer className="relative z-10 border-t border-gray-100 py-6 px-8 flex items-center justify-between max-w-6xl mx-auto">
+      <footer className="relative z-10 border-t border-gray-100 py-6 px-8 flex items-center justify-between max-w-5xl mx-auto">
         <span className="text-xs text-gray-400 font-semibold">Metrik</span>
         <div className="flex items-center gap-4">
           <Link href="/login" className="text-xs text-gray-400 hover:text-gray-600 transition-colors">Sign in</Link>
-          <Link href="/login" className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 transition-colors">Sign in →</Link>
+          <Link href="/login" className="text-xs font-medium text-indigo-600 hover:text-indigo-700 transition-colors">Sign in →</Link>
         </div>
       </footer>
+
     </div>
   );
 }
