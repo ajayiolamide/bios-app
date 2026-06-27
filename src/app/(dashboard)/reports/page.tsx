@@ -3219,72 +3219,72 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
           Period, sheet, scope and cohorts — all in one compact card. */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
 
-        {/* Row 1: Period + Sheet (inline, side by side) + token counter */}
-        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 flex-wrap">
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">Period</span>
-            {customPeriod ? (
-              <div className="flex items-center gap-1.5 flex-1">
-                <input
-                  autoFocus
-                  value={period}
-                  onChange={e => setPeriod(e.target.value)}
-                  placeholder="e.g. H1 2026"
-                  className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                />
-                <button onClick={() => setCustomPeriod(false)} className="text-xs text-gray-400 hover:text-gray-600 whitespace-nowrap">← Back</button>
-              </div>
-            ) : (
-              <select
-                value={periodOptions.find(o => o.value === period) ? period : "__custom__"}
-                onChange={e => { if (e.target.value === "__custom__") { setCustomPeriod(true); return; } if (!e.target.value) return; setPeriod(e.target.value); }}
-                className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
-              >
-                {periodOptions.map((o, i) => <option key={i} value={o.value} disabled={!o.value}>{o.label}</option>)}
-              </select>
-            )}
-          </div>
-
-          {sourcesWithData.length > 0 && (
-            <>
-              <div className="h-5 w-px bg-gray-200 flex-shrink-0" />
-              <div className={`flex items-center gap-2 flex-1 min-w-0 transition-opacity ${!includeSheet ? "opacity-40" : ""}`}>
-                <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">Sheet</span>
-                <select value={selectedSourceId} onChange={e => setSelectedSourceId(e.target.value)}
-                  disabled={!includeSheet}
-                  className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white disabled:cursor-not-allowed">
-                  <option value="">— None —</option>
-                  {sourcesWithData.map(s => <option key={s.source.id} value={s.source.id}>{s.source.name}</option>)}
-                </select>
-                {selectedSourceId && includeSheet && (
-                  <span className={`text-[10px] whitespace-nowrap flex-shrink-0 flex items-center gap-1 ${isFiltered ? "text-indigo-600" : "text-gray-400"}`}>
-                    <Filter size={9} />{isFiltered ? `${filteredRows.length} rows` : `${totalRows} rows`}
-                  </span>
-                )}
-              </div>
-              {/* Include sheet toggle */}
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setIncludeSheet(v => !v)}
-                  title={includeSheet ? "Sheet data will be sent to AI — click to exclude" : "Sheet data excluded — click to include"}
-                  className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors flex-shrink-0 ${includeSheet ? "bg-indigo-500" : "bg-gray-300"}`}>
-                  <span className="inline-block h-3 w-3 rounded-full bg-white shadow transition-transform"
-                    style={{ transform: includeSheet ? "translateX(14px)" : "translateX(2px)" }} />
-                </button>
-                <span className={`text-[10px] whitespace-nowrap font-medium ${includeSheet ? "text-indigo-600" : "text-gray-400"}`}>
-                  {includeSheet ? "Included" : "Excluded"}
-                </span>
-              </div>
-            </>
+        {/* Row 1: Period */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
+          <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap w-14 flex-shrink-0">Period</span>
+          {customPeriod ? (
+            <div className="flex items-center gap-1.5 flex-1">
+              <input
+                autoFocus
+                value={period}
+                onChange={e => setPeriod(e.target.value)}
+                placeholder="e.g. H1 2026"
+                className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              />
+              <button onClick={() => setCustomPeriod(false)} className="text-xs text-gray-400 hover:text-gray-600 whitespace-nowrap">← Back</button>
+            </div>
+          ) : (
+            <select
+              value={periodOptions.find(o => o.value === period) ? period : "__custom__"}
+              onChange={e => { if (e.target.value === "__custom__") { setCustomPeriod(true); return; } if (!e.target.value) return; setPeriod(e.target.value); }}
+              className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+            >
+              {periodOptions.map((o, i) => <option key={i} value={o.value} disabled={!o.value}>{o.label}</option>)}
+            </select>
           )}
-
+          <span className="text-[10px] text-gray-300 whitespace-nowrap flex-shrink-0">Calendar-based — not from sheet</span>
           {totalTokens > 0 && (
             <span className="flex items-center gap-1 text-[10px] text-amber-600 bg-amber-50 px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0">
               <Coins size={10} />{totalTokens.toLocaleString()} tokens
             </span>
           )}
         </div>
+
+        {/* Row 2: Sheet data — toggle + picker, clear label about what "included" means */}
+        {sourcesWithData.length > 0 && (
+          <div className="px-4 py-3 border-b border-gray-100">
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap w-14 flex-shrink-0">Sheet</span>
+              {/* Toggle */}
+              <button
+                type="button"
+                onClick={() => setIncludeSheet(v => !v)}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors flex-shrink-0 ${includeSheet ? "bg-indigo-500" : "bg-gray-300"}`}>
+                <span className="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform"
+                  style={{ transform: includeSheet ? "translateX(18px)" : "translateX(2px)" }} />
+              </button>
+              {/* Picker — only interactive when included */}
+              <select value={selectedSourceId} onChange={e => setSelectedSourceId(e.target.value)}
+                disabled={!includeSheet}
+                className={`flex-1 min-w-0 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white transition-opacity ${!includeSheet ? "opacity-40 cursor-not-allowed" : ""}`}>
+                <option value="">— None —</option>
+                {sourcesWithData.map(s => <option key={s.source.id} value={s.source.id}>{s.source.name}</option>)}
+              </select>
+              {/* Row count when included */}
+              {selectedSourceId && includeSheet && (
+                <span className={`text-[10px] whitespace-nowrap flex-shrink-0 flex items-center gap-1 ${isFiltered ? "text-indigo-600" : "text-gray-400"}`}>
+                  <Filter size={9} />{isFiltered ? `${filteredRows.length} rows` : `${totalRows} rows`}
+                </span>
+              )}
+            </div>
+            {/* Explanatory line */}
+            <p className="mt-1.5 ml-[4.25rem] text-[10px] leading-snug text-gray-400">
+              {includeSheet
+                ? "Sheet rows filtered in the Data tab will be sent to the AI as supporting numbers for this period."
+                : "Sheet data won't be sent to the AI — report will draw only from your Goals, Features & KPI data."}
+            </p>
+          </div>
+        )}
 
         {/* Row 2: Scope pills — multi-select, each toggles its own section */}
         <div className="flex items-center gap-2 px-4 py-2.5 flex-wrap">
