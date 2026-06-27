@@ -3018,6 +3018,15 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
   const [biosSections, setBiosSections] = useState<BiosSections>({ goals: true, features: true, funnelsKpis: true });
   const anyBiosSection = biosSections.goals || biosSections.features || biosSections.funnelsKpis || biosSections.funnels;
 
+  // Explicit sheet include toggle — user controls it, but we auto-default:
+  // ON when 0 or 2+ sections selected (broad / full review), OFF when exactly
+  // 1 section (focused mode — sheet data is usually irrelevant there).
+  const [includeSheet, setIncludeSheet] = useState(true);
+  const activeSectionCount = [biosSections.goals, biosSections.features, biosSections.funnelsKpis, biosSections.funnels].filter(Boolean).length;
+  useEffect(() => {
+    setIncludeSheet(activeSectionCount !== 1);
+  }, [activeSectionCount]);
+
   // Per-template planning state
   type PlanState = { status: "idle" | "planning" | "ready" | "error"; deck?: SlidesDeck; tokensUsed?: number; error?: string };
   const [planStates, setPlanStates] = useState<Record<string, PlanState>>({});
@@ -3141,7 +3150,7 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
       const res = await planReport(
         orgId,
         template.id,
-        filteredRows,
+        includeSheet ? filteredRows : [],
         period,
         combinedNotes || undefined,
         anyBiosSection ? biosSections : undefined,
@@ -3239,18 +3248,33 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
           {sourcesWithData.length > 0 && (
             <>
               <div className="h-5 w-px bg-gray-200 flex-shrink-0" />
-              <div className="flex items-center gap-2 flex-1 min-w-0">
+              <div className={`flex items-center gap-2 flex-1 min-w-0 transition-opacity ${!includeSheet ? "opacity-40" : ""}`}>
                 <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">Sheet</span>
                 <select value={selectedSourceId} onChange={e => setSelectedSourceId(e.target.value)}
-                  className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white">
+                  disabled={!includeSheet}
+                  className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white disabled:cursor-not-allowed">
                   <option value="">— None —</option>
                   {sourcesWithData.map(s => <option key={s.source.id} value={s.source.id}>{s.source.name}</option>)}
                 </select>
-                {selectedSourceId && (
+                {selectedSourceId && includeSheet && (
                   <span className={`text-[10px] whitespace-nowrap flex-shrink-0 flex items-center gap-1 ${isFiltered ? "text-indigo-600" : "text-gray-400"}`}>
                     <Filter size={9} />{isFiltered ? `${filteredRows.length} rows` : `${totalRows} rows`}
                   </span>
                 )}
+              </div>
+              {/* Include sheet toggle */}
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIncludeSheet(v => !v)}
+                  title={includeSheet ? "Sheet data will be sent to AI — click to exclude" : "Sheet data excluded — click to include"}
+                  className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors flex-shrink-0 ${includeSheet ? "bg-indigo-500" : "bg-gray-300"}`}>
+                  <span className="inline-block h-3 w-3 rounded-full bg-white shadow transition-transform"
+                    style={{ transform: includeSheet ? "translateX(14px)" : "translateX(2px)" }} />
+                </button>
+                <span className={`text-[10px] whitespace-nowrap font-medium ${includeSheet ? "text-indigo-600" : "text-gray-400"}`}>
+                  {includeSheet ? "Included" : "Excluded"}
+                </span>
               </div>
             </>
           )}
