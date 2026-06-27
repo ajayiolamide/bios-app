@@ -952,6 +952,7 @@ DESIGN PHILOSOPHY — follow strictly:
 - Use pie_chart for part-of-whole breakdowns (3-7 categories). Use "donut" style when a central metric matters.
 - Use big_stat for the single most important headline number — always include a narrative (2-3 sentences explaining why it matters, what drove it).
 - Use stat_narrative when a key number needs both visual punch AND a business story alongside it — big number left, 2-3 sentence explanation right. Use this instead of big_stat when the number alone needs more context.
+- CRITICAL: NEVER use big_stat or stat_narrative when the metric has no real measured value. If a KPI has no actual number (e.g. "Target not yet confirmed", "Data not yet available", "Not tracked"), use an "insight" slide instead that briefly names the gap and what to track next. The "stat" field of big_stat/stat_narrative must ALWAYS be a real number or percentage — never a placeholder sentence.
 - Use progress_bars when tracking metrics vs targets.
 - Use kpi_grid only for a summary grid of 4-6 KPIs.
 - insight slides: 2 sentences max + one headline stat (no long paragraphs).

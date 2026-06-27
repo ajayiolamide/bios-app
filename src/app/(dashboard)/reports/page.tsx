@@ -1162,7 +1162,7 @@ function PreviewModal({
       <div ref={exportCanvasRef} style={{ position: "fixed", top: 0, left: -9999, width: 960, height: 540, pointerEvents: "none" }}>
         {slide ? <SlideCard slide={slide} brand={brand} deckTitle={deck?.title ?? ""} /> : null}
       </div>
-      <div className="bg-white rounded-2xl shadow-2xl flex overflow-hidden" style={{ width: "min(96vw, 1200px)", height: "min(92vh, 720px)" }}>
+      <div className="bg-white rounded-2xl shadow-2xl flex overflow-hidden" style={{ width: "min(96vw, 1520px)", height: "min(94vh, 860px)" }}>
 
         {/* ── Left: filmstrip ───────────────────────────────────────────── */}
         <div className="w-44 flex-shrink-0 bg-gray-950 flex flex-col overflow-hidden">
@@ -1613,7 +1613,7 @@ function PreviewModal({
 
         {/* ── Right: edit / add / comments panel ────────────────────────── */}
         {rightPanel !== "none" && (
-          <div className="w-72 flex-shrink-0 bg-white border-l border-gray-200 flex flex-col overflow-hidden">
+          <div className="w-96 flex-shrink-0 bg-white border-l border-gray-200 flex flex-col overflow-hidden">
             {rightPanel === "edit" && slide ? (
               <>
                 <div className="px-4 pt-4 pb-3 border-b border-gray-100 flex-shrink-0">
@@ -1632,8 +1632,8 @@ function PreviewModal({
                       value={aiEditText}
                       onChange={e => setAiEditText(e.target.value)}
                       placeholder="Type what you want changed…"
-                      rows={2}
-                      className="w-full border border-indigo-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white resize-none"
+                      rows={3}
+                      className="w-full border border-indigo-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white resize-y"
                     />
                     <button
                       onClick={() => handleReplanSlide(aiEditText)}
@@ -3193,13 +3193,15 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
     return opts;
   })();
 
-  const SCOPE_PRESETS = [
-    { label: "Full Review",     set: { goals: true,  features: true,  funnelsKpis: true,  funnels: true  } },
-    { label: "Goals Only",      set: { goals: true,  features: false, funnelsKpis: false, funnels: false } },
-    { label: "Feature Metrics", set: { goals: false, features: true,  funnelsKpis: false, funnels: false } },
-    { label: "Insights & KPIs", set: { goals: false, features: false, funnelsKpis: true,  funnels: false } },
-    { label: "User Journeys",   set: { goals: false, features: false, funnelsKpis: false, funnels: true  } },
-  ] as { label: string; set: BiosSections }[];
+  // Each section pill maps to one key — they're individually toggleable.
+  // "Full Review" is a convenience shortcut that selects/deselects all four.
+  const SCOPE_PILLS = [
+    { label: "Goals",           key: "goals"       as keyof BiosSections },
+    { label: "Feature Metrics", key: "features"    as keyof BiosSections },
+    { label: "Insights & KPIs", key: "funnelsKpis" as keyof BiosSections },
+    { label: "User Journeys",   key: "funnels"     as keyof BiosSections },
+  ];
+  const allSelected = SCOPE_PILLS.every(p => biosSections[p.key]);
 
   return (
     <div className="space-y-4 max-w-2xl">
@@ -3260,13 +3262,23 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
           )}
         </div>
 
-        {/* Row 2: Scope pills */}
+        {/* Row 2: Scope pills — multi-select, each toggles its own section */}
         <div className="flex items-center gap-2 px-4 py-2.5 flex-wrap">
           <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap mr-1">Scope</span>
-          {SCOPE_PRESETS.map(({ label, set }) => {
-            const isActive = JSON.stringify(biosSections) === JSON.stringify(set);
+          {/* "All" shortcut */}
+          <button type="button"
+            onClick={() => setBiosSections({ goals: !allSelected, features: !allSelected, funnelsKpis: !allSelected, funnels: !allSelected })}
+            className={`text-xs font-medium px-3 py-1 rounded-full border transition-colors ${
+              allSelected ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600"
+            }`}>
+            All
+          </button>
+          <span className="w-px h-4 bg-gray-200 flex-shrink-0" />
+          {SCOPE_PILLS.map(({ label, key }) => {
+            const isActive = !!biosSections[key];
             return (
-              <button key={label} type="button" onClick={() => setBiosSections(set)}
+              <button key={key} type="button"
+                onClick={() => setBiosSections(prev => ({ ...prev, [key]: !prev[key] }))}
                 className={`text-xs font-medium px-3 py-1 rounded-full border transition-colors ${
                   isActive ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600"
                 }`}>
