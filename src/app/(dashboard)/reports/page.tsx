@@ -3163,239 +3163,209 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
   const previewState = activePreview ? planStates[activePreview.templateId] : null;
 
 
+  // Build period options list (shared by the period picker below)
+  const periodOptions = (() => {
+    const now = new Date();
+    const month = (offset: number) => {
+      const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
+      return { name: d.toLocaleString("default", { month: "long" }), year: d.getFullYear() };
+    };
+    const months = Array.from({ length: 13 }, (_, i) => month(-i));
+    const fmt = (m: ReturnType<typeof month>) => `${m.name} ${m.year}`;
+    const opts: { label: string; value: string }[] = [];
+    months.slice(0, 7).forEach(m => opts.push({ label: fmt(m), value: fmt(m) }));
+    opts.push({ label: "──────────", value: "" });
+    for (let i = 0; i < 6; i++) {
+      const end = months[i], start = months[i + 1];
+      opts.push({ label: start.year === end.year ? `${start.name} – ${end.name} ${end.year}` : `${start.name} ${start.year} – ${end.name} ${end.year}`, value: start.year === end.year ? `${start.name} – ${end.name} ${end.year}` : `${start.name} ${start.year} – ${end.name} ${end.year}` });
+    }
+    opts.push({ label: "──────────", value: "" });
+    for (let i = 0; i < 4; i++) {
+      const end = months[i], start = months[i + 2];
+      opts.push({ label: start.year === end.year ? `${start.name} – ${end.name} ${end.year}` : `${start.name} ${start.year} – ${end.name} ${end.year}`, value: start.year === end.year ? `${start.name} – ${end.name} ${end.year}` : `${start.name} ${start.year} – ${end.name} ${end.year}` });
+    }
+    opts.push({ label: "──────────", value: "" });
+    const curQ = Math.floor(now.getMonth() / 3) + 1;
+    for (let q = curQ; q >= 1; q--) opts.push({ label: `Q${q} ${now.getFullYear()}`, value: `Q${q} ${now.getFullYear()}` });
+    for (let q = 4; q >= 1; q--) opts.push({ label: `Q${q} ${now.getFullYear() - 1}`, value: `Q${q} ${now.getFullYear() - 1}` });
+    opts.push({ label: "──────────", value: "" });
+    opts.push({ label: "Custom…", value: "__custom__" });
+    return opts;
+  })();
+
+  const SCOPE_PRESETS = [
+    { label: "Full Review",     set: { goals: true,  features: true,  funnelsKpis: true,  funnels: true  } },
+    { label: "Goals Only",      set: { goals: true,  features: false, funnelsKpis: false, funnels: false } },
+    { label: "Feature Metrics", set: { goals: false, features: true,  funnelsKpis: false, funnels: false } },
+    { label: "Insights & KPIs", set: { goals: false, features: false, funnelsKpis: true,  funnels: false } },
+    { label: "User Journeys",   set: { goals: false, features: false, funnelsKpis: false, funnels: true  } },
+  ] as { label: string; set: BiosSections }[];
+
   return (
-    <div className="space-y-5 max-w-2xl">
-      {/* Token counter */}
-      {totalTokens > 0 && (
-        <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
-          <Coins size={14} />
-          <span><strong>{totalTokens.toLocaleString()}</strong> tokens used this session (Haiku model — ~{Math.round(totalTokens / 1000 * 0.025 * 100) / 100}¢)</span>
-        </div>
-      )}
+    <div className="space-y-4 max-w-2xl">
 
-      {/* ── Step 1: Report setup ─────────────────────────────────────────────────
-          Always visible (not collapsible). Two-column grid for period + sheet
-          keeps it compact so users don't scroll past it and start step 2
-          without configuring it first. */}
-      <StepCard step={1} title="Configure report" hint="Set the period and scope — then pick a template below">
-        <div className="space-y-4">
+      {/* ── Card 1: Config strip ─────────────────────────────────────────────────
+          Period, sheet, scope and cohorts — all in one compact card. */}
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
 
-          {/* Row 1: Period + Sheet data side by side */}
-          <div className={`grid gap-3 ${sourcesWithData.length > 0 ? "grid-cols-2" : "grid-cols-1"}`}>
-            {/* Period */}
-            <div>
-              <p className="text-xs font-semibold text-gray-600 mb-1.5">Period</p>
-              {(() => {
-                const now = new Date();
-                const month = (offset: number) => {
-                  const d = new Date(now.getFullYear(), now.getMonth() + offset, 1);
-                  return { name: d.toLocaleString("default", { month: "long" }), year: d.getFullYear(), d };
-                };
-                const months = Array.from({ length: 13 }, (_, i) => month(-i));
-                const fmt = (m: ReturnType<typeof month>) => `${m.name} ${m.year}`;
-                const options: { label: string; value: string }[] = [];
-                months.slice(0, 7).forEach(m => options.push({ label: fmt(m), value: fmt(m) }));
-                options.push({ label: "──────────", value: "" });
-                for (let i = 0; i < 6; i++) {
-                  const end = months[i], start = months[i + 1];
-                  const label = start.year === end.year
-                    ? `${start.name} – ${end.name} ${end.year}`
-                    : `${start.name} ${start.year} – ${end.name} ${end.year}`;
-                  options.push({ label, value: label });
-                }
-                options.push({ label: "──────────", value: "" });
-                for (let i = 0; i < 4; i++) {
-                  const end = months[i], start = months[i + 2];
-                  const label = start.year === end.year
-                    ? `${start.name} – ${end.name} ${end.year}`
-                    : `${start.name} ${start.year} – ${end.name} ${end.year}`;
-                  options.push({ label, value: label });
-                }
-                options.push({ label: "──────────", value: "" });
-                const curQ = Math.floor(now.getMonth() / 3) + 1;
-                for (let q = curQ; q >= 1; q--) {
-                  options.push({ label: `Q${q} ${now.getFullYear()}`, value: `Q${q} ${now.getFullYear()}` });
-                }
-                if (curQ > 0) {
-                  for (let q = 4; q >= 1; q--) {
-                    options.push({ label: `Q${q} ${now.getFullYear() - 1}`, value: `Q${q} ${now.getFullYear() - 1}` });
-                  }
-                }
-                options.push({ label: "──────────", value: "" });
-                options.push({ label: "Custom…", value: "__custom__" });
+        {/* Row 1: Period + Sheet (inline, side by side) + token counter */}
+        <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100 flex-wrap">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">Period</span>
+            {customPeriod ? (
+              <div className="flex items-center gap-1.5 flex-1">
+                <input
+                  autoFocus
+                  value={period}
+                  onChange={e => setPeriod(e.target.value)}
+                  placeholder="e.g. H1 2026"
+                  className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                />
+                <button onClick={() => setCustomPeriod(false)} className="text-xs text-gray-400 hover:text-gray-600 whitespace-nowrap">← Back</button>
+              </div>
+            ) : (
+              <select
+                value={periodOptions.find(o => o.value === period) ? period : "__custom__"}
+                onChange={e => { if (e.target.value === "__custom__") { setCustomPeriod(true); return; } if (!e.target.value) return; setPeriod(e.target.value); }}
+                className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+              >
+                {periodOptions.map((o, i) => <option key={i} value={o.value} disabled={!o.value}>{o.label}</option>)}
+              </select>
+            )}
+          </div>
 
-                return customPeriod ? (
-                  <div className="flex gap-2">
-                    <input
-                      autoFocus
-                      value={period}
-                      onChange={e => setPeriod(e.target.value)}
-                      placeholder="e.g. H1 2026"
-                      className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300"
-                    />
-                    <button onClick={() => setCustomPeriod(false)}
-                      className="text-xs text-gray-400 hover:text-gray-600 px-2">← Back</button>
-                  </div>
-                ) : (
-                  <select
-                    value={options.find(o => o.value === period) ? period : "__custom__"}
-                    onChange={e => {
-                      if (e.target.value === "__custom__") { setCustomPeriod(true); return; }
-                      if (!e.target.value) return;
-                      setPeriod(e.target.value);
-                    }}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
-                  >
-                    {options.map((o, i) => (
-                      <option key={i} value={o.value} disabled={!o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                );
-              })()}
-            </div>
-
-            {/* Sheet data — only shown when sources exist */}
-            {sourcesWithData.length > 0 && (
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <p className="text-xs font-semibold text-gray-600">Sheet data</p>
-                  <span className="text-[10px] text-gray-400">Optional</span>
-                </div>
+          {sourcesWithData.length > 0 && (
+            <>
+              <div className="h-5 w-px bg-gray-200 flex-shrink-0" />
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">Sheet</span>
                 <select value={selectedSourceId} onChange={e => setSelectedSourceId(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                  className="flex-1 min-w-0 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white">
                   <option value="">— None —</option>
                   {sourcesWithData.map(s => <option key={s.source.id} value={s.source.id}>{s.source.name}</option>)}
                 </select>
                 {selectedSourceId && (
-                  <p className={`mt-1.5 text-[11px] flex items-center gap-1 ${isFiltered ? "text-indigo-600" : "text-gray-400"}`}>
-                    <Filter size={10} />
-                    {isFiltered
-                      ? <span><strong>{filteredRows.length}</strong> of {totalRows} rows (filtered)</span>
-                      : <span>All {totalRows} rows · filter on <strong>Data</strong> tab</span>}
-                  </p>
+                  <span className={`text-[10px] whitespace-nowrap flex-shrink-0 flex items-center gap-1 ${isFiltered ? "text-indigo-600" : "text-gray-400"}`}>
+                    <Filter size={9} />{isFiltered ? `${filteredRows.length} rows` : `${totalRows} rows`}
+                  </span>
                 )}
               </div>
-            )}
-          </div>
+            </>
+          )}
 
-          {/* Row 2: Scope presets */}
-          <div className="pt-3 border-t border-gray-100">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-600">Report scope</p>
-              {!hasAnyDataSource && (
-                <span className="text-[11px] text-red-500 font-medium">Select at least one</span>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {([
-                { label: "Full Review",      set: { goals: true,  features: true,  funnelsKpis: true,  funnels: true  } },
-                { label: "Goals Only",       set: { goals: true,  features: false, funnelsKpis: false, funnels: false } },
-                { label: "Feature Metrics",  set: { goals: false, features: true,  funnelsKpis: false, funnels: false } },
-                { label: "Insights & KPIs",  set: { goals: false, features: false, funnelsKpis: true,  funnels: false } },
-                { label: "User Journeys",    set: { goals: false, features: false, funnelsKpis: false, funnels: true  } },
-              ] as { label: string; set: BiosSections }[]).map(({ label, set }) => {
-                const isActive = JSON.stringify(biosSections) === JSON.stringify(set);
-                return (
-                  <button key={label} type="button" onClick={() => setBiosSections(set)}
-                    className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
-                      isActive ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600"
-                    }`}>
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+          {totalTokens > 0 && (
+            <span className="flex items-center gap-1 text-[10px] text-amber-600 bg-amber-50 px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0">
+              <Coins size={10} />{totalTokens.toLocaleString()} tokens
+            </span>
+          )}
+        </div>
 
-          {/* Row 3: Saved cohorts (only shown when any exist) */}
-          {savedCohorts.length > 0 && (
-            <div className="pt-3 border-t border-gray-100">
-              <p className="text-xs font-semibold text-gray-600 mb-2">Include saved cohorts</p>
-              <div className="flex flex-wrap gap-2">
-                {savedCohorts.map(c => {
-                  const checked = selectedCohortIds.includes(c.id);
+        {/* Row 2: Scope pills */}
+        <div className="flex items-center gap-2 px-4 py-2.5 flex-wrap">
+          <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap mr-1">Scope</span>
+          {SCOPE_PRESETS.map(({ label, set }) => {
+            const isActive = JSON.stringify(biosSections) === JSON.stringify(set);
+            return (
+              <button key={label} type="button" onClick={() => setBiosSections(set)}
+                className={`text-xs font-medium px-3 py-1 rounded-full border transition-colors ${
+                  isActive ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600"
+                }`}>
+                {label}
+              </button>
+            );
+          })}
+          {!hasAnyDataSource && (
+            <span className="text-[11px] text-red-500 font-medium ml-auto">Select at least one</span>
+          )}
+        </div>
+
+        {/* Row 3: Cohorts — only shown when any are saved */}
+        {savedCohorts.length > 0 && (
+          <div className="flex items-center gap-2 px-4 py-2.5 border-t border-gray-100 flex-wrap">
+            <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap mr-1">Cohorts</span>
+            {savedCohorts.map(c => {
+              const checked = selectedCohortIds.includes(c.id);
+              return (
+                <button key={c.id} type="button" title={c.filter.description}
+                  onClick={() => setSelectedCohortIds(prev => checked ? prev.filter(id => id !== c.id) : [...prev, c.id])}
+                  className={`flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full border transition-colors max-w-[180px] truncate ${
+                    checked ? "bg-indigo-50 border-indigo-200 text-indigo-700" : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+                  }`}>
+                  {checked ? <CheckCircle2 size={11} /> : <Bookmark size={10} />}
+                  <span className="truncate">{c.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Card 2: Templates ─────────────────────────────────────────────────────
+          Template pill tabs + selected template panel (description, actions,
+          expandable sections). No period/scope/cohort controls here. */}
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="p-4">
+          {templates.length === 0 ? (
+            <p className="text-sm text-gray-400">No templates. Add some in Settings.</p>
+          ) : (
+            <>
+              {/* Template pill tabs */}
+              <div className="flex flex-wrap gap-2 mb-4">
+                {templates.map(t => {
+                  const ps = planStates[t.id] ?? { status: "idle" };
+                  const isSelected = selectedTemplateId === t.id;
                   return (
-                    <button key={c.id} type="button" title={c.filter.description}
-                      onClick={() => setSelectedCohortIds(prev => checked ? prev.filter(id => id !== c.id) : [...prev, c.id])}
-                      className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${
-                        checked ? "bg-indigo-50 border-indigo-200 text-indigo-700" : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+                    <button key={t.id} onClick={() => setSelectedTemplateId(t.id)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all border ${
+                        isSelected
+                          ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                          : "border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-700 bg-white"
                       }`}>
-                      {checked && <CheckCircle2 size={12} />}
-                      <Bookmark size={11} />
-                      {c.name}
+                      {t.name}
+                      {ps.status === "ready" && <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />}
+                      {ps.status === "planning" && <Loader2 size={10} className="animate-spin flex-shrink-0" />}
+                      {ps.status === "error" && <span className="w-2 h-2 rounded-full bg-red-400 flex-shrink-0" />}
                     </button>
                   );
                 })}
               </div>
-            </div>
-          )}
 
-        </div>
-      </StepCard>
-
-      {/* Templates — horizontal pill tabs */}
-      <StepCard step={2} title="Pick a template" hint="Plan with AI, preview the deck, then build it">
-        {templates.length === 0 ? (
-          <p className="text-sm text-gray-400">No templates. Add some in Settings.</p>
-        ) : (
-          <>
-            {/* Pill row */}
-            <div className="flex flex-wrap gap-2 mb-5">
-              {templates.map(t => {
+              {/* Selected template panel */}
+              {selectedTemplateId && (() => {
+                const t = templates.find(tmpl => tmpl.id === selectedTemplateId);
+                if (!t) return null;
                 const ps = planStates[t.id] ?? { status: "idle" };
-                const isSelected = selectedTemplateId === t.id;
                 return (
-                  <button key={t.id} onClick={() => setSelectedTemplateId(t.id)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all border ${
-                      isSelected
-                        ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
-                        : "border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-700 bg-white"
-                    }`}>
-                    {t.name}
-                    {ps.status === "ready" && <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />}
-                    {ps.status === "planning" && <Loader2 size={10} className="animate-spin flex-shrink-0" />}
-                    {ps.status === "error" && <span className="w-2 h-2 rounded-full bg-red-400 flex-shrink-0" />}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Selected template panel */}
-            {selectedTemplateId && (() => {
-              const t = templates.find(tmpl => tmpl.id === selectedTemplateId);
-              if (!t) return null;
-              const ps = planStates[t.id] ?? { status: "idle" };
-              return (
-                <div className="border border-gray-100 rounded-xl overflow-hidden">
-                  {/* Description strip */}
-                  <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between gap-3">
-                    <p className="text-xs text-gray-500 leading-relaxed flex-1">{t.instructions.slice(0, 130)}…</p>
-                    <span className="text-[11px] text-gray-400 flex-shrink-0">{t.slide_hint} slides</span>
-                  </div>
-                  <div className="p-4 space-y-3">
-                    {/* Actions row */}
-                    <div className="flex items-center gap-2">
-                      {ps.status === "ready" && (
-                        <button onClick={() => setActivePreview({ templateId: t.id, templateName: t.name })}
-                          className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors">
-                          <Eye size={12} /> Preview slides
-                        </button>
-                      )}
-                      <button onClick={() => handlePlan(t)} disabled={ps.status === "planning" || !hasAnyDataSource}
-                        className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 ${
-                          ps.status === "ready" ? "text-gray-500 bg-gray-50 hover:bg-gray-100" : "text-white bg-indigo-600 hover:bg-indigo-700"
-                        }`}>
-                        {ps.status === "planning" ? <><Loader2 size={12} className="animate-spin" /> Planning…</> :
-                         ps.status === "ready" ? <><RefreshCw size={12} /> Re-plan</> :
-                         <><Sparkles size={12} /> Plan Deck</>}
-                      </button>
-                      {ps.status === "ready" && ps.tokensUsed && (
-                        <span className="ml-auto text-xs text-green-600 flex items-center gap-1">
-                          <CheckCircle2 size={11} /> {ps.deck?.slides?.length ?? 0} slides · {ps.tokensUsed.toLocaleString()} tokens
-                        </span>
-                      )}
-                      {ps.status === "error" && <p className="ml-auto text-xs text-red-500 truncate max-w-xs">❌ {ps.error}</p>}
+                  <div className="border border-gray-100 rounded-xl overflow-hidden">
+                    {/* Description strip */}
+                    <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between gap-3">
+                      <p className="text-xs text-gray-500 leading-relaxed flex-1">{t.instructions.slice(0, 130)}…</p>
+                      <span className="text-[11px] text-gray-400 flex-shrink-0">{t.slide_hint} slides</span>
                     </div>
+                    <div className="p-4 space-y-3">
+                      {/* Actions row */}
+                      <div className="flex items-center gap-2">
+                        {ps.status === "ready" && (
+                          <button onClick={() => setActivePreview({ templateId: t.id, templateName: t.name })}
+                            className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors">
+                            <Eye size={12} /> Preview slides
+                          </button>
+                        )}
+                        <button onClick={() => handlePlan(t)} disabled={ps.status === "planning" || !hasAnyDataSource}
+                          className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 ${
+                            ps.status === "ready" ? "text-gray-500 bg-gray-50 hover:bg-gray-100" : "text-white bg-indigo-600 hover:bg-indigo-700"
+                          }`}>
+                          {ps.status === "planning" ? <><Loader2 size={12} className="animate-spin" /> Planning…</> :
+                           ps.status === "ready" ? <><RefreshCw size={12} /> Re-plan</> :
+                           <><Sparkles size={12} /> Plan Deck</>}
+                        </button>
+                        {ps.status === "ready" && ps.tokensUsed && (
+                          <span className="ml-auto text-xs text-green-600 flex items-center gap-1">
+                            <CheckCircle2 size={11} /> {ps.deck?.slides?.length ?? 0} slides · {ps.tokensUsed.toLocaleString()} tokens
+                          </span>
+                        )}
+                        {ps.status === "error" && <p className="ml-auto text-xs text-red-500 truncate max-w-xs">❌ {ps.error}</p>}
+                      </div>
 
                   {/* Pre-plan notes — always-visible section */}
                   <div className="-mx-4 border-t border-gray-100">
@@ -3675,7 +3645,8 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
             })()}
           </>
         )}
-      </StepCard>
+        </div>
+      </div>
 
       {/* Preview modal */}
       {activePreview && previewState?.status === "ready" && previewState.deck && (
