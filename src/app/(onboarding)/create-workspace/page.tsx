@@ -33,9 +33,9 @@ export default function CreateWorkspacePage() {
       return;
     }
 
-    // Navigate to onboarding to explain what data the tool needs.
+    // Navigate to onboarding wizard so the user sets up their first goal.
     // Full navigation — bypasses Next.js client cache so the org is visible.
-    window.location.href = "/dashboard";
+    window.location.href = "/onboarding";
   }
 
   return (
