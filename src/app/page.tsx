@@ -142,13 +142,7 @@ function WaitlistChat() {
             <div key={msg.id}>
 
               {msg.role === "ai" && (
-                <div className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
-                    style={{ background: "linear-gradient(135deg, #6366f1 0%, #7c3aed 100%)" }}>
-                    <Sparkles size={10} className="text-white" />
-                  </div>
-                  <p className="text-[13.5px] text-gray-600 leading-relaxed pt-0.5">{msg.text}</p>
-                </div>
+                <p className="text-[13.5px] text-gray-600 leading-relaxed text-left">{msg.text}</p>
               )}
 
               {msg.role === "user" && (
@@ -161,16 +155,10 @@ function WaitlistChat() {
               )}
 
               {msg.role === "thinking" && (
-                <div className="flex items-center gap-3">
-                  <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
-                    style={{ background: "linear-gradient(135deg, #6366f1 0%, #7c3aed 100%)" }}>
-                    <Sparkles size={10} className="text-white" />
-                  </div>
-                  <div className="flex gap-1 items-center">
-                    {[0, 140, 280].map((d) => (
-                      <span key={d} className="w-1.5 h-1.5 rounded-full bg-indigo-300 animate-bounce" style={{ animationDelay: `${d}ms` }} />
-                    ))}
-                  </div>
+                <div className="flex gap-1 items-center">
+                  {[0, 140, 280].map((d) => (
+                    <span key={d} className="w-1.5 h-1.5 rounded-full bg-indigo-300 animate-bounce" style={{ animationDelay: `${d}ms` }} />
+                  ))}
                 </div>
               )}
 
