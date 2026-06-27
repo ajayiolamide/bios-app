@@ -596,25 +596,44 @@ export async function planReport(
     const excl = excluded.length > 0 ? ` Do NOT generate any slides about: ${excluded.join(", ")}.` : "";
     scopeRestrictionBlock = `\nSCOPE RESTRICTION: This report covers ONLY: ${included.join(", ")}.${excl} Slides that reference excluded sections will be rejected — strictly omit them.\n`;
 
-    // When Feature Metrics is the only selected scope, be explicit: every slide
-    // must reference specific features and their KPIs/events — not general metrics
-    // from the broader metrics library (those are in a separate "KPIs & Metrics" section).
-    const featureOnly = biosSections.features && !biosSections.goals && !biosSections.funnelsKpis && !biosSections.funnels;
+    // Detect single-section scoped modes — when only ONE section is active,
+    // we add a FOCUS MODE instruction and strip the Excel sheet data entirely.
+    // Sheet data is org-wide (NSM, business metrics) and bleeds into every
+    // scoped report even when the scope instruction says not to use it.
+    // The only time sheet data belongs in the prompt is for a Full Review
+    // (all sections) or when there's no BIOS scope at all (sheet-only report).
+    const goalsOnly    = biosSections.goals    && !biosSections.features && !biosSections.funnelsKpis && !biosSections.funnels;
+    const featureOnly  = biosSections.features && !biosSections.goals    && !biosSections.funnelsKpis && !biosSections.funnels;
+    const kpisOnly     = biosSections.funnelsKpis && !biosSections.goals && !biosSections.features    && !biosSections.funnels;
+    const funnelsOnly  = biosSections.funnels  && !biosSections.goals    && !biosSections.features    && !biosSections.funnelsKpis;
+    const isScopedMode = goalsOnly || featureOnly || kpisOnly || funnelsOnly;
+
+    if (goalsOnly) {
+      scopeRestrictionBlock += `GOALS FOCUS MODE: Build EVERY slide around the Business Goals listed above — their KPIs, progress vs targets, and trends. Do NOT reference Feature Metrics, funnels, or generic sheet metrics. If a slide cannot be grounded in a specific goal or its KPIs, omit it.\n`;
+    }
     if (featureOnly) {
       scopeRestrictionBlock += `FEATURE FOCUS MODE: Build EVERY slide around the specific features listed in FEATURE TRACKING PLANS above — their KPIs, events, launch status, and success/failure signals. Do NOT pad with generic product or business metrics that are not explicitly tied to one of these features. If a slide cannot be grounded in a specific feature from the list, omit it.\n`;
+    }
+    if (kpisOnly) {
+      scopeRestrictionBlock += `KPI FOCUS MODE: Build EVERY slide around the KPIs & Metrics listed above — their actual values, targets, trends, and what the numbers mean for the business. Do NOT reference goals or feature-level tracking unless a KPI is explicitly linked to one. If a slide cannot be grounded in a specific KPI from the list, omit it.\n`;
+    }
+    if (funnelsOnly) {
+      scopeRestrictionBlock += `USER JOURNEYS FOCUS MODE: Build EVERY slide around the funnels and user journey data listed above — conversion rates at each step, drop-off points, and where users lose momentum. Do NOT reference goals, features, or generic business metrics. Each slide must trace back to a specific funnel step or journey segment.\n`;
+    }
 
-      // Strip sheet data entirely — it contains org-wide metrics (NSM, etc.) that have
-      // nothing to do with individual feature tracking. Keeping it in the prompt causes
-      // the AI to mix sheet numbers into feature slides even when the scope instruction
-      // says not to. Zeroing it out here makes the instruction enforceable.
+    // Strip sheet data for any scoped (single-section) report. Sheet data is
+    // org-wide and will always bleed into the AI output regardless of prompt
+    // instructions — removing it physically from the prompt is the only reliable fix.
+    if (isScopedMode) {
       filteredRows = [];
     }
   }
 
-  // Per-feature slide depth instruction (only in featureOnly mode)
+  // Per-section depth instructions — one slide minimum per entity in scoped modes
   let perFeatureBlock = "";
-  // effectiveSlideHint may be bumped above the template default to fit one slide per feature
+  // effectiveSlideHint may be bumped above the template default to fit the data
   let effectiveSlideHint = template.slide_hint;
+
   if (
     biosSections?.features &&
     !biosSections?.goals &&
@@ -631,6 +650,47 @@ export async function planReport(
 3. Impact verdict if available (from FEATURE IMPACT section) — cite the actual lift or trend figure
 4. One concrete insight or recommendation specific to this feature (what should the team do next?)
 Do NOT combine multiple features on a single slide unless they are direct A/B variants of each other, and label such slides explicitly as a comparison. If you run out of slide budget, exceed the suggested count rather than omit a feature.\n`;
+  }
+
+  if (
+    biosSections?.goals &&
+    !biosSections?.features &&
+    !biosSections?.funnelsKpis &&
+    !biosSections?.funnels &&
+    biosContext?.goals?.length
+  ) {
+    const n = biosContext.goals.length;
+    effectiveSlideHint = Math.max(template.slide_hint, n + 3);
+    perFeatureBlock += `\nGOALS SLIDE ALLOCATION: You MUST generate at least one dedicated slide per Business Goal (${n} goal${n === 1 ? "" : "s"} listed above = minimum ${n} goal slide${n === 1 ? "" : "s"} required). For EACH goal slide include ALL of:
+1. Goal title + current status (active / at risk / off track / achieved)
+2. Progress against target — use the actual % figure from the BUSINESS GOALS section above; if not measurable yet, say so explicitly
+3. The KPI(s) driving this goal and their current trend (up / down / flat)
+4. One concrete recommendation for what the team should do to close the gap (or sustain momentum if on track)
+Do NOT combine unrelated goals on a single slide. If you run out of slide budget, exceed the suggested count rather than omit a goal.\n`;
+  }
+
+  if (
+    biosSections?.funnelsKpis &&
+    !biosSections?.goals &&
+    !biosSections?.features &&
+    !biosSections?.funnels &&
+    biosContext?.metrics?.length
+  ) {
+    const n = biosContext.metrics.length;
+    effectiveSlideHint = Math.max(template.slide_hint, Math.min(n, 8) + 3);
+    perFeatureBlock += `\nKPI SLIDE ALLOCATION: You MUST give each key KPI its own focused slide or at least a prominent section within a combined slide. Prioritise KPIs that are off-target or trending down — these must each have their own slide. For EACH KPI include: current value + target, trend direction, and one concrete action or hypothesis. Do not aggregate KPIs into a single table slide if there are fewer than 5; give each the depth it deserves.\n`;
+  }
+
+  if (
+    biosSections?.funnels &&
+    !biosSections?.goals &&
+    !biosSections?.features &&
+    !biosSections?.funnelsKpis &&
+    biosContext?.funnels?.length
+  ) {
+    const n = biosContext.funnels.length;
+    effectiveSlideHint = Math.max(template.slide_hint, n + 3);
+    perFeatureBlock += `\nFUNNEL SLIDE ALLOCATION: You MUST generate at least one dedicated slide per funnel (${n} funnel${n === 1 ? "" : "s"} = minimum ${n} slide${n === 1 ? "" : "s"} required). For EACH funnel slide include: funnel name, conversion rate at each step with the biggest drop-off clearly highlighted, the step that loses the most users, and one concrete recommendation to improve it. Use bar_chart or a step-by-step layout — never bury funnel data in a text-only slide.\n`;
   }
 
   // Build BIOS context block
