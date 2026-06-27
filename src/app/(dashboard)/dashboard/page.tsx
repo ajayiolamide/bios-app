@@ -324,13 +324,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── Getting started checklist (auto-hides when all done or dismissed) ── */}
-      <GettingStarted
-        hasGoal={data.objectives.length > 0 || data.goals.length > 0}
-        hasFeature={featureCount > 0}
-        hasData={eventCount > 0}
-        hasReport={doneReports > 0}
-      />
+      {/* ── Dashboard tour (floating, bottom-right, dismissible) ────────────── */}
+      <GettingStarted />
 
       {/* ── Empty state: nothing set up at all ───────────────────────────────── */}
       {/* One card, one action — replaces what used to be two separate "no

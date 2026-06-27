@@ -2,167 +2,143 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { CheckCircle2, Circle, X, ChevronDown, ChevronUp, Target, Lightbulb, Zap, FileText } from "lucide-react";
+import { X, ArrowRight } from "lucide-react";
 
-type Step = {
-  id: string;
-  icon: React.ElementType;
-  iconColor: string;
-  iconBg: string;
-  title: string;
-  description: string;
-  cta: string;
-  href: string;
-  done: boolean;
-};
+const TOUR_STEPS = [
+  {
+    title: "Business Goals",
+    body: "This is where you define what your company is trying to achieve. Set a business goal, then break it into product goals with KPIs — Metrik tracks progress toward them automatically.",
+    cta: "Set a goal",
+    href: "/goals",
+  },
+  {
+    title: "Feature Metrics",
+    body: "Log the features your team is building. Describe what you're building and Metrik's AI will suggest the right success metrics, KPIs, and guardrails to track.",
+    cta: "Log a feature",
+    href: "/feature-metrics",
+  },
+  {
+    title: "Data Sources",
+    body: "Connect Mixpanel or Amplitude, or upload a CSV. Once connected, event data powers your KPIs, feature impact scores, and AI insights automatically.",
+    cta: "Connect a source",
+    href: "/sources",
+  },
+  {
+    title: "Reports",
+    body: "Generate AI-powered slide decks for stakeholders — scoped to your goals, features, and data. Share a live link or export to PDF or PPTX.",
+    cta: "Generate a report",
+    href: "/reports",
+  },
+  {
+    title: "AI Analyst",
+    body: "Ask anything about your product data in plain English. The AI has full context of your goals, features, and events — and remembers past conversations.",
+    cta: "Ask the AI",
+    href: "/ai-analyst",
+  },
+];
 
-type Props = {
-  hasGoal: boolean;
-  hasFeature: boolean;
-  hasData: boolean;
-  hasReport: boolean;
-};
+const STORAGE_KEY = "metrik_tour_dismissed";
 
-const STORAGE_KEY = "metrik_setup_dismissed";
-
-export function GettingStarted({ hasGoal, hasFeature, hasData, hasReport }: Props) {
-  const [dismissed, setDismissed] = useState(true); // start hidden to avoid flash
-  const [collapsed, setCollapsed] = useState(false);
+export function GettingStarted() {
   const [mounted, setMounted] = useState(false);
+  const [dismissed, setDismissed] = useState(true);
+  const [step, setStep] = useState(0);
 
   useEffect(() => {
     setMounted(true);
-    const wasDismissed = localStorage.getItem(STORAGE_KEY) === "true";
-    setDismissed(wasDismissed);
+    setDismissed(localStorage.getItem(STORAGE_KEY) === "true");
+    const saved = parseInt(localStorage.getItem(STORAGE_KEY + "_step") ?? "0", 10);
+    setStep(isNaN(saved) ? 0 : saved);
   }, []);
 
-  const steps: Step[] = [
-    {
-      id: "goal",
-      icon: Target,
-      iconColor: "text-indigo-500",
-      iconBg: "bg-indigo-50",
-      title: "Set a business goal",
-      description: "Define what your company is trying to achieve. Every feature and KPI will align back to this.",
-      cta: "Go to Goals →",
-      href: "/goals",
-      done: hasGoal,
-    },
-    {
-      id: "feature",
-      icon: Lightbulb,
-      iconColor: "text-violet-500",
-      iconBg: "bg-violet-50",
-      title: "Log a feature you're building",
-      description: "Describe what you're working on. AI will suggest the right KPIs and success criteria.",
-      cta: "Log a feature →",
-      href: "/feature-metrics",
-      done: hasFeature,
-    },
-    {
-      id: "data",
-      icon: Zap,
-      iconColor: "text-blue-500",
-      iconBg: "bg-blue-50",
-      title: "Connect a data source",
-      description: "Connect Mixpanel or Amplitude, or upload a CSV. This powers every dashboard and KPI.",
-      cta: "Connect source →",
-      href: "/sources",
-      done: hasData,
-    },
-    {
-      id: "report",
-      icon: FileText,
-      iconColor: "text-teal-500",
-      iconBg: "bg-teal-50",
-      title: "Generate your first report",
-      description: "Create an AI-powered slide deck for stakeholders from everything you've set up.",
-      cta: "Generate report →",
-      href: "/reports",
-      done: hasReport,
-    },
-  ];
+  function goTo(i: number) {
+    const next = Math.max(0, Math.min(TOUR_STEPS.length - 1, i));
+    setStep(next);
+    localStorage.setItem(STORAGE_KEY + "_step", String(next));
+  }
 
-  const doneCount = steps.filter(s => s.done).length;
-  const allDone = doneCount === steps.length;
-  const pct = Math.round((doneCount / steps.length) * 100);
-
-  // Don't show if dismissed or all done or not yet mounted
-  if (!mounted || dismissed || allDone) return null;
-
-  function handleDismiss() {
+  function dismiss() {
     localStorage.setItem(STORAGE_KEY, "true");
     setDismissed(true);
   }
 
+  if (!mounted || dismissed) return null;
+
+  const current = TOUR_STEPS[step];
+  const isLast = step === TOUR_STEPS.length - 1;
+
   return (
-    <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
-      {/* Header */}
-      <div className="px-5 py-4 flex items-center gap-4">
-        <div className="flex-1">
-          <div className="flex items-center gap-3 mb-2">
-            <p className="text-sm font-bold text-gray-900">Get set up</p>
-            <span className="text-xs font-semibold text-gray-400">{doneCount}/{steps.length} done</span>
+    <div className="fixed bottom-6 right-6 z-50 w-72">
+      <div className="bg-white border border-gray-200 rounded-2xl shadow-lg shadow-gray-200/60 overflow-hidden">
+
+        {/* Step dots + close */}
+        <div className="flex items-center justify-between px-4 pt-3.5 pb-0">
+          <div className="flex items-center gap-1.5">
+            {TOUR_STEPS.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => goTo(i)}
+                className={`rounded-full transition-all ${
+                  i === step
+                    ? "w-4 h-1.5 bg-indigo-500"
+                    : i < step
+                    ? "w-1.5 h-1.5 bg-indigo-200"
+                    : "w-1.5 h-1.5 bg-gray-200"
+                }`}
+              />
+            ))}
           </div>
-          {/* Progress bar */}
-          <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden w-48">
-            <div
-              className="h-full bg-indigo-500 rounded-full transition-all duration-500"
-              style={{ width: `${pct}%` }}
-            />
-          </div>
+          <button
+            onClick={dismiss}
+            className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-gray-600 rounded-md hover:bg-gray-100 transition-colors"
+          >
+            <X size={12} />
+          </button>
         </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => setCollapsed(v => !v)}
-            className="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
-          >
-            {collapsed ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-          </button>
-          <button
-            onClick={handleDismiss}
-            className="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-50 rounded-lg transition-colors"
-            title="Dismiss setup guide"
-          >
-            <X size={14} />
-          </button>
+
+        {/* Content */}
+        <div className="px-4 pt-3 pb-4">
+          <p className="text-[13px] font-semibold text-gray-900 mb-1.5">{current.title}</p>
+          <p className="text-[12px] text-gray-500 leading-relaxed mb-4">{current.body}</p>
+
+          <div className="flex items-center gap-3">
+            {!isLast ? (
+              <>
+                <button
+                  onClick={() => goTo(step + 1)}
+                  className="flex items-center gap-1.5 text-[12px] font-medium bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  Next <ArrowRight size={11} />
+                </button>
+                <Link
+                  href={current.href}
+                  className="text-[12px] text-indigo-500 hover:text-indigo-700 font-medium transition-colors"
+                >
+                  {current.cta} →
+                </Link>
+              </>
+            ) : (
+              <>
+                <button
+                  onClick={dismiss}
+                  className="flex items-center gap-1.5 text-[12px] font-medium bg-gray-900 hover:bg-gray-800 text-white px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  Got it
+                </button>
+                <Link
+                  href={current.href}
+                  className="text-[12px] text-indigo-500 hover:text-indigo-700 font-medium transition-colors"
+                >
+                  {current.cta} →
+                </Link>
+              </>
+            )}
+            {step > 0 && (
+              <button onClick={() => goTo(step - 1)} className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors ml-auto">← Back</button>
+            )}
+          </div>
         </div>
       </div>
-
-      {/* Steps */}
-      {!collapsed && (
-        <div className="border-t border-gray-100 divide-y divide-gray-50">
-          {steps.map(({ id, icon: Icon, iconColor, iconBg, title, description, cta, href, done }) => (
-            <div key={id} className={`px-5 py-3.5 flex items-start gap-4 transition-colors ${done ? "opacity-50" : "hover:bg-gray-50/60"}`}>
-              {/* Check */}
-              <div className="flex-shrink-0 mt-0.5">
-                {done
-                  ? <CheckCircle2 size={16} className="text-green-500" />
-                  : <Circle size={16} className="text-gray-300" />
-                }
-              </div>
-              {/* Icon */}
-              <div className={`w-7 h-7 rounded-lg ${iconBg} flex items-center justify-center flex-shrink-0`}>
-                <Icon size={13} className={iconColor} />
-              </div>
-              {/* Text */}
-              <div className="flex-1 min-w-0">
-                <p className={`text-sm font-semibold ${done ? "line-through text-gray-400" : "text-gray-800"}`}>{title}</p>
-                {!done && <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">{description}</p>}
-              </div>
-              {/* CTA */}
-              {!done && (
-                <Link
-                  href={href}
-                  className="flex-shrink-0 text-xs font-semibold text-indigo-600 hover:text-indigo-800 whitespace-nowrap transition-colors mt-0.5"
-                >
-                  {cta}
-                </Link>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
