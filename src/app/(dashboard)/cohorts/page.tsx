@@ -11,6 +11,8 @@ import {
 import { getDistinctEventNames, getEventNamesWithSource, type EventNameWithSource } from "@/app/actions/events";
 import { getMixpanelSettings, syncMixpanelEventNames, syncMixpanelRawEvents } from "@/app/actions/mixpanel";
 import { SaveInsightButton } from "@/components/saved-insights/save-insight-button";
+import { getMyOrgFlags } from "@/app/actions/flags";
+import { LockedFeature } from "@/components/locked-feature";
 import {
   Users, TrendingUp, Zap, RefreshCw, ChevronDown, Sparkles,
   Filter, MessageSquare, Database, Loader2, X, Search,
@@ -104,6 +106,10 @@ function EventPicker({
   const [showList, setShowList] = useState(false);
   const [search, setSearch] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    getMyOrgFlags().then(f => { setLocked(!f.cohorts_enabled); setFlagChecked(true); });
+  }, []);
 
   useEffect(() => {
     if (!showList) return;
@@ -1068,6 +1074,8 @@ type Tab = "retention" | "active" | "events";
 
 export default function CohortsPage() {
   const { currentOrg } = useOrg();
+  const [flagChecked, setFlagChecked] = useState(false);
+  const [locked, setLocked] = useState(false);
   const [tab, setTab]     = useState<Tab>("retention");
   const [weeks, setWeeks] = useState(8);
   const [eventName, setEventName] = useState("");
@@ -1155,6 +1163,8 @@ export default function CohortsPage() {
   useEffect(() => { load(); }, [load]);
 
   if (!currentOrg) return null;
+  if (!flagChecked) return null;
+  if (locked) return <LockedFeature name="Cohorts" />;
 
   async function applyFilter(filter: CohortFilter) {
     setShowBuilder(false);

@@ -1,8 +1,45 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { banUser, unbanUser, deleteUser, type AdminUser } from "@/app/actions/admin";
-import { Loader2, ShieldOff, ShieldCheck, Trash2, ExternalLink } from "lucide-react";
+import { banUser, unbanUser, deleteUser, setOrgFlag, type AdminUser, type OrgFlagKey } from "@/app/actions/admin";
+import { Loader2, ShieldOff, ShieldCheck, Trash2, ExternalLink, Sparkles, FileText, BarChart3 } from "lucide-react";
+
+const FLAG_META: { key: OrgFlagKey; label: string; icon: React.ElementType; color: string }[] = [
+  { key: "ai_enabled",       label: "AI",      icon: Sparkles,  color: "indigo" },
+  { key: "reports_enabled",  label: "Reports", icon: FileText,  color: "teal"   },
+  { key: "cohorts_enabled",  label: "Cohorts", icon: BarChart3, color: "blue"   },
+];
+
+function FlagToggle({ orgId, flagKey, label, icon: Icon, color, enabled }: {
+  orgId: string; flagKey: OrgFlagKey; label: string; icon: React.ElementType; color: string; enabled: boolean;
+}) {
+  const [value, setValue] = useState(enabled);
+  const [isPending, startTransition] = useTransition();
+
+  function toggle() {
+    const next = !value;
+    setValue(next);
+    startTransition(async () => {
+      try { await setOrgFlag(orgId, flagKey, next); }
+      catch { setValue(!next); } // revert on error
+    });
+  }
+
+  const on = `text-${color}-700 bg-${color}-50 border-${color}-200`;
+  const off = "text-gray-400 bg-gray-50 border-gray-200";
+
+  return (
+    <button
+      onClick={toggle}
+      disabled={isPending}
+      title={`${label}: ${value ? "ON — click to disable" : "OFF — click to enable"}`}
+      className={`flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md border transition-all ${value ? on : off} ${isPending ? "opacity-50" : "hover:opacity-80"}`}
+    >
+      {isPending ? <Loader2 size={9} className="animate-spin" /> : <Icon size={9} />}
+      {label}
+    </button>
+  );
+}
 
 function timeAgo(iso: string | null) {
   if (!iso) return "—";
@@ -72,6 +109,27 @@ function UserRow({ user }: { user: AdminUser }) {
         </div>
       </td>
 
+      {/* Feature flags */}
+      <td className="px-5 py-3.5">
+        {user.org_id ? (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {FLAG_META.map(f => (
+              <FlagToggle
+                key={f.key}
+                orgId={user.org_id!}
+                flagKey={f.key}
+                label={f.label}
+                icon={f.icon}
+                color={f.color}
+                enabled={user.feature_flags[f.key]}
+              />
+            ))}
+          </div>
+        ) : (
+          <span className="text-xs text-gray-300 italic">no workspace</span>
+        )}
+      </td>
+
       {/* Actions */}
       <td className="px-5 py-3.5">
         <div className="flex items-center gap-1.5">
@@ -136,7 +194,7 @@ export function AdminTable({ users }: { users: AdminUser[] }) {
       <table className="w-full min-w-[700px]">
         <thead>
           <tr className="text-left">
-            {["User", "Workspace", "Joined", "Last active", "Usage", "Actions"].map(h => (
+            {["User", "Workspace", "Joined", "Last active", "Usage", "Access", "Actions"].map(h => (
               <th key={h} className="px-5 py-3 text-[10px] font-bold text-gray-400 uppercase tracking-wider bg-gray-50/60">
                 {h}
               </th>

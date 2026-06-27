@@ -24,6 +24,13 @@ export interface Database {
           // "Workstream", "OKR", etc. — every place that label shows up in
           // the UI reads from here instead of a hardcoded string.
           product_goal_label: string;
+          // Per-org feature gates — set by admin to control what each beta
+          // tester can access. All default to true (fully open).
+          feature_flags: {
+            ai_enabled: boolean;
+            reports_enabled: boolean;
+            cohorts_enabled: boolean;
+          };
         };
         Insert: {
           id?: string;
@@ -34,6 +41,11 @@ export interface Database {
           owner_id: string;
           logo_url?: string | null;
           product_goal_label?: string;
+          feature_flags?: {
+            ai_enabled?: boolean;
+            reports_enabled?: boolean;
+            cohorts_enabled?: boolean;
+          };
         };
         Update: {
           id?: string;
@@ -42,6 +54,11 @@ export interface Database {
           updated_at?: string;
           logo_url?: string | null;
           product_goal_label?: string;
+          feature_flags?: {
+            ai_enabled?: boolean;
+            reports_enabled?: boolean;
+            cohorts_enabled?: boolean;
+          };
         };
       };
       organization_members: {

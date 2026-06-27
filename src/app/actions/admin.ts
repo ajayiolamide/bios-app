@@ -63,10 +63,10 @@ export async function getAdminData() {
   const { data: { users }, error: usersError } = await admin.auth.admin.listUsers({ perPage: 1000 });
   if (usersError) throw new Error(usersError.message);
 
-  // All organisations
+  // All organisations (include feature_flags)
   const { data: orgs } = await admin
     .from("organizations")
-    .select("id, name, owner_id, created_at");
+    .select("id, name, owner_id, created_at, feature_flags");
 
   // Brand settings (company name per org)
   const { data: brandSettings } = await admin
@@ -99,9 +99,12 @@ export async function getAdminData() {
   const orgsByOwner: Record<string, typeof orgs extends null ? never : (typeof orgs)[number]> = {};
   (orgs ?? []).forEach(o => { orgsByOwner[o.owner_id] = o; });
 
+  const DEFAULT_FLAGS = { ai_enabled: true, reports_enabled: true, cohorts_enabled: true };
+
   return users.map(u => {
     const org = orgsByOwner[u.id];
     const orgId = org?.id;
+    const rawFlags = (org?.feature_flags ?? {}) as Record<string, boolean>;
     return {
       id: u.id,
       email: u.email ?? "—",
@@ -114,6 +117,7 @@ export async function getAdminData() {
       events: orgId ? (eventsMap[orgId] ?? 0) : 0,
       features: orgId ? (featuresMap[orgId] ?? 0) : 0,
       reports: orgId ? (reportsMap[orgId] ?? 0) : 0,
+      feature_flags: { ...DEFAULT_FLAGS, ...rawFlags },
     };
   });
 }
@@ -184,6 +188,47 @@ export async function addAllowedEmail(email: string, note?: string) {
   const { error } = await admin
     .from("allowed_emails")
     .upsert({ email: email.toLowerCase().trim(), note: note ?? null }, { onConflict: "email", ignoreDuplicates: true });
+  if (error) throw new Error(error.message);
+  revalidatePath("/admin");
+}
+
+// ─── Feature flags ────────────────────────────────────────────────────────────
+
+export type OrgFlagKey = "ai_enabled" | "reports_enabled" | "cohorts_enabled";
+
+/** Fetch current flags for all orgs (for the admin panel) */
+export async function getAllOrgFlags(): Promise<Record<string, Record<string, boolean>>> {
+  await assertAdmin();
+  const admin = getAdminClient();
+  const { data } = await admin
+    .from("organizations")
+    .select("id, feature_flags");
+  const result: Record<string, Record<string, boolean>> = {};
+  (data ?? []).forEach(o => {
+    result[o.id] = (o.feature_flags as Record<string, boolean>) ?? {};
+  });
+  return result;
+}
+
+/** Toggle a single flag on an org */
+export async function setOrgFlag(orgId: string, flag: OrgFlagKey, value: boolean) {
+  await assertAdmin();
+  const admin = getAdminClient();
+
+  // Read current flags first so we only patch the one key
+  const { data: org } = await admin
+    .from("organizations")
+    .select("feature_flags")
+    .eq("id", orgId)
+    .single();
+
+  const current = (org?.feature_flags as Record<string, boolean>) ?? {};
+  const updated = { ...current, [flag]: value };
+
+  const { error } = await admin
+    .from("organizations")
+    .update({ feature_flags: updated })
+    .eq("id", orgId);
   if (error) throw new Error(error.message);
   revalidatePath("/admin");
 }

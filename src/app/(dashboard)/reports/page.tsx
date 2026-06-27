@@ -27,6 +27,8 @@ import {
   Target, FlaskConical, ListOrdered, BookOpen, Bookmark, ImagePlus,
 } from "lucide-react";
 import { getSavedInsights, type SavedInsight } from "@/app/actions/saved-insights";
+import { getMyOrgFlags } from "@/app/actions/flags";
+import { LockedFeature } from "@/components/locked-feature";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -4018,8 +4020,16 @@ export default function ReportsPage() {
   const [tab, setTab] = useState<TabId>("data");
   const [historyRefresh, setHistoryRefresh] = useState(0);
   const [sourcesWithData, setSourcesWithData] = useState<SourceWithData[]>([]);
+  const [flagChecked, setFlagChecked] = useState(false);
+  const [locked, setLocked] = useState(false);
+
+  useEffect(() => {
+    getMyOrgFlags().then(f => { setLocked(!f.reports_enabled); setFlagChecked(true); });
+  }, []);
 
   if (!currentOrg) return <div className="flex items-center justify-center h-64 text-gray-400 text-sm">Select an organisation to view reports.</div>;
+  if (!flagChecked) return null;
+  if (locked) return <LockedFeature name="Reports" />;
 
   return (
     <div className="p-6 max-w-6xl mx-auto">

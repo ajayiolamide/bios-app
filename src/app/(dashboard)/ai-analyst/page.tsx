@@ -3,6 +3,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { BrainCircuit, Send, Sparkles, User, Trash2, Loader2, History, Plus, X } from "lucide-react";
 import { useOrg } from "@/contexts/org-context";
+import { getMyOrgFlags } from "@/app/actions/flags";
+import { LockedFeature } from "@/components/locked-feature";
 import {
   askAnalyst,
   listConversations,
@@ -234,6 +236,8 @@ function HistoryPanel({
 
 export default function AIAnalystPage() {
   const { currentOrg } = useOrg();
+  const [flagChecked, setFlagChecked] = useState(false);
+  const [locked, setLocked] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -243,6 +247,10 @@ export default function AIAnalystPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    getMyOrgFlags().then(f => { setLocked(!f.ai_enabled); setFlagChecked(true); });
+  }, []);
 
   const refreshConversations = useCallback(async () => {
     if (!currentOrg) return;
@@ -347,6 +355,8 @@ export default function AIAnalystPage() {
       </div>
     );
   }
+  if (!flagChecked) return null;
+  if (locked) return <LockedFeature name="AI Analyst" />;
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] max-w-4xl mx-auto px-4 py-4">
