@@ -3070,15 +3070,71 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
   }, [sourcesWithData, selectedSourceId]);
 
   const selected = sourcesWithData.find(s => s.source.id === selectedSourceId);
-  const filteredRows = selected?.filteredRows ?? [];
-  const totalRows = selected?.rows.length ?? 0;
-  const isFiltered = filteredRows.length !== totalRows && totalRows > 0;
+  const allSheetRows = selected?.rows ?? [];
+  const sheetHeaders = selected?.headers ?? [];
+
+  // Generate-tab-owned sheet month filter. Uses the same detection logic as
+  // SheetViewer so the user can control exactly what data the AI sees, right
+  // here, without going to the Data tab.
+  const [sheetMonthFilter, setSheetMonthFilter] = useState<string>("");
+
+  // Detect what months exist in the sheet (long or wide format)
+  const sheetMonthOptions = useMemo((): string[] => {
+    if (!allSheetRows.length || !sheetHeaders.length) return [];
+    const wideMap = detectWideMonthColumns(sheetHeaders);
+    if (wideMap) return [...wideMap.keys()];
+    const longCol = detectLongMonthColumn(sheetHeaders, allSheetRows);
+    if (longCol) {
+      const seen = new Map<string, number>();
+      allSheetRows.forEach(r => {
+        const raw = r[longCol] ?? "";
+        const entry = parseMonthEntry(raw);
+        if (entry && !seen.has(raw)) seen.set(raw, entry.sortKey);
+      });
+      return [...seen.entries()].sort((a, b) => a[1] - b[1]).map(([v]) => v);
+    }
+    return [];
+  }, [allSheetRows, sheetHeaders]);
+
+  // Auto-default: when period or sheet options change, try to match period → sheet month
+  useEffect(() => {
+    if (!sheetMonthOptions.length) return;
+    // Try to find a sheet month that matches the selected period string
+    const periodLower = period.toLowerCase();
+    const match = sheetMonthOptions.find(m => periodLower.includes(m.toLowerCase()) || m.toLowerCase().includes(periodLower.split(" ")[0]?.toLowerCase() ?? ""));
+    setSheetMonthFilter(match ?? "");
+  }, [period, sheetMonthOptions]);
+
+  // Apply the month filter to produce effectiveRows for the AI
+  const filteredRows = useMemo((): Record<string, string>[] => {
+    if (!allSheetRows.length) return [];
+    if (!sheetMonthFilter) return allSheetRows;
+    const wideMap = detectWideMonthColumns(sheetHeaders);
+    if (wideMap) {
+      // Wide: keep only columns for the selected month
+      const keepCols = new Set<string>();
+      sheetHeaders.forEach(h => { if (!wideMap.has(h)) keepCols.add(h); }); // non-month cols always kept
+      const monthCols = wideMap.get(sheetMonthFilter) ?? [];
+      monthCols.forEach(c => keepCols.add(c));
+      return allSheetRows.map(row => Object.fromEntries(Object.entries(row).filter(([k]) => keepCols.has(k))));
+    }
+    const longCol = detectLongMonthColumn(sheetHeaders, allSheetRows);
+    if (longCol) {
+      const filterKey = parseMonthEntry(sheetMonthFilter)?.sortKey;
+      if (filterKey === undefined) return allSheetRows;
+      return allSheetRows.filter(row => parseMonthEntry(row[longCol] ?? "")?.sortKey === filterKey);
+    }
+    return allSheetRows;
+  }, [allSheetRows, sheetHeaders, sheetMonthFilter]);
+
+  const totalRows = allSheetRows.length;
+  const isFiltered = sheetMonthFilter !== "" && filteredRows.length !== totalRows;
 
   // A report can now be built from a saved cohort alone (no Goals/Features/
   // Funnels toggled and no sheet rows) — without this, picking only a cohort
   // would silently hit the same "nothing to report" gate that's meant for
   // when truly nothing is selected.
-  const hasAnyDataSource = anyBiosSection || filteredRows.length > 0 || selectedCohortIds.length > 0;
+  const hasAnyDataSource = anyBiosSection || allSheetRows.length > 0 || selectedCohortIds.length > 0;
 
   const handlePlan = async (template: ReportTemplate) => {
     if (!hasAnyDataSource) return;
@@ -3250,12 +3306,12 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
           )}
         </div>
 
-        {/* Row 2: Sheet data — toggle + picker, clear label about what "included" means */}
+        {/* Row 2: Sheet data — toggle + source picker + month filter */}
         {sourcesWithData.length > 0 && (
           <div className="px-4 py-3 border-b border-gray-100">
             <div className="flex items-center gap-3">
               <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap w-14 flex-shrink-0">Sheet</span>
-              {/* Toggle */}
+              {/* Include toggle */}
               <button
                 type="button"
                 onClick={() => setIncludeSheet(v => !v)}
@@ -3263,24 +3319,34 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
                 <span className="inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform"
                   style={{ transform: includeSheet ? "translateX(18px)" : "translateX(2px)" }} />
               </button>
-              {/* Picker — only interactive when included */}
+              {/* Source picker */}
               <select value={selectedSourceId} onChange={e => setSelectedSourceId(e.target.value)}
                 disabled={!includeSheet}
                 className={`flex-1 min-w-0 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white transition-opacity ${!includeSheet ? "opacity-40 cursor-not-allowed" : ""}`}>
                 <option value="">— None —</option>
                 {sourcesWithData.map(s => <option key={s.source.id} value={s.source.id}>{s.source.name}</option>)}
               </select>
-              {/* Row count when included */}
+              {/* Month filter — only show when sheet has month data */}
+              {includeSheet && selectedSourceId && sheetMonthOptions.length >= 2 && (
+                <select value={sheetMonthFilter} onChange={e => setSheetMonthFilter(e.target.value)}
+                  className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white flex-shrink-0">
+                  <option value="">All months</option>
+                  {sheetMonthOptions.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              )}
+              {/* Row count */}
               {selectedSourceId && includeSheet && (
-                <span className={`text-[10px] whitespace-nowrap flex-shrink-0 flex items-center gap-1 ${isFiltered ? "text-indigo-600" : "text-gray-400"}`}>
-                  <Filter size={9} />{isFiltered ? `${filteredRows.length} rows` : `${totalRows} rows`}
+                <span className={`text-[10px] whitespace-nowrap flex-shrink-0 flex items-center gap-1 ${isFiltered ? "text-indigo-600 font-medium" : "text-gray-400"}`}>
+                  <Filter size={9} />{filteredRows.length} / {totalRows} rows
                 </span>
               )}
             </div>
-            {/* Explanatory line */}
+            {/* Context line */}
             <p className="mt-1.5 ml-[4.25rem] text-[10px] leading-snug text-gray-400">
               {includeSheet
-                ? "Sheet rows filtered in the Data tab will be sent to the AI as supporting numbers for this period."
+                ? sheetMonthFilter
+                  ? `Sending ${filteredRows.length} rows for ${sheetMonthFilter} to AI. Change the month filter above to control what data the AI sees.`
+                  : `Sending all ${totalRows} rows to AI. Use the month filter above to narrow to a specific period.`
                 : "Sheet data won't be sent to the AI — report will draw only from your Goals, Features & KPI data."}
             </p>
           </div>
