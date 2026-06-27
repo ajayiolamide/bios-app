@@ -119,3 +119,25 @@ export async function getAdminData() {
 }
 
 export type AdminUser = Awaited<ReturnType<typeof getAdminData>>[number];
+
+// ─── Waitlist ─────────────────────────────────────────────────────────────────
+export async function getWaitlist() {
+  await assertAdmin();
+  const admin = getAdminClient();
+  const { data } = await admin
+    .from("waitlist")
+    .select("email, joined_at")
+    .order("joined_at", { ascending: false });
+  return data ?? [];
+}
+
+// ─── Allowed emails (guest list) ─────────────────────────────────────────────
+export async function getAllowedEmails() {
+  await assertAdmin();
+  const admin = getAdminClient();
+  const { data } = await admin
+    .from("allowed_emails")
+    .select("email, note, invited_at, used")
+    .order("invited_at", { ascending: false });
+  return data ?? [];
+}
