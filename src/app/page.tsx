@@ -105,48 +105,56 @@ function WaitlistChat() {
   }
 
   return (
-    <div className="relative max-w-[820px] mx-auto mt-10">
+    <div className="relative max-w-[780px] mx-auto mt-12">
 
-      {/* Soft glow sits behind — not on — the card */}
-      <div className="absolute -inset-10 -z-10 pointer-events-none"
-        style={{ background: "radial-gradient(ellipse 80% 55% at 50% 50%, rgba(99,102,241,0.10), transparent)" }} />
+      {/* Glow */}
+      <div className="absolute -inset-12 -z-10 pointer-events-none"
+        style={{ background: "radial-gradient(ellipse 70% 60% at 50% 50%, rgba(99,102,241,0.13), transparent)" }} />
 
-      {/* Card — auto height, subtle engraved feel */}
-      <div className="relative bg-white rounded-2xl overflow-hidden flex flex-col"
-        style={{ border: "1px solid rgba(0,0,0,0.09)", boxShadow: "0 1px 2px rgba(0,0,0,0.04), inset 0 1px 0 rgba(255,255,255,0.9)" }}>
+      {/* Card */}
+      <div className="relative rounded-[20px] overflow-hidden flex flex-col"
+        style={{
+          background: "linear-gradient(160deg, #ffffff 0%, #fafafa 100%)",
+          border: "1px solid rgba(0,0,0,0.10)",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.06), 0 8px 32px rgba(0,0,0,0.05), inset 0 1px 0 rgba(255,255,255,1)"
+        }}>
 
-        {/* ── Header ───────────────────────────────────────── */}
-        <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-100/80 shrink-0">
-          <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center shrink-0">
+        {/* ── Header ── */}
+        <div className="flex items-center gap-3 px-6 py-4 shrink-0"
+          style={{ borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
+          <div className="w-8 h-8 rounded-[10px] flex items-center justify-center shrink-0"
+            style={{ background: "linear-gradient(135deg, #6366f1 0%, #7c3aed 100%)" }}>
             <Sparkles size={14} className="text-white" />
           </div>
-          <span className="text-[15px] font-semibold text-gray-800">Metrik AI</span>
+          <span className="text-[14px] font-semibold text-gray-800 tracking-[-0.01em]">Metrik AI</span>
           <div className="ml-auto flex items-center gap-2">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-60" />
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500" />
+            <span className="relative flex h-1.5 w-1.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-70" />
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
             </span>
-            <span className="text-[12px] text-gray-400">Early access</span>
+            <span className="text-[11px] text-gray-400 font-medium">Early access</span>
           </div>
         </div>
 
-        {/* ── Messages — scrolls after max-height ──────────── */}
-        <div ref={msgsRef} className="overflow-y-auto px-6 py-4 flex flex-col gap-3" style={{ maxHeight: "240px" }}>
+        {/* ── Messages ── */}
+        <div ref={msgsRef} className="overflow-y-auto px-6 pt-5 pb-4 flex flex-col gap-4" style={{ maxHeight: "230px" }}>
           {msgs.map((msg) => (
             <div key={msg.id}>
 
               {msg.role === "ai" && (
                 <div className="flex items-start gap-3">
-                  <div className="w-7 h-7 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center shrink-0 mt-0.5">
-                    <Sparkles size={12} className="text-indigo-500" />
+                  <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
+                    style={{ background: "linear-gradient(135deg, #6366f1 0%, #7c3aed 100%)" }}>
+                    <Sparkles size={10} className="text-white" />
                   </div>
-                  <p className="text-[14px] text-gray-600 leading-[1.7] pt-0.5 text-left">{msg.text}</p>
+                  <p className="text-[13.5px] text-gray-600 leading-relaxed pt-0.5">{msg.text}</p>
                 </div>
               )}
 
               {msg.role === "user" && (
                 <div className="flex justify-end">
-                  <div className="bg-gray-100 text-gray-700 text-[13px] rounded-2xl rounded-tr-sm px-4 py-3 max-w-[76%] leading-relaxed">
+                  <div className="text-[13px] text-gray-600 rounded-2xl rounded-tr-sm px-4 py-2.5 max-w-[76%] leading-relaxed"
+                    style={{ background: "rgba(0,0,0,0.05)" }}>
                     {msg.text}
                   </div>
                 </div>
@@ -154,27 +162,32 @@ function WaitlistChat() {
 
               {msg.role === "thinking" && (
                 <div className="flex items-center gap-3">
-                  <div className="w-7 h-7 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center shrink-0">
-                    <Sparkles size={12} className="text-indigo-500" />
+                  <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
+                    style={{ background: "linear-gradient(135deg, #6366f1 0%, #7c3aed 100%)" }}>
+                    <Sparkles size={10} className="text-white" />
                   </div>
-                  <div className="flex gap-1.5 items-center">
-                    {[0, 130, 260].map((d) => (
-                      <span key={d} className="w-2 h-2 rounded-full bg-indigo-200 animate-bounce" style={{ animationDelay: `${d}ms` }} />
+                  <div className="flex gap-1 items-center">
+                    {[0, 140, 280].map((d) => (
+                      <span key={d} className="w-1.5 h-1.5 rounded-full bg-indigo-300 animate-bounce" style={{ animationDelay: `${d}ms` }} />
                     ))}
                   </div>
                 </div>
               )}
 
               {msg.role === "goal" && (
-                <div className="ml-10">
-                  <div className="rounded-xl border border-gray-100 bg-gray-50/60 px-4 py-3.5">
-                    <p className="text-[15px] font-bold text-gray-900 mb-1.5 text-left">{msg.preview.title}</p>
-                    <p className="text-[12px] text-gray-400 mb-3 text-left">
-                      {msg.preview.target} <span className="mx-1.5 text-gray-300">·</span> {msg.preview.timeframe}
+                <div className="ml-9">
+                  <div className="rounded-xl px-4 py-3.5"
+                    style={{ background: "rgba(99,102,241,0.04)", border: "1px solid rgba(99,102,241,0.10)" }}>
+                    <p className="text-[14px] font-semibold text-gray-900 mb-1">{msg.preview.title}</p>
+                    <p className="text-[12px] text-gray-400 mb-3">
+                      {msg.preview.target}
+                      <span className="mx-1.5 opacity-40">·</span>
+                      {msg.preview.timeframe}
                     </p>
                     <div className="flex flex-wrap gap-1.5">
                       {msg.preview.kpis.map((k) => (
-                        <span key={k} className="text-[11px] text-indigo-500 bg-indigo-50/80 px-2.5 py-1 rounded-full">
+                        <span key={k} className="text-[11px] text-indigo-500 font-medium px-2.5 py-0.5 rounded-full"
+                          style={{ background: "rgba(99,102,241,0.08)" }}>
                           {k}
                         </span>
                       ))}
@@ -183,20 +196,19 @@ function WaitlistChat() {
                 </div>
               )}
 
-
             </div>
           ))}
         </div>
 
-        {/* ── Bottom input area ────────────────────────────── */}
+        {/* ── Bottom input area ── */}
         {phase !== "done" && (
-          <div className="px-5 pb-5 pt-3 shrink-0">
+          <div className="px-5 pb-5 pt-1 shrink-0">
 
-            {/* Describe input */}
+            {/* Describe */}
             {phase === "describe" && (
               <>
-                <div className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-gray-50/60 px-4 py-3 mb-3"
-                  style={{ boxShadow: "inset 0 1px 2px rgba(0,0,0,0.03)" }}>
+                <div className="flex items-end gap-2.5 rounded-xl px-4 py-3 mb-3"
+                  style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.08)" }}>
                   <textarea
                     ref={textareaRef}
                     rows={1}
@@ -215,18 +227,19 @@ function WaitlistChat() {
                   <button
                     onClick={submitDescription}
                     disabled={!input.trim()}
-                    className="w-8 h-8 flex items-center justify-center bg-indigo-600 hover:bg-indigo-700 disabled:opacity-20 text-white rounded-xl transition-all shrink-0"
+                    className="w-7 h-7 flex items-center justify-center text-white rounded-lg transition-all shrink-0 disabled:opacity-30"
+                    style={{ background: "linear-gradient(135deg, #6366f1 0%, #7c3aed 100%)" }}
                   >
-                    <ArrowUp size={14} />
+                    <ArrowUp size={13} />
                   </button>
                 </div>
-                {/* Chips below input */}
-                <div className="flex gap-2 flex-wrap">
+                <div className="flex gap-1.5 flex-wrap">
                   {CHIPS.map((c) => (
                     <button
                       key={c}
                       onClick={() => { setInput(c); textareaRef.current?.focus(); }}
-                      className="text-[12px] text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 hover:border-indigo-200 border border-gray-200 px-3 py-1 rounded-full transition-all"
+                      className="text-[11.5px] text-gray-400 hover:text-indigo-500 transition-colors px-3 py-1 rounded-full"
+                      style={{ border: "1px solid rgba(0,0,0,0.08)" }}
                     >
                       {c}
                     </button>
@@ -237,18 +250,18 @@ function WaitlistChat() {
 
             {/* Thinking */}
             {phase === "thinking" && (
-              <div className="flex items-center gap-2 text-[13px] text-gray-400 rounded-2xl border border-gray-200 bg-gray-50/60 px-4 py-3"
-                style={{ boxShadow: "inset 0 1px 2px rgba(0,0,0,0.03)" }}>
+              <div className="flex items-center gap-2 text-[13px] text-gray-400 rounded-xl px-4 py-3"
+                style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.08)" }}>
                 <Loader2 size={13} className="animate-spin text-indigo-400" />
                 Structuring your goal…
               </div>
             )}
 
-            {/* Email input */}
+            {/* Email */}
             {phase === "email" && (
               <form onSubmit={submitEmail}
-                className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-gray-50/60 px-4 py-3"
-                style={{ boxShadow: "inset 0 1px 2px rgba(0,0,0,0.03)" }}>
+                className="flex items-center gap-2 rounded-xl px-4 py-2.5"
+                style={{ background: "rgba(0,0,0,0.03)", border: "1px solid rgba(0,0,0,0.08)" }}>
                 <input
                   autoFocus
                   type="email"
@@ -256,18 +269,19 @@ function WaitlistChat() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="your@email.com"
-                  className="flex-1 text-[14px] text-gray-700 placeholder:text-gray-400 focus:outline-none bg-transparent"
+                  className="flex-1 text-[14px] text-gray-700 placeholder:text-gray-400 focus:outline-none bg-transparent py-0.5"
                 />
                 <button
                   type="submit"
                   disabled={emailLoading}
-                  className="flex items-center gap-1.5 text-[12px] font-semibold bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white px-4 py-1.5 rounded-xl transition-colors shrink-0"
+                  className="flex items-center gap-1.5 text-[12px] font-semibold text-white px-4 py-1.5 rounded-lg transition-all disabled:opacity-60 shrink-0"
+                  style={{ background: "linear-gradient(135deg, #6366f1 0%, #7c3aed 100%)" }}
                 >
                   {emailLoading ? <Loader2 size={12} className="animate-spin" /> : <>Join <ArrowRight size={12} /></>}
                 </button>
               </form>
             )}
-            {emailError && <p className="text-[11px] text-red-500 mt-2">{emailError}</p>}
+            {emailError && <p className="text-[11px] text-red-400 mt-2">{emailError}</p>}
 
           </div>
         )}
