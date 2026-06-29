@@ -105,7 +105,7 @@ function WaitlistChat() {
   }
 
   return (
-    <div className="relative max-w-[780px] mx-auto mt-12">
+    <div id="waitlist-chat" className="relative max-w-[780px] mx-auto mt-12">
 
       {/* Glow */}
       <div className="absolute -inset-12 -z-10 pointer-events-none"
@@ -164,7 +164,7 @@ function WaitlistChat() {
 
               {msg.role === "goal" && (
                 <div className="ml-9">
-                  <div className="rounded-xl px-4 py-3.5"
+                  <div className="rounded-xl px-4 py-3.5 text-left"
                     style={{ background: "rgba(99,102,241,0.04)", border: "1px solid rgba(99,102,241,0.10)" }}>
                     <p className="text-[14px] font-semibold text-gray-900 mb-1">{msg.preview.title}</p>
                     <p className="text-[12px] text-gray-400 mb-3">
@@ -305,11 +305,14 @@ export default function HomePage() {
       <nav className="relative z-10 flex items-center justify-between px-8 py-5 max-w-6xl mx-auto">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo-metrik.svg" alt="Metrik" className="h-6 w-auto" />
-        <div className="flex items-center gap-5">
-          <Link href="/login" className="text-sm text-gray-500 hover:text-gray-700 transition-colors">Sign in</Link>
-          <Link href="/login" className="flex items-center gap-1.5 text-sm font-medium bg-gray-900 text-white px-4 py-2 rounded-lg hover:bg-gray-700 transition-colors">
-            Sign in <ArrowRight size={13} />
-          </Link>
+        <div className="flex items-center gap-4">
+          <Link href="/login" className="text-sm text-gray-400 hover:text-gray-600 transition-colors">Sign in</Link>
+          <button
+            onClick={() => document.getElementById("waitlist-chat")?.scrollIntoView({ behavior: "smooth" })}
+            className="flex items-center gap-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg transition-colors"
+          >
+            Join waitlist <ArrowRight size={13} />
+          </button>
         </div>
       </nav>
 
