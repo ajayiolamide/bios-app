@@ -4050,7 +4050,7 @@ export default function ReportsPage() {
   const [tab, setTab] = useState<TabId>("data");
   const [historyRefresh, setHistoryRefresh] = useState(0);
   const [sourcesWithData, setSourcesWithData] = useState<SourceWithData[]>([]);
-  const [flagChecked, setFlagChecked] = useState(false);
+  const [flagChecked, setFlagChecked] = useState(true);
   const [locked, setLocked] = useState(false);
 
   useEffect(() => {

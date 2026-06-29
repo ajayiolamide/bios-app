@@ -236,7 +236,7 @@ function HistoryPanel({
 
 export default function AIAnalystPage() {
   const { currentOrg } = useOrg();
-  const [flagChecked, setFlagChecked] = useState(false);
+  const [flagChecked, setFlagChecked] = useState(true);
   const [locked, setLocked] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);

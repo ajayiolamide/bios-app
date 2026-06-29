@@ -1076,7 +1076,7 @@ type Tab = "retention" | "active" | "events";
 
 export default function CohortsPage() {
   const { currentOrg } = useOrg();
-  const [flagChecked, setFlagChecked] = useState(false);
+  const [flagChecked, setFlagChecked] = useState(true);
   const [locked, setLocked] = useState(false);
   const [tab, setTab]     = useState<Tab>("retention");
   const [weeks, setWeeks] = useState(8);
