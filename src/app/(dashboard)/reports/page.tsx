@@ -4054,7 +4054,9 @@ export default function ReportsPage() {
   const [locked, setLocked] = useState(false);
 
   useEffect(() => {
-    getMyOrgFlags().then(f => { setLocked(!f.reports_enabled); setFlagChecked(true); });
+    getMyOrgFlags()
+      .then(f => { setLocked(!f.reports_enabled); setFlagChecked(true); })
+      .catch(() => { setLocked(false); setFlagChecked(true); });
   }, []);
 
   if (!currentOrg) return <div className="flex items-center justify-center h-64 text-gray-400 text-sm">Select an organisation to view reports.</div>;

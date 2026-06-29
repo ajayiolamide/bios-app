@@ -108,7 +108,9 @@ function EventPicker({
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    getMyOrgFlags().then(f => { setLocked(!f.cohorts_enabled); setFlagChecked(true); });
+    getMyOrgFlags()
+      .then(f => { setLocked(!f.cohorts_enabled); setFlagChecked(true); })
+      .catch(() => { setLocked(false); setFlagChecked(true); });
   }, []);
 
   useEffect(() => {

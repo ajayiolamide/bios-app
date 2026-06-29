@@ -22,11 +22,15 @@ const DEFAULTS: OrgFeatureFlags = {
  */
 export async function getMyOrgFlags(): Promise<OrgFeatureFlags> {
   try {
+    // Use server client only to identify the user, then admin client for DB
+    // queries so RLS policies don't interfere.
     const supabase = await createServerClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return DEFAULTS;
 
-    const { data: membership } = await supabase
+    const admin = createAdminClient();
+
+    const { data: membership } = await admin
       .from("organization_members")
       .select("organization_id")
       .eq("user_id", user.id)
@@ -34,7 +38,7 @@ export async function getMyOrgFlags(): Promise<OrgFeatureFlags> {
       .single();
     if (!membership) return DEFAULTS;
 
-    const { data: org } = await supabase
+    const { data: org } = await admin
       .from("organizations")
       .select("feature_flags")
       .eq("id", membership.organization_id)

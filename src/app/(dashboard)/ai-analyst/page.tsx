@@ -249,7 +249,9 @@ export default function AIAnalystPage() {
   const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    getMyOrgFlags().then(f => { setLocked(!f.ai_enabled); setFlagChecked(true); });
+    getMyOrgFlags()
+      .then(f => { setLocked(!f.ai_enabled); setFlagChecked(true); })
+      .catch(() => { setLocked(false); setFlagChecked(true); });
   }, []);
 
   const refreshConversations = useCallback(async () => {
