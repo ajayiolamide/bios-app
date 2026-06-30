@@ -1546,6 +1546,8 @@ export default function FeatureMetricsPage() {
       setFolders(f => [...f, res.folder!]);
       setNewFolderName("");
       setCreatingFolder(false);
+    } else if (res.error) {
+      alert(`Could not create folder: ${res.error}`);
     }
   }
 
