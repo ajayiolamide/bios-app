@@ -742,32 +742,40 @@ export async function previewSheetFeatures(
     const rows = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, { defval: "" });
     if (!rows.length) return { features: [], error: "Sheet appears to be empty." };
 
-    // 2. AI column mapping
+    // 2. AI column mapping — show per-column sample values so AI can pair header→data correctly
     const headers = Object.keys(rows[0]);
-    const sample = rows.slice(0, 3).map(r => Object.values(r).join(" | ")).join("\n");
+    const sampleRows = rows.slice(0, 5);
+    const columnSamples = headers.map(h => {
+      const vals = sampleRows
+        .map(r => String(r[h] ?? "").trim())
+        .filter(v => v.length > 0)
+        .slice(0, 3);
+      return `"${h}" → [${vals.map(v => `"${v}"`).join(", ")}]`;
+    }).join("\n");
 
-    const mappingPrompt = `You are mapping spreadsheet columns to feature fields.
+    const mappingPrompt = `You are mapping spreadsheet columns to product feature tracking fields.
 
-Headers: ${headers.join(", ")}
-Sample rows (first 3):
-${sample}
+Each line below shows a column header and up to 3 sample values from that column:
+${columnSamples}
 
-Map each header to one of these field keys (or null if no good match):
-- feature_name (required — the name/title of the feature)
-- feature_description (what the feature does)
-- sector (business sector / industry)
-- target_users (who uses this feature)
+Map each column header to one of these field keys (or omit if no reasonable match):
+- feature_name (REQUIRED — the short name or title of the feature, e.g. "Dark mode", "Referral programme")
+- feature_description (longer description of what the feature does)
+- sector (business area: Product, Growth, Retention, etc.)
+- target_users (who uses it: "All users", "New users", etc.)
 - success_definition (what success looks like)
 - failure_definition (what failure looks like)
-- interaction_frequency (how often users interact)
-- launch_timeline (when it launches / launch date)
+- interaction_frequency (how often users interact: Daily, Weekly, etc.)
+- launch_timeline (when it launches)
 
-Return ONLY a JSON object like: {"feature_name": "Feature Name", "feature_description": "Description", ...}
-Only include fields where you found a reasonable match. The feature_name mapping is required.`;
+Rules:
+- feature_name must map to the column whose values are SHORT feature titles (not IDs, not descriptions)
+- Return ONLY valid JSON, no explanation
+- Example: {"feature_name": "Feature Name", "feature_description": "Description"}`;
 
     const mappingRes = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 300,
+      max_tokens: 400,
       messages: [{ role: "user", content: mappingPrompt }],
     });
 
@@ -776,7 +784,16 @@ Only include fields where you found a reasonable match. The feature_name mapping
     if (!jsonMatch) return { features: [], error: "Could not determine column mapping from sheet." };
 
     const colMap: Record<string, string> = JSON.parse(jsonMatch[0]);
-    if (!colMap.feature_name) return { features: [], error: "Could not find a feature name column in your sheet." };
+
+    // Fallback: if AI didn't find feature_name, try the first text-heavy column automatically
+    if (!colMap.feature_name) {
+      const textCol = headers.find(h => {
+        const vals = sampleRows.map(r => String(r[h] ?? "").trim()).filter(v => v.length > 2);
+        return vals.length >= 2 && vals.every(v => isNaN(Number(v)));
+      });
+      if (textCol) colMap.feature_name = textCol;
+      else return { features: [], error: `Could not identify a feature name column. Headers found: ${headers.join(", ")}` };
+    }
 
     // 3. Fetch existing feature names for this org
     const { data: existing } = await admin
@@ -810,6 +827,10 @@ Only include fields where you found a reasonable match. The feature_name mapping
       };
 
       features.push({ name, data, exists: existingNames.has(name.toLowerCase()) });
+    }
+
+    if (features.length === 0) {
+      return { features: [], error: `Found ${rows.length} rows but couldn't extract any feature names from column "${colMap.feature_name}". Check that the column has values in all rows.` };
     }
 
     return { features };
