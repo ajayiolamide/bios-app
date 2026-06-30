@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { getInvitationPreview, acceptInvitation } from "@/app/actions/team";
@@ -18,7 +18,7 @@ const ROLE_DESCRIPTIONS: Record<string, string> = {
   viewer: "Read-only access to the workspace",
 };
 
-export default function AcceptInvitePage() {
+function AcceptInviteInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token") ?? "";
@@ -40,13 +40,11 @@ export default function AcceptInvitePage() {
       return;
     }
 
-    // Load invite preview
     getInvitationPreview(token).then((res) => {
       if (res.error) setPreviewError(res.error);
       else setPreview(res);
     });
 
-    // Check auth state
     const supabase = createClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
       setIsLoggedIn(!!user);
@@ -63,7 +61,6 @@ export default function AcceptInvitePage() {
       return;
     }
     setDone(true);
-    // Brief pause so the success state renders, then go to dashboard
     setTimeout(() => router.push("/"), 1500);
   }
 
@@ -71,7 +68,6 @@ export default function AcceptInvitePage() {
     router.push(`/login?next=/accept-invite?token=${token}`);
   }
 
-  // Loading state
   if (!token || (preview === null && previewError === null)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -83,7 +79,6 @@ export default function AcceptInvitePage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Logo / brand mark */}
         <div className="flex justify-center mb-8">
           <div className="h-10 w-10 rounded-xl bg-indigo-600 flex items-center justify-center">
             <span className="text-white font-bold text-lg">M</span>
@@ -92,7 +87,6 @@ export default function AcceptInvitePage() {
 
         <div className="bg-white rounded-2xl border shadow-sm p-8 space-y-6">
 
-          {/* Invalid / expired */}
           {previewError && (
             <div className="text-center space-y-3">
               <AlertCircle className="h-10 w-10 text-red-400 mx-auto" />
@@ -107,7 +101,6 @@ export default function AcceptInvitePage() {
             </div>
           )}
 
-          {/* Valid preview — accepted! */}
           {done && (
             <div className="text-center space-y-3">
               <CheckCircle2 className="h-10 w-10 text-emerald-500 mx-auto" />
@@ -118,7 +111,6 @@ export default function AcceptInvitePage() {
             </div>
           )}
 
-          {/* Valid preview — awaiting action */}
           {preview && !done && (
             <>
               <div className="text-center space-y-1">
@@ -131,7 +123,6 @@ export default function AcceptInvitePage() {
                 </p>
               </div>
 
-              {/* Role chip */}
               <div className="rounded-xl border bg-slate-50 px-5 py-4 space-y-1">
                 <div className="flex items-center gap-2">
                   <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">
@@ -144,7 +135,6 @@ export default function AcceptInvitePage() {
                 </p>
               </div>
 
-              {/* Sent to email note */}
               {preview.email && (
                 <p className="text-xs text-center text-muted-foreground">
                   This invitation was sent to <strong>{preview.email}</strong>.
@@ -159,7 +149,6 @@ export default function AcceptInvitePage() {
                 </div>
               )}
 
-              {/* CTA */}
               {isLoggedIn === null ? (
                 <div className="flex justify-center">
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -197,5 +186,19 @@ export default function AcceptInvitePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AcceptInvitePage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      }
+    >
+      <AcceptInviteInner />
+    </Suspense>
   );
 }
