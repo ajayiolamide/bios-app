@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useOrg } from "@/contexts/org-context";
 import {
@@ -16,7 +16,11 @@ import {
   addFeatureSuggestion,
   updateFeaturePmSlackHandle,
   notifySlackFeatureStatusChange,
+  previewSheetFeatures,
+  importSelectedFeatures,
   type FeatureLaunchStatus,
+  type SheetImportResult,
+  type PreviewFeature,
 } from "@/app/actions/feature-metrics";
 import { getBusinessGoals } from "@/app/actions/business-goals";
 import { getKpisByGoal, type MetricWithData } from "@/app/actions/metrics";
@@ -27,7 +31,7 @@ import {
   CheckCircle2, BarChart3, TrendingUp, Shield, Zap, Clock,
   ExternalLink, Sparkles, ArrowRight, Trophy, Target, Link2,
   Calendar, AlertTriangle, Rocket, XCircle, RotateCcw, ChevronDown,
-  Download, User, X,
+  Download, User, X, Upload,
 } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -1364,6 +1368,12 @@ export default function FeatureMetricsPage() {
   const [wizardVisible, setWizardVisible] = useState(false);
   const [drawerFooterEl, setDrawerFooterEl] = useState<HTMLDivElement | null>(null);
   const [loading, setLoading] = useState(true);
+  const [importStage, setImportStage] = useState<"idle" | "parsing" | "selecting" | "importing" | "done">("idle");
+  const [importPreview, setImportPreview] = useState<PreviewFeature[]>([]);
+  const [importSelected, setImportSelected] = useState<Set<string>>(new Set());
+  const [importResult, setImportResult] = useState<SheetImportResult | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   // Smooth slide-in / slide-out for the wizard drawer
   useEffect(() => {
@@ -1409,6 +1419,57 @@ export default function FeatureMetricsPage() {
   async function handleArchive(id: string) {
     await archiveFeatureMetric(id);
     setPlans(p => p.filter(x => x.id !== id));
+  }
+
+  async function handleSheetImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !currentOrg) return;
+    e.target.value = "";
+    setImportError(null);
+    setImportStage("parsing");
+    try {
+      const buffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      let binary = "";
+      for (let i = 0; i < bytes.length; i += 8192) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
+      }
+      const base64 = btoa(binary);
+      const result = await previewSheetFeatures(currentOrg.id, base64, file.name);
+      if (result.error) { setImportError(result.error); setImportStage("idle"); return; }
+      const newOnes = result.features.filter(f => !f.exists).map(f => f.name);
+      setImportPreview(result.features);
+      setImportSelected(new Set(newOnes)); // pre-check new ones only
+      setImportStage("selecting");
+    } catch (err) {
+      setImportError(String(err));
+      setImportStage("idle");
+    }
+  }
+
+  async function handleConfirmImport() {
+    if (!currentOrg || importSelected.size === 0) return;
+    setImportStage("importing");
+    try {
+      const toImport = importPreview
+        .filter(f => importSelected.has(f.name))
+        .map(f => f.data);
+      const result = await importSelectedFeatures(currentOrg.id, toImport);
+      setImportResult(result);
+      setImportStage("done");
+      if (result.added.length > 0) await load();
+    } catch (err) {
+      setImportResult({ added: [], skipped: [], error: String(err) });
+      setImportStage("done");
+    }
+  }
+
+  function resetImport() {
+    setImportStage("idle");
+    setImportPreview([]);
+    setImportSelected(new Set());
+    setImportResult(null);
+    setImportError(null);
   }
 
   function handleCsvExport() {
@@ -1467,6 +1528,23 @@ export default function FeatureMetricsPage() {
               <Download size={13} /> Export CSV
             </button>
           )}
+          {/* Hidden file input for sheet import */}
+          <input
+            ref={importFileRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            onChange={handleSheetImport}
+          />
+          <button
+            onClick={() => importFileRef.current?.click()}
+            disabled={importStage === "parsing" || importStage === "importing"}
+            title="Import features from a spreadsheet"
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 border border-gray-200 hover:border-gray-400 bg-white px-3 py-2 rounded-xl transition-colors disabled:opacity-50"
+          >
+            {(importStage === "parsing" || importStage === "importing") ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+            {importStage === "parsing" ? "Reading…" : importStage === "importing" ? "Importing…" : "Import sheet"}
+          </button>
           <button
             onClick={openWizard}
             className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
@@ -1587,6 +1665,162 @@ export default function FeatureMetricsPage() {
               <div className="h-2 w-2/3 bg-gray-50 rounded" />
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Sheet import error (parse failed before modal opens) */}
+      {importError && importStage === "idle" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6">
+            <h3 className="text-base font-bold text-gray-900 mb-3">Could not read sheet</h3>
+            <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-3">{importError}</p>
+            <button onClick={resetImport} className="mt-4 w-full bg-gray-900 hover:bg-gray-800 text-white text-sm font-medium py-2.5 rounded-xl transition-colors">
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Sheet import — feature selection modal */}
+      {(importStage === "selecting" || importStage === "importing") && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 flex flex-col max-h-[80vh]">
+            {/* Header */}
+            <div className="flex items-start justify-between px-6 pt-5 pb-4 border-b border-gray-100">
+              <div>
+                <h3 className="text-base font-bold text-gray-900">Select features to import</h3>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {importPreview.length} found · {importSelected.size} selected
+                </p>
+              </div>
+              <button onClick={resetImport} disabled={importStage === "importing"} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-40">
+                <X size={14} />
+              </button>
+            </div>
+
+            {/* Select all / none */}
+            <div className="px-6 py-2.5 border-b border-gray-50 flex items-center gap-3">
+              <button
+                onClick={() => setImportSelected(new Set(importPreview.filter(f => !f.exists).map(f => f.name)))}
+                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+              >
+                Select new
+              </button>
+              <span className="text-gray-200">|</span>
+              <button
+                onClick={() => setImportSelected(new Set(importPreview.map(f => f.name)))}
+                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+              >
+                Select all
+              </button>
+              <span className="text-gray-200">|</span>
+              <button
+                onClick={() => setImportSelected(new Set())}
+                className="text-xs text-gray-400 hover:text-gray-600 font-medium"
+              >
+                Deselect all
+              </button>
+            </div>
+
+            {/* Feature list */}
+            <div className="flex-1 overflow-y-auto px-6 py-3 space-y-1">
+              {importPreview.map(f => (
+                <label
+                  key={f.name}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-colors ${
+                    f.exists
+                      ? "opacity-50 cursor-default"
+                      : importSelected.has(f.name)
+                      ? "bg-indigo-50"
+                      : "hover:bg-gray-50"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={importSelected.has(f.name)}
+                    disabled={importStage === "importing"}
+                    onChange={() => {
+                      if (f.exists) return;
+                      setImportSelected(prev => {
+                        const next = new Set(prev);
+                        next.has(f.name) ? next.delete(f.name) : next.add(f.name);
+                        return next;
+                      });
+                    }}
+                    className="accent-indigo-600 w-4 h-4 shrink-0"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <span className="text-sm font-medium text-gray-800 truncate block">{f.name}</span>
+                    {f.data.feature_description && (
+                      <span className="text-xs text-gray-400 truncate block">{f.data.feature_description}</span>
+                    )}
+                  </div>
+                  {f.exists && (
+                    <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full shrink-0">
+                      Already exists
+                    </span>
+                  )}
+                </label>
+              ))}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between gap-3">
+              <button onClick={resetImport} disabled={importStage === "importing"} className="text-sm text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-40">
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmImport}
+                disabled={importSelected.size === 0 || importStage === "importing"}
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors disabled:opacity-40"
+              >
+                {importStage === "importing" ? (
+                  <><Loader2 size={13} className="animate-spin" /> Importing…</>
+                ) : (
+                  <><CheckCircle2 size={13} /> Import {importSelected.size} feature{importSelected.size !== 1 ? "s" : ""}</>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sheet import — result modal */}
+      {importStage === "done" && importResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <h3 className="text-base font-bold text-gray-900">
+                  {importResult.error ? "Import failed" : "Done!"}
+                </h3>
+                {!importResult.error && (
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {importResult.added.length} feature{importResult.added.length !== 1 ? "s" : ""} added
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {importResult.error ? (
+              <p className="text-sm text-red-600 bg-red-50 rounded-xl px-4 py-3">{importResult.error}</p>
+            ) : (
+              <div className="space-y-1">
+                {importResult.added.map(name => (
+                  <div key={name} className="flex items-center gap-2 text-sm text-gray-700">
+                    <CheckCircle2 size={13} className="text-green-500 shrink-0" /> {name}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <button
+              onClick={resetImport}
+              className="mt-5 w-full bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium py-2.5 rounded-xl transition-colors"
+            >
+              Done
+            </button>
+          </div>
         </div>
       )}
     </div>

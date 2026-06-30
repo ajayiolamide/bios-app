@@ -1,6 +1,7 @@
 "use server";
 
 import Anthropic from "@anthropic-ai/sdk";
+import * as XLSX from "xlsx";
 import { createAdminClient, createServerClient } from "@/lib/supabase/server";
 import type { FeatureInput, FeatureSuggestion, FeatureMetric, BusinessGoal } from "@/types/database";
 
@@ -582,4 +583,270 @@ export async function sendWeeklyFeatureDigest(orgId: string): Promise<void> {
       ],
     }),
   });
+}
+
+// ─── Bulk import features from a spreadsheet ──────────────────────────────────
+
+export type SheetImportResult = {
+  added: string[];
+  skipped: string[];
+  error?: string;
+};
+
+export async function importFeaturesFromSheet(
+  orgId: string,
+  fileBase64: string,
+  fileName: string
+): Promise<SheetImportResult> {
+  try {
+    const supabase = await createServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { added: [], skipped: [], error: "Not authenticated" };
+
+    const admin = createAdminClient();
+
+    // 1. Parse the workbook
+    const buffer = Buffer.from(fileBase64, "base64");
+    const workbook = XLSX.read(buffer, { type: "buffer" });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, { defval: "" });
+
+    if (!rows.length) return { added: [], skipped: [], error: "Sheet appears to be empty." };
+
+    // 2. Get headers + sample rows for AI mapping
+    const headers = Object.keys(rows[0]);
+    const sample = rows.slice(0, 3).map(r => Object.values(r).join(" | ")).join("\n");
+
+    const mappingPrompt = `You are mapping spreadsheet columns to feature fields.
+
+Headers: ${headers.join(", ")}
+Sample rows (first 3):
+${sample}
+
+Map each header to one of these field keys (or null if no good match):
+- feature_name (required — the name/title of the feature)
+- feature_description (what the feature does)
+- sector (business sector / industry)
+- target_users (who uses this feature)
+- success_definition (what success looks like)
+- failure_definition (what failure looks like)
+- interaction_frequency (how often users interact)
+- launch_timeline (when it launches / launch date)
+
+Return ONLY a JSON object like: {"feature_name": "Feature Name", "feature_description": "Description", ...}
+Only include fields where you found a reasonable match. The feature_name mapping is required.`;
+
+    const mappingRes = await anthropic.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 300,
+      messages: [{ role: "user", content: mappingPrompt }],
+    });
+
+    const mappingText = (mappingRes.content[0] as { type: string; text: string }).text.trim();
+    const jsonMatch = mappingText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return { added: [], skipped: [], error: "Could not determine column mapping from sheet." };
+
+    const colMap: Record<string, string> = JSON.parse(jsonMatch[0]);
+    if (!colMap.feature_name) return { added: [], skipped: [], error: "Could not find a feature name column in your sheet." };
+
+    // 3. Fetch existing feature names for this org (case-insensitive dedup)
+    const { data: existing } = await admin
+      .from("feature_metrics")
+      .select("feature_name")
+      .eq("organization_id", orgId)
+      .eq("status", "active");
+
+    const existingNames = new Set(
+      (existing ?? []).map(f => f.feature_name.toLowerCase().trim())
+    );
+
+    // 4. Map rows to FeatureInput and partition into new vs duplicate
+    const added: string[] = [];
+    const skipped: string[] = [];
+    const toInsert: object[] = [];
+
+    for (const row of rows) {
+      const name = (row[colMap.feature_name] ?? "").trim();
+      if (!name) continue;
+
+      if (existingNames.has(name.toLowerCase())) {
+        skipped.push(name);
+        continue;
+      }
+
+      const input: FeatureInput = {
+        feature_name: name,
+        feature_description: colMap.feature_description ? (row[colMap.feature_description] ?? "") : "",
+        sector: colMap.sector ? (row[colMap.sector] ?? "") : "",
+        target_users: colMap.target_users ? (row[colMap.target_users] ?? "") : "",
+        success_definition: colMap.success_definition ? (row[colMap.success_definition] ?? "") : "",
+        failure_definition: colMap.failure_definition ? (row[colMap.failure_definition] ?? "") : "",
+        interaction_frequency: colMap.interaction_frequency ? (row[colMap.interaction_frequency] ?? "") : "",
+        launch_timeline: colMap.launch_timeline ? (row[colMap.launch_timeline] ?? "") : "",
+      };
+
+      toInsert.push({
+        organization_id: orgId,
+        created_by: user.id,
+        ...input,
+        suggestions: [],
+      });
+
+      added.push(name);
+      existingNames.add(name.toLowerCase()); // prevent within-sheet duplicates
+    }
+
+    if (toInsert.length > 0) {
+      const { error: insertError } = await admin
+        .from("feature_metrics")
+        .insert(toInsert);
+      if (insertError) return { added: [], skipped, error: insertError.message };
+    }
+
+    return { added, skipped };
+  } catch (err) {
+    console.error("importFeaturesFromSheet error:", err);
+    return { added: [], skipped: [], error: "Failed to process sheet. Please check the file format." };
+  }
+}
+
+// ─── Preview sheet features (parse + dedup check, no insert) ─────────────────
+
+export type PreviewFeature = {
+  name: string;
+  data: FeatureInput;
+  exists: boolean; // already in this org
+};
+
+export type SheetPreviewResult = {
+  features: PreviewFeature[];
+  error?: string;
+};
+
+export async function previewSheetFeatures(
+  orgId: string,
+  fileBase64: string,
+  fileName: string
+): Promise<SheetPreviewResult> {
+  try {
+    const supabase = await createServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { features: [], error: "Not authenticated" };
+
+    const admin = createAdminClient();
+
+    // 1. Parse workbook
+    const buffer = Buffer.from(fileBase64, "base64");
+    const workbook = XLSX.read(buffer, { type: "buffer" });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, { defval: "" });
+    if (!rows.length) return { features: [], error: "Sheet appears to be empty." };
+
+    // 2. AI column mapping
+    const headers = Object.keys(rows[0]);
+    const sample = rows.slice(0, 3).map(r => Object.values(r).join(" | ")).join("\n");
+
+    const mappingPrompt = `You are mapping spreadsheet columns to feature fields.
+
+Headers: ${headers.join(", ")}
+Sample rows (first 3):
+${sample}
+
+Map each header to one of these field keys (or null if no good match):
+- feature_name (required — the name/title of the feature)
+- feature_description (what the feature does)
+- sector (business sector / industry)
+- target_users (who uses this feature)
+- success_definition (what success looks like)
+- failure_definition (what failure looks like)
+- interaction_frequency (how often users interact)
+- launch_timeline (when it launches / launch date)
+
+Return ONLY a JSON object like: {"feature_name": "Feature Name", "feature_description": "Description", ...}
+Only include fields where you found a reasonable match. The feature_name mapping is required.`;
+
+    const mappingRes = await anthropic.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 300,
+      messages: [{ role: "user", content: mappingPrompt }],
+    });
+
+    const mappingText = (mappingRes.content[0] as { type: string; text: string }).text.trim();
+    const jsonMatch = mappingText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return { features: [], error: "Could not determine column mapping from sheet." };
+
+    const colMap: Record<string, string> = JSON.parse(jsonMatch[0]);
+    if (!colMap.feature_name) return { features: [], error: "Could not find a feature name column in your sheet." };
+
+    // 3. Fetch existing feature names for this org
+    const { data: existing } = await admin
+      .from("feature_metrics")
+      .select("feature_name")
+      .eq("organization_id", orgId)
+      .eq("status", "active");
+
+    const existingNames = new Set(
+      (existing ?? []).map(f => f.feature_name.toLowerCase().trim())
+    );
+
+    // 4. Map rows to PreviewFeature (no insert)
+    const seenNames = new Set<string>();
+    const features: PreviewFeature[] = [];
+
+    for (const row of rows) {
+      const name = (row[colMap.feature_name] ?? "").trim();
+      if (!name || seenNames.has(name.toLowerCase())) continue;
+      seenNames.add(name.toLowerCase());
+
+      const data: FeatureInput = {
+        feature_name: name,
+        feature_description: colMap.feature_description ? (row[colMap.feature_description] ?? "") : "",
+        sector: colMap.sector ? (row[colMap.sector] ?? "") : "",
+        target_users: colMap.target_users ? (row[colMap.target_users] ?? "") : "",
+        success_definition: colMap.success_definition ? (row[colMap.success_definition] ?? "") : "",
+        failure_definition: colMap.failure_definition ? (row[colMap.failure_definition] ?? "") : "",
+        interaction_frequency: colMap.interaction_frequency ? (row[colMap.interaction_frequency] ?? "") : "",
+        launch_timeline: colMap.launch_timeline ? (row[colMap.launch_timeline] ?? "") : "",
+      };
+
+      features.push({ name, data, exists: existingNames.has(name.toLowerCase()) });
+    }
+
+    return { features };
+  } catch (err) {
+    console.error("previewSheetFeatures error:", err);
+    return { features: [], error: "Failed to process sheet. Please check the file format." };
+  }
+}
+
+// ─── Import a user-selected subset of features ───────────────────────────────
+
+export async function importSelectedFeatures(
+  orgId: string,
+  features: FeatureInput[]
+): Promise<SheetImportResult> {
+  try {
+    const supabase = await createServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { added: [], skipped: [], error: "Not authenticated" };
+
+    const admin = createAdminClient();
+
+    if (!features.length) return { added: [], skipped: [] };
+
+    const toInsert = features.map(f => ({
+      organization_id: orgId,
+      created_by: user.id,
+      ...f,
+      suggestions: [],
+    }));
+
+    const { error: insertError } = await admin.from("feature_metrics").insert(toInsert);
+    if (insertError) return { added: [], skipped: [], error: insertError.message };
+
+    return { added: features.map(f => f.feature_name), skipped: [] };
+  } catch (err) {
+    console.error("importSelectedFeatures error:", err);
+    return { added: [], skipped: [], error: "Import failed. Please try again." };
+  }
 }
