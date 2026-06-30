@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Edit2, Check, X, Upload, ImageIcon, Link2, Loader2, CheckCircle2, AlertCircle, Tag, Palette, Plug, LayoutTemplate, Building2, AlertTriangle, Bell } from "lucide-react";
+import { Plus, Trash2, Edit2, Check, X, Upload, ImageIcon, Link2, Loader2, CheckCircle2, AlertCircle, Tag, Palette, Plug, LayoutTemplate, Building2, AlertTriangle, Bell, Users, Shield, UserMinus, Mail, Copy } from "lucide-react";
 import { useOrg } from "@/contexts/org-context";
 import {
   getBrandSettings, saveBrandSettings,
@@ -21,6 +21,11 @@ import {
   testAmplitudeConnection,
 } from "@/app/actions/amplitude";
 import { updateProductGoalLabel, renameOrganization, removeOrganization } from "@/app/actions/organizations";
+import {
+  listOrgMembers, listPendingInvitations, inviteMember,
+  cancelInvitation, changeMemberRole, removeMember,
+} from "@/app/actions/team";
+import type { OrgMember, OrgInvitation } from "@/app/actions/team";
 import { createClient } from "@/lib/supabase/client";
 import type { BrandSettings, ReportTemplate } from "@/types/database";
 
@@ -53,6 +58,7 @@ const DESIGN_THEMES = [
 
 const SETTINGS_TABS = [
   { id: "organization", label: "Organization", icon: Building2 },
+  { id: "team", label: "Team", icon: Users },
   { id: "terminology", label: "Terminology", icon: Tag },
   { id: "brand", label: "Brand", icon: Palette },
   { id: "notifications", label: "Notifications", icon: Bell },
@@ -245,6 +251,17 @@ export default function SettingsPage() {
   const [ampTesting, setAmpTesting] = useState(false);
   const [ampStatus, setAmpStatus] = useState<{ ok: boolean; msg: string } | null>(null);
 
+  // Team
+  const [teamMembers, setTeamMembers] = useState<OrgMember[]>([]);
+  const [teamInvitations, setTeamInvitations] = useState<OrgInvitation[]>([]);
+  const [teamLoading, setTeamLoading] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"admin" | "member" | "viewer">("member");
+  const [inviting, setInviting] = useState(false);
+  const [inviteResult, setInviteResult] = useState<{ error?: string; url?: string } | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
+
   const loadData = useCallback(async () => {
     if (!currentOrg) return;
     await seedDefaultTemplates(currentOrg.id);
@@ -291,6 +308,74 @@ export default function SettingsPage() {
   useEffect(() => {
     if (currentOrg) setOrgName(currentOrg.name ?? "");
   }, [currentOrg]);
+
+  // Load team data when the Team tab becomes active
+  useEffect(() => {
+    if (activeTab !== "team" || !currentOrg) return;
+    setTeamLoading(true);
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (user) setCurrentUserId(user.id);
+    });
+    Promise.all([
+      listOrgMembers(currentOrg.id),
+      listPendingInvitations(currentOrg.id),
+    ]).then(([members, invitations]) => {
+      setTeamMembers(members);
+      setTeamInvitations(invitations);
+      setTeamLoading(false);
+    });
+  }, [activeTab, currentOrg]);
+
+  // Derive current user's role from members list
+  useEffect(() => {
+    if (!currentUserId || !teamMembers.length) return;
+    const me = teamMembers.find((m) => m.user_id === currentUserId);
+    setCurrentUserRole(me?.role ?? null);
+  }, [currentUserId, teamMembers]);
+
+  async function handleSendInvite(e: React.FormEvent) {
+    e.preventDefault();
+    if (!currentOrg || !inviteEmail.trim()) return;
+    setInviting(true);
+    setInviteResult(null);
+    const res = await inviteMember(currentOrg.id, inviteEmail.trim(), inviteRole);
+    if (res.error) {
+      setInviteResult({ error: res.error });
+    } else {
+      setInviteResult({ url: res.inviteUrl });
+      setInviteEmail("");
+      // Refresh lists
+      const [members, invitations] = await Promise.all([
+        listOrgMembers(currentOrg.id),
+        listPendingInvitations(currentOrg.id),
+      ]);
+      setTeamMembers(members);
+      setTeamInvitations(invitations);
+    }
+    setInviting(false);
+  }
+
+  async function handleCancelInvite(invitationId: string) {
+    if (!currentOrg) return;
+    await cancelInvitation(currentOrg.id, invitationId);
+    setTeamInvitations((prev) => prev.filter((i) => i.id !== invitationId));
+  }
+
+  async function handleChangeRole(userId: string, newRole: "admin" | "member" | "viewer") {
+    if (!currentOrg) return;
+    const res = await changeMemberRole(currentOrg.id, userId, newRole);
+    if (res.error) { alert(res.error); return; }
+    setTeamMembers((prev) => prev.map((m) => m.user_id === userId ? { ...m, role: newRole } : m));
+  }
+
+  async function handleRemoveMember(userId: string, email: string) {
+    if (!currentOrg) return;
+    if (!confirm(`Remove ${email} from this workspace?`)) return;
+    const res = await removeMember(currentOrg.id, userId);
+    if (res.error) { alert(res.error); return; }
+    setTeamMembers((prev) => prev.filter((m) => m.user_id !== userId));
+  }
 
   async function saveOrgName(e: React.FormEvent) {
     e.preventDefault();
@@ -1104,6 +1189,201 @@ export default function SettingsPage() {
         </div>
       </Section>
       </>
+      )}
+
+      {activeTab === "team" && (
+      <div className="space-y-6">
+
+        {/* ── Invite form (owners + admins only) ───────────────────────────── */}
+        {(currentUserRole === "owner" || currentUserRole === "admin") && (
+        <Section title="Invite a team member" icon={Mail}
+          description="Send an invitation link — they'll be added to this workspace when they accept.">
+          <form onSubmit={handleSendInvite} className="space-y-4">
+            <div className="flex gap-3">
+              <input
+                type="email"
+                placeholder="colleague@company.com"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                required
+                className="flex-1 rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              <select
+                value={inviteRole}
+                onChange={(e) => setInviteRole(e.target.value as "admin" | "member" | "viewer")}
+                className="rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                {currentUserRole === "owner" && <option value="admin">Admin</option>}
+                <option value="member">Member</option>
+                <option value="viewer">Viewer</option>
+              </select>
+              <button
+                type="submit"
+                disabled={inviting || !inviteEmail.trim()}
+                className="flex items-center gap-2 px-4 py-2 rounded-md bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-colors"
+              >
+                {inviting && <Loader2 size={13} className="animate-spin" />}
+                {inviting ? "Sending…" : "Send invite"}
+              </button>
+            </div>
+
+            {/* Role descriptions */}
+            <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+              {currentUserRole === "owner" && (
+                <div className="rounded-lg border px-3 py-2 bg-slate-50">
+                  <p className="font-medium text-foreground mb-0.5">Admin</p>
+                  <p>Can invite members, manage the workspace</p>
+                </div>
+              )}
+              <div className="rounded-lg border px-3 py-2 bg-slate-50">
+                <p className="font-medium text-foreground mb-0.5">Member</p>
+                <p>Full access to view and edit data</p>
+              </div>
+              <div className="rounded-lg border px-3 py-2 bg-slate-50">
+                <p className="font-medium text-foreground mb-0.5">Viewer</p>
+                <p>Read-only access to the workspace</p>
+              </div>
+            </div>
+
+            {/* Result feedback */}
+            {inviteResult?.error && (
+              <div className="flex items-start gap-2 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-4 py-3">
+                <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                {inviteResult.error}
+              </div>
+            )}
+            {inviteResult?.url && (
+              <div className="space-y-2">
+                <div className="flex items-start gap-2 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-3">
+                  <CheckCircle2 size={14} className="shrink-0 mt-0.5" />
+                  Invitation sent! Share this link if email isn&apos;t configured:
+                </div>
+                <div className="flex items-center gap-2 rounded-lg border bg-slate-50 px-3 py-2">
+                  <span className="flex-1 text-xs text-muted-foreground truncate font-mono">{inviteResult.url}</span>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard.writeText(inviteResult.url!)}
+                    className="shrink-0 p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                    title="Copy link"
+                  >
+                    <Copy size={13} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </form>
+        </Section>
+        )}
+
+        {/* ── Members list ─────────────────────────────────────────────────── */}
+        <Section title="Members" icon={Users}
+          description={`${teamMembers.length} member${teamMembers.length === 1 ? "" : "s"} in this workspace`}>
+          {teamLoading ? (
+            <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
+              <Loader2 size={14} className="animate-spin" /> Loading members…
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {teamMembers.map((member) => {
+                const isMe = member.user_id === currentUserId;
+                const canManage =
+                  (currentUserRole === "owner" || currentUserRole === "admin") &&
+                  !isMe &&
+                  member.role !== "owner" &&
+                  !(currentUserRole === "admin" && member.role === "admin");
+                return (
+                  <div key={member.id} className="flex items-center gap-3 py-2.5 border-b last:border-0">
+                    {/* Avatar initial */}
+                    <div className="h-8 w-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-sm font-semibold shrink-0">
+                      {(member.full_name || member.email || "?")[0].toUpperCase()}
+                    </div>
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {member.full_name || member.email}
+                        {isMe && <span className="ml-1.5 text-xs text-muted-foreground">(you)</span>}
+                      </p>
+                      {member.full_name && (
+                        <p className="text-xs text-muted-foreground truncate">{member.email}</p>
+                      )}
+                    </div>
+                    {/* Role — dropdown for manageable members, badge otherwise */}
+                    {canManage ? (
+                      <select
+                        value={member.role}
+                        onChange={(e) => handleChangeRole(member.user_id, e.target.value as "admin" | "member" | "viewer")}
+                        className="text-xs rounded-md border bg-background px-2 py-1 focus:outline-none focus:ring-1 focus:ring-ring"
+                      >
+                        {currentUserRole === "owner" && <option value="admin">Admin</option>}
+                        <option value="member">Member</option>
+                        <option value="viewer">Viewer</option>
+                      </select>
+                    ) : (
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                        member.role === "owner"
+                          ? "bg-amber-100 text-amber-700"
+                          : member.role === "admin"
+                          ? "bg-indigo-100 text-indigo-700"
+                          : member.role === "viewer"
+                          ? "bg-slate-100 text-slate-600"
+                          : "bg-emerald-100 text-emerald-700"
+                      }`}>
+                        {member.role === "owner" && <Shield size={10} className="inline mr-0.5" />}
+                        {member.role.charAt(0).toUpperCase() + member.role.slice(1)}
+                      </span>
+                    )}
+                    {/* Remove button */}
+                    {canManage && (
+                      <button
+                        onClick={() => handleRemoveMember(member.user_id, member.email)}
+                        className="p-1 rounded text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors"
+                        title="Remove member"
+                      >
+                        <UserMinus size={14} />
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Section>
+
+        {/* ── Pending invitations ───────────────────────────────────────────── */}
+        {teamInvitations.length > 0 && (
+        <Section title="Pending invitations" icon={Mail}
+          description="These people have been invited but haven't accepted yet.">
+          <div className="space-y-1">
+            {teamInvitations.map((inv) => (
+              <div key={inv.id} className="flex items-center gap-3 py-2.5 border-b last:border-0">
+                <div className="h-8 w-8 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-sm shrink-0">
+                  <Mail size={14} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{inv.email}</p>
+                  <p className="text-xs text-muted-foreground">
+                    Expires {new Date(inv.expires_at).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                  </p>
+                </div>
+                <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-slate-100 text-slate-600">
+                  {inv.role.charAt(0).toUpperCase() + inv.role.slice(1)}
+                </span>
+                {(currentUserRole === "owner" || currentUserRole === "admin") && (
+                  <button
+                    onClick={() => handleCancelInvite(inv.id)}
+                    className="p-1 rounded text-muted-foreground hover:text-red-500 hover:bg-red-50 transition-colors"
+                    title="Cancel invitation"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </Section>
+        )}
+
+      </div>
       )}
 
       {activeTab === "templates" && (
