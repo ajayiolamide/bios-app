@@ -715,6 +715,7 @@ Only include fields where you found a reasonable match. The feature_name mapping
 export type PreviewFeature = {
   name: string;
   exists: boolean; // already in this org
+  group?: string;  // product/category grouping (e.g. MCA, MCG) — for display only
 };
 
 export type SheetPreviewResult = {
@@ -743,39 +744,48 @@ export async function previewSheetFeatures(
 
     const headers = Object.keys(rows[0]);
 
-    // 2. Heuristic: pick the column that looks most like feature names.
-    //    Category columns (e.g. MCA, MCG) have very few unique values and short text.
-    //    Feature name columns have many unique values and longer text.
-    //    Score = uniqueCount * avgLength — this naturally ranks feature name columns highest.
-    let nameCol = headers[0];
-    let bestScore = -1;
+    // 2. Score every text column.
+    //    Feature name columns: many unique values, long text → high score
+    //    Category columns (e.g. MCA/MCG): few unique values, short text → low score
+    //    Score = uniqueCount * avgLength * uniquenessRatio
+    type ColStats = { h: string; score: number; uniqueCount: number; avgLen: number };
+    const colStats: ColStats[] = [];
     for (const h of headers) {
       const vals = rows
         .map(r => String(r[h] ?? "").trim())
-        .filter(v => v.length >= 3 && v.length <= 200 && isNaN(Number(v)));
+        .filter(v => v.length >= 2 && v.length <= 200 && isNaN(Number(v)));
       if (vals.length === 0) continue;
       const uniqueVals = new Set(vals.map(v => v.toLowerCase()));
       const avgLen = vals.reduce((s, v) => s + v.length, 0) / vals.length;
-      // Penalise columns where almost all values are the same (i.e. category columns)
       const uniquenessRatio = uniqueVals.size / vals.length;
-      const score = uniqueVals.size * avgLen * uniquenessRatio;
-      if (score > bestScore) { bestScore = score; nameCol = h; }
+      colStats.push({ h, score: uniqueVals.size * avgLen * uniquenessRatio, uniqueCount: uniqueVals.size, avgLen });
     }
-    if (bestScore <= 0) {
+    if (colStats.length === 0) {
       return { features: [], error: `No text column found for feature names. Headers: ${headers.join(", ")}` };
     }
+    colStats.sort((a, b) => b.score - a.score);
+    const nameCol = colStats[0].h;
 
-    // 3. Extract names from the chosen column — keep insertion order, deduplicate
+    // 3. Find a grouping column — text column with fewest unique values (≤10)
+    //    that isn't the name column (used for display grouping in import modal only)
+    const groupColCandidate = colStats
+      .slice(1)
+      .find(c => c.uniqueCount <= 10 && c.avgLen <= 20);
+    const groupCol = groupColCandidate?.h;
+
+    // 4. Extract names (and group label) from rows
     const seenNames = new Set<string>();
-    const names: string[] = [];
+    const previewFeatures: Array<{ name: string; group?: string }> = [];
     for (const row of rows) {
       const name = String(row[nameCol] ?? "").trim();
       if (!name || name.length < 2 || !isNaN(Number(name))) continue;
       if (seenNames.has(name.toLowerCase())) continue;
       seenNames.add(name.toLowerCase());
-      names.push(name);
+      const group = groupCol ? String(row[groupCol] ?? "").trim() || undefined : undefined;
+      previewFeatures.push({ name, group });
     }
-    if (names.length === 0) return { features: [], error: "No feature names found in sheet." };
+    if (previewFeatures.length === 0) return { features: [], error: "No feature names found in sheet." };
+    const names = previewFeatures.map(f => f.name);
 
     // 4. Check which already exist
     const { data: existing } = await admin
@@ -788,7 +798,11 @@ export async function previewSheetFeatures(
     const existingSet = new Set((existing ?? []).map((f: { feature_name: string }) => f.feature_name.toLowerCase().trim()));
 
     return {
-      features: names.map(name => ({ name, exists: existingSet.has(name.toLowerCase()) })),
+      features: previewFeatures.map(f => ({
+        name: f.name,
+        exists: existingSet.has(f.name.toLowerCase()),
+        group: f.group,
+      })),
     };
   } catch (err) {
     console.error("previewSheetFeatures error:", err);

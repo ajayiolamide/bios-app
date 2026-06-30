@@ -654,7 +654,7 @@ function SavedPlanCard({
         </div>
       </button>
 
-      {/* No-metrics CTA — shown instead of expand, only for blank imported features */}
+      {/* No-metrics CTA — shown for blank imported features */}
       {(plan.suggestions as FeatureSuggestion[]).length === 0 && onSetupWithAI && (
         <div className="border-t border-indigo-50 px-5 py-4 bg-indigo-50/40 flex items-center justify-between gap-4">
           <div className="flex items-center gap-2.5">
@@ -666,12 +666,21 @@ function SavedPlanCard({
               <p className="text-xs text-gray-400">Let AI analyse this feature and suggest what to track</p>
             </div>
           </div>
-          <button
-            onClick={() => onSetupWithAI(plan.id, plan.feature_name)}
-            className="flex items-center gap-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl transition-colors flex-shrink-0"
-          >
-            Set up with AI <ArrowRight size={13} />
-          </button>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <button
+              onClick={() => onArchive(plan.id)}
+              title="Delete this feature"
+              className="p-1.5 rounded-lg text-gray-300 hover:text-red-400 hover:bg-red-50 transition-colors"
+            >
+              <Trash2 size={13} />
+            </button>
+            <button
+              onClick={() => onSetupWithAI(plan.id, plan.feature_name)}
+              className="flex items-center gap-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl transition-colors"
+            >
+              Set up with AI <ArrowRight size={13} />
+            </button>
+          </div>
         </div>
       )}
 
@@ -1747,7 +1756,7 @@ export default function FeatureMetricsPage() {
               <div>
                 <h3 className="text-base font-bold text-gray-900">Select features to import</h3>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  {importPreview.length} found · {importSelected.size} selected · click each one after import to set up metrics with AI
+                  {importPreview.length} features · {importSelected.size} selected · use × to remove before importing
                 </p>
               </div>
               <button onClick={resetImport} disabled={importStage === "importing"} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-40">
@@ -1779,32 +1788,89 @@ export default function FeatureMetricsPage() {
               </button>
             </div>
 
-            {/* Feature list — just names + checkboxes */}
-            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1">
-              {importPreview.map((f) => (
-                <div key={f.name} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors ${
-                  f.exists ? "opacity-40" : importSelected.has(f.name) ? "bg-indigo-50" : "hover:bg-gray-50"
-                }`}>
-                  <input
-                    type="checkbox"
-                    checked={importSelected.has(f.name)}
-                    disabled={importStage === "importing" || f.exists}
-                    onChange={() => {
-                      if (f.exists) return;
-                      setImportSelected(prev => {
-                        const next = new Set(prev);
-                        next.has(f.name) ? next.delete(f.name) : next.add(f.name);
-                        return next;
-                      });
-                    }}
-                    className="accent-indigo-600 w-4 h-4 shrink-0 cursor-pointer"
-                  />
-                  <span className="text-sm text-gray-800 flex-1 leading-tight">{f.name}</span>
-                  {f.exists && (
-                    <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full shrink-0">Already exists</span>
-                  )}
-                </div>
-              ))}
+            {/* Feature list — grouped by product, name + checkbox + remove */}
+            <div className="flex-1 overflow-y-auto px-4 py-3">
+              {(() => {
+                // Group features by their category (MCA, MCG, etc.)
+                const grouped: Record<string, PreviewFeature[]> = {};
+                for (const f of importPreview) {
+                  const g = f.group ?? "Features";
+                  if (!grouped[g]) grouped[g] = [];
+                  grouped[g].push(f);
+                }
+                const groupKeys = Object.keys(grouped);
+                const hasGroups = groupKeys.length > 1 || (groupKeys.length === 1 && groupKeys[0] !== "Features");
+
+                return groupKeys.map(g => (
+                  <div key={g} className="mb-4">
+                    {hasGroups && (
+                      <div className="flex items-center justify-between mb-1.5 px-1">
+                        <span className="text-[11px] font-bold text-gray-500 uppercase tracking-wider">{g}</span>
+                        <div className="flex gap-3">
+                          <button
+                            onClick={() => setImportSelected(prev => {
+                              const next = new Set(prev);
+                              grouped[g].filter(f => !f.exists).forEach(f => next.add(f.name));
+                              return next;
+                            })}
+                            className="text-[11px] text-indigo-500 hover:text-indigo-700 font-medium"
+                          >
+                            Select all
+                          </button>
+                          <button
+                            onClick={() => setImportSelected(prev => {
+                              const next = new Set(prev);
+                              grouped[g].forEach(f => next.delete(f.name));
+                              return next;
+                            })}
+                            className="text-[11px] text-gray-400 hover:text-gray-600 font-medium"
+                          >
+                            None
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    <div className="space-y-0.5">
+                      {grouped[g].map(f => (
+                        <div key={f.name} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors group ${
+                          f.exists ? "opacity-40" : importSelected.has(f.name) ? "bg-indigo-50" : "hover:bg-gray-50"
+                        }`}>
+                          <input
+                            type="checkbox"
+                            checked={importSelected.has(f.name)}
+                            disabled={importStage === "importing" || f.exists}
+                            onChange={() => {
+                              if (f.exists) return;
+                              setImportSelected(prev => {
+                                const next = new Set(prev);
+                                next.has(f.name) ? next.delete(f.name) : next.add(f.name);
+                                return next;
+                              });
+                            }}
+                            className="accent-indigo-600 w-4 h-4 shrink-0 cursor-pointer"
+                          />
+                          <span className="text-sm text-gray-800 flex-1 leading-tight">{f.name}</span>
+                          {f.exists ? (
+                            <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full shrink-0">Already exists</span>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                setImportPreview(prev => prev.filter(p => p.name !== f.name));
+                                setImportSelected(prev => { const next = new Set(prev); next.delete(f.name); return next; });
+                              }}
+                              disabled={importStage === "importing"}
+                              title="Remove from list"
+                              className="opacity-0 group-hover:opacity-100 p-1 rounded text-gray-300 hover:text-red-400 transition-all shrink-0"
+                            >
+                              <X size={12} />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ));
+              })()}
             </div>
 
             {/* Footer */}
