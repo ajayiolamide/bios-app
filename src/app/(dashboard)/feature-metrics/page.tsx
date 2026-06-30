@@ -31,7 +31,7 @@ import {
   CheckCircle2, BarChart3, TrendingUp, Shield, Zap, Clock,
   ExternalLink, Sparkles, ArrowRight, Trophy, Target, Link2,
   Calendar, AlertTriangle, Rocket, XCircle, RotateCcw, ChevronDown,
-  Download, User, X, Upload,
+  Download, User, X, Upload, Pencil, Check,
 } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -1373,6 +1373,8 @@ export default function FeatureMetricsPage() {
   const [importSelected, setImportSelected] = useState<Set<string>>(new Set());
   const [importResult, setImportResult] = useState<SheetImportResult | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [importEditingIdx, setImportEditingIdx] = useState<number | null>(null);
+  const [importEditDraft, setImportEditDraft] = useState<{ name: string; sector: string; target_users: string }>({ name: "", sector: "", target_users: "" });
   const importFileRef = useRef<HTMLInputElement>(null);
 
   // Smooth slide-in / slide-out for the wizard drawer
@@ -1470,6 +1472,33 @@ export default function FeatureMetricsPage() {
     setImportSelected(new Set());
     setImportResult(null);
     setImportError(null);
+    setImportEditingIdx(null);
+  }
+
+  function openImportEdit(idx: number) {
+    const f = importPreview[idx];
+    setImportEditDraft({ name: f.name, sector: f.data.sector ?? "", target_users: f.data.target_users ?? "" });
+    setImportEditingIdx(idx);
+  }
+
+  function saveImportEdit() {
+    if (importEditingIdx === null) return;
+    const oldName = importPreview[importEditingIdx].name;
+    const newName = importEditDraft.name.trim() || oldName;
+    setImportPreview(prev => prev.map((f, i) => i === importEditingIdx ? {
+      ...f,
+      name: newName,
+      data: { ...f.data, feature_name: newName, sector: importEditDraft.sector, target_users: importEditDraft.target_users },
+    } : f));
+    // Update selection to track renamed feature
+    if (oldName !== newName) {
+      setImportSelected(prev => {
+        const next = new Set(prev);
+        if (next.has(oldName)) { next.delete(oldName); next.add(newName); }
+        return next;
+      });
+    }
+    setImportEditingIdx(null);
   }
 
   function handleCsvExport() {
@@ -1724,63 +1753,105 @@ export default function FeatureMetricsPage() {
 
             {/* Feature list */}
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1">
-              {importPreview.map(f => (
-                <label
-                  key={f.name}
-                  className={`flex items-start gap-3 px-3 py-3 rounded-xl cursor-pointer transition-colors ${
-                    f.exists
-                      ? "opacity-40 cursor-default"
-                      : importSelected.has(f.name)
-                      ? "bg-indigo-50"
-                      : "hover:bg-gray-50"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={importSelected.has(f.name)}
-                    disabled={importStage === "importing" || f.exists}
-                    onChange={() => {
-                      if (f.exists) return;
-                      setImportSelected(prev => {
-                        const next = new Set(prev);
-                        next.has(f.name) ? next.delete(f.name) : next.add(f.name);
-                        return next;
-                      });
-                    }}
-                    className="accent-indigo-600 w-4 h-4 shrink-0 mt-0.5"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <span className="text-sm font-semibold text-gray-800 block leading-tight">{f.name}</span>
-                    {/* Meta badges: only show if value is meaningful text (not a number/ID) */}
-                    {(() => {
-                      const isUseful = (v?: string) => v && v.trim().length > 1 && isNaN(Number(v.trim()));
-                      const badges = [
-                        f.data.sector && isUseful(f.data.sector) && { label: f.data.sector, cls: "bg-indigo-50 text-indigo-600 border border-indigo-100" },
-                        f.data.target_users && isUseful(f.data.target_users) && { label: f.data.target_users, cls: "bg-gray-100 text-gray-500" },
-                        f.data.launch_timeline && isUseful(f.data.launch_timeline) && { label: f.data.launch_timeline, cls: "bg-amber-50 text-amber-600 border border-amber-100" },
-                        f.data.interaction_frequency && isUseful(f.data.interaction_frequency) && { label: f.data.interaction_frequency, cls: "bg-gray-50 text-gray-400 border border-gray-100" },
-                      ].filter(Boolean) as { label: string; cls: string }[];
-                      return badges.length > 0 ? (
-                        <div className="flex flex-wrap gap-1 mt-1.5">
-                          {badges.map(b => (
-                            <span key={b.label} className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${b.cls}`}>
-                              {b.label}
-                            </span>
-                          ))}
+              {importPreview.map((f, idx) => {
+                const isEditing = importEditingIdx === idx;
+                const isUseful = (v?: string) => v && v.trim().length > 1 && isNaN(Number(v.trim()));
+
+                if (isEditing) {
+                  return (
+                    <div key={f.name} className="px-3 py-3 rounded-xl bg-indigo-50 border border-indigo-100 space-y-2">
+                      <div>
+                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Feature name</label>
+                        <input
+                          autoFocus
+                          value={importEditDraft.name}
+                          onChange={e => setImportEditDraft(d => ({ ...d, name: e.target.value }))}
+                          onKeyDown={e => { if (e.key === "Enter") saveImportEdit(); if (e.key === "Escape") setImportEditingIdx(null); }}
+                          className="w-full mt-1 text-sm font-semibold text-gray-800 border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Sector / Product</label>
+                          <input
+                            value={importEditDraft.sector}
+                            onChange={e => setImportEditDraft(d => ({ ...d, sector: e.target.value }))}
+                            placeholder="e.g. Product, Growth, MCG…"
+                            onKeyDown={e => { if (e.key === "Enter") saveImportEdit(); if (e.key === "Escape") setImportEditingIdx(null); }}
+                            className="w-full mt-1 text-xs border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                          />
                         </div>
-                      ) : null;
-                    })()}
-                    {f.data.feature_description && (
-                      <span className="text-xs text-gray-400 mt-1 line-clamp-2 block leading-relaxed">{f.data.feature_description}</span>
+                        <div className="flex-1">
+                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Target users</label>
+                          <input
+                            value={importEditDraft.target_users}
+                            onChange={e => setImportEditDraft(d => ({ ...d, target_users: e.target.value }))}
+                            placeholder="e.g. All users, New users…"
+                            onKeyDown={e => { if (e.key === "Enter") saveImportEdit(); if (e.key === "Escape") setImportEditingIdx(null); }}
+                            className="w-full mt-1 text-xs border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-2 pt-1">
+                        <button onClick={() => setImportEditingIdx(null)} className="text-xs text-gray-400 hover:text-gray-600 px-3 py-1 rounded-lg">Cancel</button>
+                        <button onClick={saveImportEdit} className="flex items-center gap-1.5 text-xs font-medium bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700">
+                          <Check size={11} /> Save
+                        </button>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div key={f.name} className={`flex items-start gap-3 px-3 py-3 rounded-xl transition-colors group ${
+                    f.exists ? "opacity-40" : importSelected.has(f.name) ? "bg-indigo-50" : "hover:bg-gray-50"
+                  }`}>
+                    <input
+                      type="checkbox"
+                      checked={importSelected.has(f.name)}
+                      disabled={importStage === "importing" || f.exists}
+                      onChange={() => {
+                        if (f.exists) return;
+                        setImportSelected(prev => {
+                          const next = new Set(prev);
+                          next.has(f.name) ? next.delete(f.name) : next.add(f.name);
+                          return next;
+                        });
+                      }}
+                      className="accent-indigo-600 w-4 h-4 shrink-0 mt-0.5 cursor-pointer"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <span className="text-sm font-semibold text-gray-800 block leading-tight">{f.name}</span>
+                      {(() => {
+                        const badges = [
+                          f.data.sector && isUseful(f.data.sector) && { label: f.data.sector, cls: "bg-indigo-50 text-indigo-600 border border-indigo-100" },
+                          f.data.target_users && isUseful(f.data.target_users) && { label: f.data.target_users, cls: "bg-gray-100 text-gray-500" },
+                          f.data.launch_timeline && isUseful(f.data.launch_timeline) && { label: f.data.launch_timeline, cls: "bg-amber-50 text-amber-600 border border-amber-100" },
+                        ].filter(Boolean) as { label: string; cls: string }[];
+                        return badges.length > 0 ? (
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {badges.map(b => <span key={b.label} className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${b.cls}`}>{b.label}</span>)}
+                          </div>
+                        ) : null;
+                      })()}
+                      {f.data.feature_description && (
+                        <span className="text-xs text-gray-400 mt-1 line-clamp-1 block">{f.data.feature_description}</span>
+                      )}
+                    </div>
+                    {f.exists ? (
+                      <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full shrink-0 mt-0.5">Already exists</span>
+                    ) : (
+                      <button
+                        onClick={() => openImportEdit(idx)}
+                        className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-white transition-all shrink-0 mt-0.5"
+                        title="Edit name & category"
+                      >
+                        <Pencil size={11} />
+                      </button>
                     )}
                   </div>
-                  {f.exists && (
-                    <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full shrink-0 mt-0.5">
-                      Already exists
-                    </span>
-                  )}
-                </label>
-              ))}
+                );
+              })}
             </div>
 
             {/* Footer */}
