@@ -1751,29 +1751,25 @@ export default function FeatureMetricsPage() {
                   />
                   <div className="min-w-0 flex-1">
                     <span className="text-sm font-semibold text-gray-800 block leading-tight">{f.name}</span>
-                    {/* Meta badges: sector, target_users, launch_timeline */}
-                    <div className="flex flex-wrap gap-1 mt-1.5">
-                      {f.data.sector && (
-                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100">
-                          {f.data.sector}
-                        </span>
-                      )}
-                      {f.data.target_users && (
-                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
-                          {f.data.target_users}
-                        </span>
-                      )}
-                      {f.data.launch_timeline && (
-                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-100">
-                          {f.data.launch_timeline}
-                        </span>
-                      )}
-                      {f.data.interaction_frequency && (
-                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-50 text-gray-400 border border-gray-100">
-                          {f.data.interaction_frequency}
-                        </span>
-                      )}
-                    </div>
+                    {/* Meta badges: only show if value is meaningful text (not a number/ID) */}
+                    {(() => {
+                      const isUseful = (v?: string) => v && v.trim().length > 1 && isNaN(Number(v.trim()));
+                      const badges = [
+                        f.data.sector && isUseful(f.data.sector) && { label: f.data.sector, cls: "bg-indigo-50 text-indigo-600 border border-indigo-100" },
+                        f.data.target_users && isUseful(f.data.target_users) && { label: f.data.target_users, cls: "bg-gray-100 text-gray-500" },
+                        f.data.launch_timeline && isUseful(f.data.launch_timeline) && { label: f.data.launch_timeline, cls: "bg-amber-50 text-amber-600 border border-amber-100" },
+                        f.data.interaction_frequency && isUseful(f.data.interaction_frequency) && { label: f.data.interaction_frequency, cls: "bg-gray-50 text-gray-400 border border-gray-100" },
+                      ].filter(Boolean) as { label: string; cls: string }[];
+                      return badges.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {badges.map(b => (
+                            <span key={b.label} className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${b.cls}`}>
+                              {b.label}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null;
+                    })()}
                     {f.data.feature_description && (
                       <span className="text-xs text-gray-400 mt-1 line-clamp-2 block leading-relaxed">{f.data.feature_description}</span>
                     )}

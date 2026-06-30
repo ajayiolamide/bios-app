@@ -769,9 +769,11 @@ Map each column header to one of these field keys (or omit if no reasonable matc
 - launch_timeline (when it launches)
 
 Rules:
-- feature_name must map to the column whose values are SHORT feature titles (not IDs, not descriptions)
+- feature_name must map to the column with SHORT feature titles (not IDs, not descriptions, not numbers)
+- sector, target_users, interaction_frequency, launch_timeline must ONLY map to columns with TEXT values — NEVER map these to columns that contain numbers or IDs
+- If a column contains only numbers, dates, or IDs, do NOT map it to any field
 - Return ONLY valid JSON, no explanation
-- Example: {"feature_name": "Feature Name", "feature_description": "Description"}`;
+- Example: {"feature_name": "Feature Name", "feature_description": "Description", "sector": "Category"}`;
 
     const mappingRes = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
