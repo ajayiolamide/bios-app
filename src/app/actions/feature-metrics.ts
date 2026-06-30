@@ -878,7 +878,28 @@ export type FeatureFolder = {
   created_at: string;
 };
 
+// ─── Auth helper for folder actions ──────────────────────────────────────────
+
+async function assertOrgMember(orgId: string): Promise<string | null> {
+  // Returns userId if the caller is a member, null otherwise.
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return null;
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("organization_members")
+    .select("id")
+    .eq("organization_id", orgId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  return data ? user.id : null;
+}
+
 export async function getFolders(orgId: string): Promise<FeatureFolder[]> {
+  // Verify the caller belongs to this org before returning folder data.
+  const userId = await assertOrgMember(orgId);
+  if (!userId) return [];
+
   const admin = createAdminClient();
   const { data } = await admin
     .from("feature_folders")
@@ -893,9 +914,9 @@ export async function createFolder(
   orgId: string,
   name: string
 ): Promise<{ folder?: FeatureFolder; error?: string }> {
-  const supabase = await createServerClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Not authenticated" };
+  // Verify membership — logged-in users from other orgs cannot create folders here.
+  const userId = await assertOrgMember(orgId);
+  if (!userId) return { error: "Not authorised." };
 
   const trimmed = name.trim();
   if (!trimmed) return { error: "Folder name can't be empty." };
@@ -903,7 +924,6 @@ export async function createFolder(
 
   const admin = createAdminClient();
 
-  // Put new folder after existing ones
   const { count } = await admin
     .from("feature_folders")
     .select("*", { count: "exact", head: true })
@@ -925,7 +945,19 @@ export async function renameFolder(
 ): Promise<{ error?: string }> {
   const trimmed = name.trim();
   if (!trimmed) return { error: "Folder name can't be empty." };
+
+  // Resolve org from folder so we can verify membership.
   const admin = createAdminClient();
+  const { data: folder } = await admin
+    .from("feature_folders")
+    .select("organization_id")
+    .eq("id", folderId)
+    .maybeSingle();
+  if (!folder) return { error: "Folder not found." };
+
+  const userId = await assertOrgMember(folder.organization_id);
+  if (!userId) return { error: "Not authorised." };
+
   const { error } = await admin
     .from("feature_folders")
     .update({ name: trimmed })
@@ -935,11 +967,24 @@ export async function renameFolder(
 
 export async function deleteFolder(folderId: string): Promise<{ error?: string }> {
   const admin = createAdminClient();
-  // Unassign any features in this folder first
+
+  // Resolve org so we can verify membership.
+  const { data: folder } = await admin
+    .from("feature_folders")
+    .select("organization_id")
+    .eq("id", folderId)
+    .maybeSingle();
+  if (!folder) return { error: "Folder not found." };
+
+  const userId = await assertOrgMember(folder.organization_id);
+  if (!userId) return { error: "Not authorised." };
+
+  // Unassign features first so they become ungrouped.
   await admin
     .from("feature_metrics")
     .update({ folder_id: null })
     .eq("folder_id", folderId);
+
   const { error } = await admin
     .from("feature_folders")
     .delete()
@@ -952,6 +997,30 @@ export async function moveFeatureToFolder(
   folderId: string | null
 ): Promise<{ error?: string }> {
   const admin = createAdminClient();
+
+  // Resolve org from feature so we can verify membership.
+  const { data: feature } = await admin
+    .from("feature_metrics")
+    .select("organization_id")
+    .eq("id", featureId)
+    .maybeSingle();
+  if (!feature) return { error: "Feature not found." };
+
+  const userId = await assertOrgMember(feature.organization_id);
+  if (!userId) return { error: "Not authorised." };
+
+  // If moving to a folder, verify the folder belongs to the same org.
+  if (folderId) {
+    const { data: targetFolder } = await admin
+      .from("feature_folders")
+      .select("organization_id")
+      .eq("id", folderId)
+      .maybeSingle();
+    if (!targetFolder || targetFolder.organization_id !== feature.organization_id) {
+      return { error: "Invalid folder." };
+    }
+  }
+
   const { error } = await admin
     .from("feature_metrics")
     .update({ folder_id: folderId })

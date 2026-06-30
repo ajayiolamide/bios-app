@@ -42,6 +42,10 @@ async function getCallerAndRole(
 // ─── Read ─────────────────────────────────────────────────────────────────────
 
 export async function listOrgMembers(orgId: string): Promise<OrgMember[]> {
+  // Verify the caller belongs to this org before exposing member emails.
+  const caller = await getCallerAndRole(orgId);
+  if (!caller) return [];
+
   const admin = createAdminClient();
   const { data: members } = await admin
     .from("organization_members")
@@ -70,6 +74,10 @@ export async function listOrgMembers(orgId: string): Promise<OrgMember[]> {
 }
 
 export async function listPendingInvitations(orgId: string): Promise<OrgInvitation[]> {
+  // Only org members should see pending invitations.
+  const caller = await getCallerAndRole(orgId);
+  if (!caller) return [];
+
   const admin = createAdminClient();
   const { data } = await admin
     .from("org_invitations")
