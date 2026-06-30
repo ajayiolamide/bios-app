@@ -631,6 +631,7 @@ export interface Database {
           launch_status: "ideation" | "design" | "dev" | "uat" | "ready_for_launch" | "deployed" | "launched" | "post_launch" | "rolled_back" | "paused" | "not_launched" | "delayed" | "cancelled";
           pm_slack_handle: string | null;
           status_log: { status: string; timestamp: string; note?: string }[];
+          folder_id: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -655,6 +656,7 @@ export interface Database {
           actual_launch_date?: string | null;
           launch_status?: "not_launched" | "launched" | "delayed" | "cancelled";
           pm_slack_handle?: string | null;
+          folder_id?: string | null;
           status_log?: { status: string; timestamp: string; note?: string }[];
         };
         Update: {
@@ -667,6 +669,7 @@ export interface Database {
           actual_launch_date?: string | null;
           launch_status?: "not_launched" | "launched" | "delayed" | "cancelled";
           pm_slack_handle?: string | null;
+          folder_id?: string | null;
           status_log?: { status: string; timestamp: string; note?: string }[];
           updated_at?: string;
         };

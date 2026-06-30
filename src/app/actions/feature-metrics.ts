@@ -867,3 +867,94 @@ export async function importSelectedFeatures(
     return { added: [], skipped: [], error: "Import failed. Please try again." };
   }
 }
+
+// ─── Feature Folders ──────────────────────────────────────────────────────────
+
+export type FeatureFolder = {
+  id: string;
+  organization_id: string;
+  name: string;
+  sort_order: number;
+  created_at: string;
+};
+
+export async function getFolders(orgId: string): Promise<FeatureFolder[]> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("feature_folders")
+    .select("*")
+    .eq("organization_id", orgId)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+  return (data ?? []) as FeatureFolder[];
+}
+
+export async function createFolder(
+  orgId: string,
+  name: string
+): Promise<{ folder?: FeatureFolder; error?: string }> {
+  const supabase = await createServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const trimmed = name.trim();
+  if (!trimmed) return { error: "Folder name can't be empty." };
+  if (trimmed.length > 60) return { error: "Keep the name under 60 characters." };
+
+  const admin = createAdminClient();
+
+  // Put new folder after existing ones
+  const { count } = await admin
+    .from("feature_folders")
+    .select("*", { count: "exact", head: true })
+    .eq("organization_id", orgId);
+
+  const { data, error } = await admin
+    .from("feature_folders")
+    .insert({ organization_id: orgId, name: trimmed, sort_order: (count ?? 0) })
+    .select("*")
+    .single();
+
+  if (error) return { error: error.message };
+  return { folder: data as FeatureFolder };
+}
+
+export async function renameFolder(
+  folderId: string,
+  name: string
+): Promise<{ error?: string }> {
+  const trimmed = name.trim();
+  if (!trimmed) return { error: "Folder name can't be empty." };
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("feature_folders")
+    .update({ name: trimmed })
+    .eq("id", folderId);
+  return error ? { error: error.message } : {};
+}
+
+export async function deleteFolder(folderId: string): Promise<{ error?: string }> {
+  const admin = createAdminClient();
+  // Unassign any features in this folder first
+  await admin
+    .from("feature_metrics")
+    .update({ folder_id: null })
+    .eq("folder_id", folderId);
+  const { error } = await admin
+    .from("feature_folders")
+    .delete()
+    .eq("id", folderId);
+  return error ? { error: error.message } : {};
+}
+
+export async function moveFeatureToFolder(
+  featureId: string,
+  folderId: string | null
+): Promise<{ error?: string }> {
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("feature_metrics")
+    .update({ folder_id: folderId })
+    .eq("id", featureId);
+  return error ? { error: error.message } : {};
+}

@@ -18,9 +18,15 @@ import {
   notifySlackFeatureStatusChange,
   previewSheetFeatures,
   importSelectedFeatures,
+  getFolders,
+  createFolder,
+  renameFolder,
+  deleteFolder,
+  moveFeatureToFolder,
   type FeatureLaunchStatus,
   type SheetImportResult,
   type PreviewFeature,
+  type FeatureFolder,
 } from "@/app/actions/feature-metrics";
 // PreviewFeature now only has { name, exists } — no extra data fields
 import { getBusinessGoals } from "@/app/actions/business-goals";
@@ -32,7 +38,7 @@ import {
   CheckCircle2, BarChart3, TrendingUp, Shield, Zap, Clock,
   ExternalLink, Sparkles, ArrowRight, Trophy, Target, Link2,
   Calendar, AlertTriangle, Rocket, XCircle, RotateCcw, ChevronDown,
-  Download, User, X, Upload,
+  Download, User, X, Upload, Folder, FolderOpen, FolderPlus, Edit2, Check,
 } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -432,6 +438,8 @@ function SavedPlanCard({
   goals,
   orgId,
   onSetupWithAI,
+  folders,
+  onMoveToFolder,
 }: {
   plan: FeatureMetric;
   onArchive: (id: string) => void;
@@ -439,8 +447,12 @@ function SavedPlanCard({
   goals: BusinessGoal[];
   orgId: string;
   onSetupWithAI?: (id: string, name: string) => void;
+  folders?: FeatureFolder[];
+  onMoveToFolder?: (featureId: string, folderId: string | null) => void;
 }) {
+  const planFolderId = (plan as FeatureMetric & { folder_id?: string | null }).folder_id ?? null;
   const [expanded, setExpanded] = useState(false);
+  const [showFolderMenu, setShowFolderMenu] = useState(false);
   const [editingDate, setEditingDate] = useState(false);
   const [dateInput, setDateInput] = useState(plan.planned_launch_date ?? "");
   const [saving, setSaving] = useState(false);
@@ -650,6 +662,44 @@ function SavedPlanCard({
               <TypeBadge key={i} type={s.type} />
             ))}
           </div>
+          {onMoveToFolder && folders && folders.length > 0 && (
+            <div className="relative" onClick={(e) => e.stopPropagation()}>
+              <button
+                title={planFolderId ? `In folder: ${folders.find(f => f.id === planFolderId)?.name ?? "…"}` : "Add to folder"}
+                onClick={() => setShowFolderMenu(v => !v)}
+                className={`p-1.5 rounded-lg transition-colors ${planFolderId ? "text-indigo-500 bg-indigo-50 hover:bg-indigo-100" : "text-gray-300 hover:text-indigo-500 hover:bg-indigo-50"}`}
+              >
+                <Folder size={13} />
+              </button>
+              {showFolderMenu && (
+                <div className="absolute right-0 top-8 z-50 bg-white border border-gray-200 rounded-xl shadow-lg py-1.5 min-w-[160px]">
+                  <p className="px-3 py-1 text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Move to folder</p>
+                  {folders.map(folder => (
+                    <button
+                      key={folder.id}
+                      onClick={() => { onMoveToFolder(plan.id, folder.id); setShowFolderMenu(false); }}
+                      className={`w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left hover:bg-gray-50 transition-colors ${folder.id === planFolderId ? "text-indigo-600 font-semibold" : "text-gray-700"}`}
+                    >
+                      <Folder size={11} className={folder.id === planFolderId ? "text-indigo-500" : "text-gray-400"} />
+                      {folder.name}
+                      {folder.id === planFolderId && <Check size={10} className="ml-auto text-indigo-500" />}
+                    </button>
+                  ))}
+                  {planFolderId && (
+                    <>
+                      <div className="mx-3 my-1 border-t border-gray-100" />
+                      <button
+                        onClick={() => { onMoveToFolder(plan.id, null); setShowFolderMenu(false); }}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-left text-gray-400 hover:bg-gray-50 hover:text-red-500 transition-colors"
+                      >
+                        Remove from folder
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           {expanded ? <ChevronLeft size={16} className="text-gray-400" /> : <ChevronRight size={16} className="text-gray-400" />}
         </div>
       </button>
@@ -1414,6 +1464,14 @@ export default function FeatureMetricsPage() {
   const [wizardInitialName, setWizardInitialName] = useState<string | undefined>(undefined);
   const [wizardReplaceId, setWizardReplaceId] = useState<string | null>(null);
 
+  // Folders
+  const [folders, setFolders] = useState<FeatureFolder[]>([]);
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
+  const [renamingFolderId, setRenamingFolderId] = useState<string | null>(null);
+  const [renamingFolderValue, setRenamingFolderValue] = useState("");
+  const [creatingFolder, setCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+
   // Smooth slide-in / slide-out for the wizard drawer
   useEffect(() => {
     if (showWizard) {
@@ -1459,16 +1517,18 @@ export default function FeatureMetricsPage() {
     // page or Events page's own manual "Sync Event Names" button are already
     // sitting in the `events` table by the time getDistinctEventNames below
     // reads it, so this redundant auto-sync just added latency for no gain.
-    const [data, goalData, eventNames, kpiData] = await Promise.all([
+    const [data, goalData, eventNames, kpiData, folderData] = await Promise.all([
       getFeatureMetrics(currentOrg.id),
       getBusinessGoals(currentOrg.id),
       getDistinctEventNames(currentOrg.id),
       getKpisByGoal(currentOrg.id),
+      getFolders(currentOrg.id),
     ]);
     setPlans(data);
     setGoals(goalData);
     setExistingEventNames(eventNames);
     setKpisByGoal(kpiData);
+    setFolders(folderData);
     setLoading(false);
   }, [currentOrg]);
 
@@ -1477,6 +1537,52 @@ export default function FeatureMetricsPage() {
   async function handleArchive(id: string) {
     await archiveFeatureMetric(id);
     setPlans(p => p.filter(x => x.id !== id));
+  }
+
+  async function handleCreateFolder() {
+    if (!currentOrg || !newFolderName.trim()) return;
+    const res = await createFolder(currentOrg.id, newFolderName.trim());
+    if (res.folder) {
+      setFolders(f => [...f, res.folder!]);
+      setNewFolderName("");
+      setCreatingFolder(false);
+    }
+  }
+
+  async function handleRenameFolder(folderId: string) {
+    const trimmed = renamingFolderValue.trim();
+    if (!trimmed) { setRenamingFolderId(null); return; }
+    await renameFolder(folderId, trimmed);
+    setFolders(f => f.map(x => x.id === folderId ? { ...x, name: trimmed } : x));
+    setRenamingFolderId(null);
+  }
+
+  async function handleDeleteFolder(folderId: string, folderName: string) {
+    const featuresInFolder = plans.filter(p => (p as FeatureMetric & { folder_id?: string | null }).folder_id === folderId).length;
+    const msg = featuresInFolder > 0
+      ? `Delete "${folderName}"? The ${featuresInFolder} feature${featuresInFolder !== 1 ? "s" : ""} inside will be moved to Ungrouped.`
+      : `Delete folder "${folderName}"?`;
+    if (!confirm(msg)) return;
+    await deleteFolder(folderId);
+    setFolders(f => f.filter(x => x.id !== folderId));
+    setPlans(p => p.map(x => {
+      const fm = x as FeatureMetric & { folder_id?: string | null };
+      return fm.folder_id === folderId ? { ...x, folder_id: null } : x;
+    }));
+  }
+
+  async function handleMoveToFolder(featureId: string, folderId: string | null) {
+    await moveFeatureToFolder(featureId, folderId);
+    setPlans(p => p.map(x => x.id === featureId ? { ...x, folder_id: folderId } : x));
+  }
+
+  function toggleFolder(folderId: string) {
+    setCollapsedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(folderId)) next.delete(folderId);
+      else next.add(folderId);
+      return next;
+    });
   }
 
   async function handleSheetImport(e: React.ChangeEvent<HTMLInputElement>) {
@@ -1604,6 +1710,13 @@ export default function FeatureMetricsPage() {
             {importStage === "parsing" ? "Reading…" : importStage === "importing" ? "Importing…" : "Import sheet"}
           </button>
           <button
+            onClick={() => { setCreatingFolder(true); setNewFolderName(""); }}
+            title="Create a folder to group features"
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800 border border-gray-200 hover:border-gray-400 bg-white px-3 py-2 rounded-xl transition-colors"
+          >
+            <FolderPlus size={13} /> New folder
+          </button>
+          <button
             onClick={() => openWizard()}
             className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
           >
@@ -1696,23 +1809,149 @@ export default function FeatureMetricsPage() {
         );
       })()}
 
-      {/* Saved plans */}
+      {/* New folder inline input */}
+      {creatingFolder && (
+        <div className="flex items-center gap-2 bg-indigo-50/60 border border-indigo-100 rounded-xl px-4 py-3">
+          <FolderPlus size={14} className="text-indigo-400 shrink-0" />
+          <input
+            autoFocus
+            value={newFolderName}
+            onChange={e => setNewFolderName(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") handleCreateFolder(); if (e.key === "Escape") setCreatingFolder(false); }}
+            placeholder="Folder name…"
+            className="flex-1 bg-transparent text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none"
+          />
+          <button onClick={handleCreateFolder} disabled={!newFolderName.trim()} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium disabled:opacity-40 px-2">
+            Create
+          </button>
+          <button onClick={() => setCreatingFolder(false)} className="text-xs text-gray-400 hover:text-gray-600 px-1">
+            <X size={13} />
+          </button>
+        </div>
+      )}
+
+      {/* Saved plans — grouped by folder */}
       {plans.length > 0 && (
-        <div className="space-y-3">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-            {plans.length} feature{plans.length !== 1 ? "s" : ""} logged
-          </p>
-          {plans.map(p => (
-            <SavedPlanCard
-              key={p.id}
-              plan={p}
-              onArchive={handleArchive}
-              onUpdated={load}
-              goals={goals}
-              orgId={currentOrg.id}
-              onSetupWithAI={(id, name) => openWizard(name, id)}
-            />
-          ))}
+        <div className="space-y-6">
+          {/* ── Folder sections ── */}
+          {folders.map(folder => {
+            const folderPlans = plans.filter(p => (p as FeatureMetric & { folder_id?: string | null }).folder_id === folder.id);
+            const isCollapsed = collapsedFolders.has(folder.id);
+            const isRenaming = renamingFolderId === folder.id;
+            return (
+              <div key={folder.id} className="space-y-2">
+                {/* Folder header */}
+                <div className="flex items-center gap-2 group">
+                  <button onClick={() => toggleFolder(folder.id)} className="text-gray-400 hover:text-gray-700 transition-colors">
+                    {isCollapsed ? <Folder size={15} className="text-indigo-400" /> : <FolderOpen size={15} className="text-indigo-500" />}
+                  </button>
+
+                  {isRenaming ? (
+                    <input
+                      autoFocus
+                      value={renamingFolderValue}
+                      onChange={e => setRenamingFolderValue(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") handleRenameFolder(folder.id); if (e.key === "Escape") setRenamingFolderId(null); }}
+                      onBlur={() => handleRenameFolder(folder.id)}
+                      className="text-sm font-semibold text-gray-800 bg-transparent border-b border-indigo-300 focus:outline-none"
+                    />
+                  ) : (
+                    <button
+                      onClick={() => toggleFolder(folder.id)}
+                      className="text-sm font-semibold text-gray-800 hover:text-indigo-700 transition-colors"
+                    >
+                      {folder.name}
+                    </button>
+                  )}
+
+                  <span className="text-xs text-gray-400 font-medium">{folderPlans.length}</span>
+
+                  {/* Folder actions — show on hover */}
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity ml-1">
+                    <button
+                      onClick={() => { setRenamingFolderId(folder.id); setRenamingFolderValue(folder.name); }}
+                      className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"
+                      title="Rename folder"
+                    >
+                      <Edit2 size={11} />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteFolder(folder.id, folder.name)}
+                      className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                      title="Delete folder"
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  </div>
+
+                  <div className="flex-1 h-px bg-gray-100 ml-1" />
+                  <button onClick={() => toggleFolder(folder.id)} className="text-gray-300 hover:text-gray-500 transition-colors">
+                    <ChevronDown size={14} className={`transition-transform ${isCollapsed ? "-rotate-90" : ""}`} />
+                  </button>
+                </div>
+
+                {/* Features in folder */}
+                {!isCollapsed && (
+                  <div className="space-y-3 pl-5">
+                    {folderPlans.length === 0 ? (
+                      <p className="text-xs text-gray-400 italic py-2">No features in this folder yet — move features here using the folder icon on each card.</p>
+                    ) : (
+                      folderPlans.map(p => (
+                        <SavedPlanCard
+                          key={p.id}
+                          plan={p}
+                          onArchive={handleArchive}
+                          onUpdated={load}
+                          goals={goals}
+                          orgId={currentOrg.id}
+                          onSetupWithAI={(id, name) => openWizard(name, id)}
+                          folders={folders}
+                          onMoveToFolder={handleMoveToFolder}
+                        />
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* ── Ungrouped features ── */}
+          {(() => {
+            const ungrouped = plans.filter(p => !(p as FeatureMetric & { folder_id?: string | null }).folder_id);
+            if (ungrouped.length === 0 && folders.length > 0) return null;
+            return (
+              <div className="space-y-2">
+                {folders.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Ungrouped</span>
+                    <span className="text-xs text-gray-300">{ungrouped.length}</span>
+                    <div className="flex-1 h-px bg-gray-100" />
+                  </div>
+                )}
+                {folders.length === 0 && (
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    {plans.length} feature{plans.length !== 1 ? "s" : ""} logged
+                  </p>
+                )}
+                <div className="space-y-3">
+                  {ungrouped.map(p => (
+                    <SavedPlanCard
+                      key={p.id}
+                      plan={p}
+                      onArchive={handleArchive}
+                      onUpdated={load}
+                      goals={goals}
+                      orgId={currentOrg.id}
+                      onSetupWithAI={(id, name) => openWizard(name, id)}
+                      folders={folders}
+                      onMoveToFolder={handleMoveToFolder}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 
