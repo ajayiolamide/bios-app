@@ -1114,6 +1114,58 @@ ${extraNotes}` : ""}`;
       deck = { title: (p.title as string) ?? template.name, slides };
     }
 
+    // ── Sanitise slides: remove placeholder stats the AI generated despite being told not to ──
+    // The AI occasionally puts "Data unavailable", "No measurement data", garbage sentences,
+    // or truncated text into stat/value fields of big_stat and insight slides. Detect these
+    // and either convert the slide type or blank the offending field so the render doesn't show junk.
+    const looksLikePlaceholder = (s: string) => {
+      if (!s || s.trim() === "" || s.trim() === "—" || s.trim() === "-") return false;
+      const lower = s.toLowerCase().trim();
+      // Real values: numbers, percentages, currency amounts, short labels like "N/A"
+      if (/^[\d,.\s%$€£+\-kKmMbB]+$/.test(s.trim())) return false;
+      if (s.trim().length <= 6) return false; // short codes are likely legit (e.g. "N/A", "TBD")
+      // Sentences, placeholder phrases, or suspiciously long non-numeric strings
+      return (
+        lower.includes("no data") ||
+        lower.includes("unavailable") ||
+        lower.includes("not available") ||
+        lower.includes("not measured") ||
+        lower.includes("not tracked") ||
+        lower.includes("no measurement") ||
+        lower.includes("no kpi") ||
+        lower.includes("baseline") ||
+        lower.includes("not yet") ||
+        lower.includes("pending") ||
+        lower.includes("tbd") ||
+        // More than 30 chars and not a number = almost certainly a sentence
+        (s.trim().length > 30)
+      );
+    };
+
+    deck.slides = deck.slides.map(slide => {
+      if (slide.type === "big_stat" || slide.type === "stat_narrative") {
+        if (looksLikePlaceholder(slide.value ?? "")) {
+          // Demote to insight slide
+          return {
+            type: "insight" as const,
+            title: (slide as { label?: string }).label ?? "Data Gap",
+            body: slide.type === "stat_narrative"
+              ? (slide as { narrative?: string }).narrative ?? "No data available for this metric yet."
+              : (slide as { narrative?: string }).narrative ?? "No data available for this metric yet.",
+            stat: "—",
+            stat_label: "Not yet measured",
+            status: "neutral" as const,
+          };
+        }
+      }
+      if (slide.type === "insight") {
+        if (looksLikePlaceholder((slide as { stat?: string }).stat ?? "")) {
+          return { ...slide, stat: "—", stat_label: (slide as { stat_label?: string }).stat_label ?? "Not yet measured" };
+        }
+      }
+      return slide;
+    });
+
     // ── Guarantee every Business Goal is visible, regardless of the model ──────
     // Telling the planning model "every goal must be mentioned" in the prompt
     // is a request, not a guarantee — under a tight slide budget, or with
