@@ -743,19 +743,29 @@ export async function previewSheetFeatures(
 
     const headers = Object.keys(rows[0]);
 
-    // 2. Heuristic: find the column with the most non-numeric text values — that's the name column
+    // 2. Heuristic: pick the column that looks most like feature names.
+    //    Category columns (e.g. MCA, MCG) have very few unique values and short text.
+    //    Feature name columns have many unique values and longer text.
+    //    Score = uniqueCount * avgLength — this naturally ranks feature name columns highest.
     let nameCol = headers[0];
     let bestScore = -1;
     for (const h of headers) {
-      const vals = rows.map(r => String(r[h] ?? "").trim());
-      const textVals = vals.filter(v => v.length >= 3 && v.length <= 150 && isNaN(Number(v)));
-      if (textVals.length > bestScore) { bestScore = textVals.length; nameCol = h; }
+      const vals = rows
+        .map(r => String(r[h] ?? "").trim())
+        .filter(v => v.length >= 3 && v.length <= 200 && isNaN(Number(v)));
+      if (vals.length === 0) continue;
+      const uniqueVals = new Set(vals.map(v => v.toLowerCase()));
+      const avgLen = vals.reduce((s, v) => s + v.length, 0) / vals.length;
+      // Penalise columns where almost all values are the same (i.e. category columns)
+      const uniquenessRatio = uniqueVals.size / vals.length;
+      const score = uniqueVals.size * avgLen * uniquenessRatio;
+      if (score > bestScore) { bestScore = score; nameCol = h; }
     }
-    if (bestScore === 0) {
+    if (bestScore <= 0) {
       return { features: [], error: `No text column found for feature names. Headers: ${headers.join(", ")}` };
     }
 
-    // 3. Extract unique names
+    // 3. Extract names from the chosen column — keep insertion order, deduplicate
     const seenNames = new Set<string>();
     const names: string[] = [];
     for (const row of rows) {
