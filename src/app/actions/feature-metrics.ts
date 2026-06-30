@@ -744,10 +744,7 @@ export async function previewSheetFeatures(
 
     const headers = Object.keys(rows[0]);
 
-    // 2. Score every text column.
-    //    Feature name columns: many unique values, long text → high score
-    //    Category columns (e.g. MCA/MCG): few unique values, short text → low score
-    //    Score = uniqueCount * avgLength * uniquenessRatio
+    // 2. Collect stats for every non-empty text column
     type ColStats = { h: string; score: number; uniqueCount: number; avgLen: number };
     const colStats: ColStats[] = [];
     for (const h of headers) {
@@ -763,15 +760,42 @@ export async function previewSheetFeatures(
     if (colStats.length === 0) {
       return { features: [], error: `No text column found for feature names. Headers: ${headers.join(", ")}` };
     }
-    colStats.sort((a, b) => b.score - a.score);
-    const nameCol = colStats[0].h;
 
-    // 3. Find a grouping column — text column with fewest unique values (≤10)
-    //    that isn't the name column (used for display grouping in import modal only)
-    const groupColCandidate = colStats
-      .slice(1)
-      .find(c => c.uniqueCount <= 10 && c.avgLen <= 20);
-    const groupCol = groupColCandidate?.h;
+    // 3. Pick name column — header keyword match first, then score fallback
+    const nameHeaderKeywords = ["feature", "name", "title", "task", "item", "initiative", "epic"];
+    const notNameKeywords = ["metric", "kpi", "guardrail", "measure", "description", "phase",
+                             "status", "date", "product", "sector", "category", "type", "group",
+                             "owner", "team", "s/n", "no.", "id"];
+
+    let nameCol = headers.find(h => {
+      const lower = h.toLowerCase();
+      return nameHeaderKeywords.some(k => lower.includes(k)) &&
+             !notNameKeywords.some(k => lower.includes(k));
+    }) ?? "";
+
+    if (!nameCol) {
+      // Fallback: highest-scoring column with avg length <= 80 chars
+      // (metric descriptions tend to be 100+ chars; feature names are 5-60)
+      const candidates = [...colStats].sort((a, b) => b.score - a.score);
+      const sensible = candidates.find(c => c.avgLen <= 80);
+      nameCol = (sensible ?? candidates[0]).h;
+    }
+
+    // 4. Pick group column — header keyword match first, then fewest-unique fallback
+    const groupHeaderKeywords = ["product", "category", "type", "group", "team", "sector", "department", "area"];
+    let groupCol: string | undefined = headers.find(h => {
+      if (h === nameCol) return false;
+      const lower = h.toLowerCase();
+      return groupHeaderKeywords.some(k => lower.includes(k));
+    });
+
+    if (!groupCol) {
+      // Fallback: text column with <=10 unique values + short text, not the name col
+      const candidate = colStats
+        .filter(c => c.h !== nameCol)
+        .find(c => c.uniqueCount <= 10 && c.avgLen <= 20);
+      groupCol = candidate?.h;
+    }
 
     // 4. Extract names (and group label) from rows
     const seenNames = new Set<string>();
