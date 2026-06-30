@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 
 export type OrgMember = {
@@ -211,10 +212,14 @@ export async function inviteMember(
     await admin.from("allowed_emails").insert({ email: cleanEmail });
   }
 
+  // Derive the base URL from the incoming request so it always matches the
+  // actual deployment (works on Vercel preview URLs, custom domains, localhost).
+  const headersList = await headers();
+  const host = headersList.get("x-forwarded-host") ?? headersList.get("host") ?? "";
+  const proto = headersList.get("x-forwarded-proto") ?? "https";
   const appUrl =
     process.env.NEXT_PUBLIC_APP_URL ??
-    process.env.NEXTAUTH_URL ??
-    "https://metrik.app";
+    (host ? `${proto}://${host}` : "https://metrik.app");
   const inviteUrl = `${appUrl}/accept-invite?token=${invitation.token}`;
 
   // Send invite email via Resend (if configured)
