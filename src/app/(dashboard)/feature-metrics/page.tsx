@@ -1684,7 +1684,7 @@ export default function FeatureMetricsPage() {
       {/* Sheet import — feature selection modal */}
       {(importStage === "selecting" || importStage === "importing") && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 flex flex-col max-h-[80vh]">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 flex flex-col max-h-[85vh]">
             {/* Header */}
             <div className="flex items-start justify-between px-6 pt-5 pb-4 border-b border-gray-100">
               <div>
@@ -1723,13 +1723,13 @@ export default function FeatureMetricsPage() {
             </div>
 
             {/* Feature list */}
-            <div className="flex-1 overflow-y-auto px-6 py-3 space-y-1">
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1">
               {importPreview.map(f => (
                 <label
                   key={f.name}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition-colors ${
+                  className={`flex items-start gap-3 px-3 py-3 rounded-xl cursor-pointer transition-colors ${
                     f.exists
-                      ? "opacity-50 cursor-default"
+                      ? "opacity-40 cursor-default"
                       : importSelected.has(f.name)
                       ? "bg-indigo-50"
                       : "hover:bg-gray-50"
@@ -1738,7 +1738,7 @@ export default function FeatureMetricsPage() {
                   <input
                     type="checkbox"
                     checked={importSelected.has(f.name)}
-                    disabled={importStage === "importing"}
+                    disabled={importStage === "importing" || f.exists}
                     onChange={() => {
                       if (f.exists) return;
                       setImportSelected(prev => {
@@ -1747,16 +1747,39 @@ export default function FeatureMetricsPage() {
                         return next;
                       });
                     }}
-                    className="accent-indigo-600 w-4 h-4 shrink-0"
+                    className="accent-indigo-600 w-4 h-4 shrink-0 mt-0.5"
                   />
                   <div className="min-w-0 flex-1">
-                    <span className="text-sm font-medium text-gray-800 truncate block">{f.name}</span>
+                    <span className="text-sm font-semibold text-gray-800 block leading-tight">{f.name}</span>
+                    {/* Meta badges: sector, target_users, launch_timeline */}
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {f.data.sector && (
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 border border-indigo-100">
+                          {f.data.sector}
+                        </span>
+                      )}
+                      {f.data.target_users && (
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                          {f.data.target_users}
+                        </span>
+                      )}
+                      {f.data.launch_timeline && (
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-100">
+                          {f.data.launch_timeline}
+                        </span>
+                      )}
+                      {f.data.interaction_frequency && (
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-gray-50 text-gray-400 border border-gray-100">
+                          {f.data.interaction_frequency}
+                        </span>
+                      )}
+                    </div>
                     {f.data.feature_description && (
-                      <span className="text-xs text-gray-400 truncate block">{f.data.feature_description}</span>
+                      <span className="text-xs text-gray-400 mt-1 line-clamp-2 block leading-relaxed">{f.data.feature_description}</span>
                     )}
                   </div>
                   {f.exists && (
-                    <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full shrink-0">
+                    <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full shrink-0 mt-0.5">
                       Already exists
                     </span>
                   )}
