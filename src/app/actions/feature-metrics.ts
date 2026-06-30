@@ -714,7 +714,6 @@ Only include fields where you found a reasonable match. The feature_name mapping
 
 export type PreviewFeature = {
   name: string;
-  data: FeatureInput;
   exists: boolean; // already in this org
 };
 
@@ -739,114 +738,60 @@ export async function previewSheetFeatures(
     const buffer = Buffer.from(fileBase64, "base64");
     const workbook = XLSX.read(buffer, { type: "buffer" });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json<Record<string, string>>(sheet, { defval: "" });
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "" });
     if (!rows.length) return { features: [], error: "Sheet appears to be empty." };
 
-    // 2. AI column mapping — show per-column sample values so AI can pair header→data correctly
     const headers = Object.keys(rows[0]);
-    const sampleRows = rows.slice(0, 5);
-    const columnSamples = headers.map(h => {
-      const vals = sampleRows
-        .map(r => String(r[h] ?? "").trim())
-        .filter(v => v.length > 0)
-        .slice(0, 3);
-      return `"${h}" → [${vals.map(v => `"${v}"`).join(", ")}]`;
-    }).join("\n");
 
-    const mappingPrompt = `You are mapping spreadsheet columns to product feature tracking fields.
-
-Each line below shows a column header and up to 3 sample values from that column:
-${columnSamples}
-
-Map each column header to one of these field keys (or omit if no reasonable match):
-- feature_name (REQUIRED — the short name or title of the feature, e.g. "Dark mode", "Referral programme")
-- feature_description (longer description of what the feature does)
-- sector (business area: Product, Growth, Retention, etc.)
-- target_users (who uses it: "All users", "New users", etc.)
-- success_definition (what success looks like)
-- failure_definition (what failure looks like)
-- interaction_frequency (how often users interact: Daily, Weekly, etc.)
-- launch_timeline (when it launches)
-
-Rules:
-- feature_name must map to the column with SHORT feature titles (not IDs, not descriptions, not numbers)
-- sector, target_users, interaction_frequency, launch_timeline must ONLY map to columns with TEXT values — NEVER map these to columns that contain numbers or IDs
-- If a column contains only numbers, dates, or IDs, do NOT map it to any field
-- Return ONLY valid JSON, no explanation
-- Example: {"feature_name": "Feature Name", "feature_description": "Description", "sector": "Category"}`;
-
-    const mappingRes = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 400,
-      messages: [{ role: "user", content: mappingPrompt }],
-    });
-
-    const mappingText = (mappingRes.content[0] as { type: string; text: string }).text.trim();
-    const jsonMatch = mappingText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return { features: [], error: "Could not determine column mapping from sheet." };
-
-    const colMap: Record<string, string> = JSON.parse(jsonMatch[0]);
-
-    // Fallback: if AI didn't find feature_name, try the first text-heavy column automatically
-    if (!colMap.feature_name) {
-      const textCol = headers.find(h => {
-        const vals = sampleRows.map(r => String(r[h] ?? "").trim()).filter(v => v.length > 2);
-        return vals.length >= 2 && vals.every(v => isNaN(Number(v)));
-      });
-      if (textCol) colMap.feature_name = textCol;
-      else return { features: [], error: `Could not identify a feature name column. Headers found: ${headers.join(", ")}` };
+    // 2. Heuristic: find the column with the most non-numeric text values — that's the name column
+    let nameCol = headers[0];
+    let bestScore = -1;
+    for (const h of headers) {
+      const vals = rows.map(r => String(r[h] ?? "").trim());
+      const textVals = vals.filter(v => v.length >= 3 && v.length <= 150 && isNaN(Number(v)));
+      if (textVals.length > bestScore) { bestScore = textVals.length; nameCol = h; }
+    }
+    if (bestScore === 0) {
+      return { features: [], error: `No text column found for feature names. Headers: ${headers.join(", ")}` };
     }
 
-    // 3. Fetch existing feature names for this org
+    // 3. Extract unique names
+    const seenNames = new Set<string>();
+    const names: string[] = [];
+    for (const row of rows) {
+      const name = String(row[nameCol] ?? "").trim();
+      if (!name || name.length < 2 || !isNaN(Number(name))) continue;
+      if (seenNames.has(name.toLowerCase())) continue;
+      seenNames.add(name.toLowerCase());
+      names.push(name);
+    }
+    if (names.length === 0) return { features: [], error: "No feature names found in sheet." };
+
+    // 4. Check which already exist
     const { data: existing } = await admin
       .from("feature_metrics")
       .select("feature_name")
       .eq("organization_id", orgId)
-      .eq("status", "active");
+      .eq("archived", false)
+      .in("feature_name", names);
 
-    const existingNames = new Set(
-      (existing ?? []).map(f => f.feature_name.toLowerCase().trim())
-    );
+    const existingSet = new Set((existing ?? []).map((f: { feature_name: string }) => f.feature_name.toLowerCase().trim()));
 
-    // 4. Map rows to PreviewFeature (no insert)
-    const seenNames = new Set<string>();
-    const features: PreviewFeature[] = [];
-
-    for (const row of rows) {
-      const name = (row[colMap.feature_name] ?? "").trim();
-      if (!name || seenNames.has(name.toLowerCase())) continue;
-      seenNames.add(name.toLowerCase());
-
-      const data: FeatureInput = {
-        feature_name: name,
-        feature_description: colMap.feature_description ? (row[colMap.feature_description] ?? "") : "",
-        sector: colMap.sector ? (row[colMap.sector] ?? "") : "",
-        target_users: colMap.target_users ? (row[colMap.target_users] ?? "") : "",
-        success_definition: colMap.success_definition ? (row[colMap.success_definition] ?? "") : "",
-        failure_definition: colMap.failure_definition ? (row[colMap.failure_definition] ?? "") : "",
-        interaction_frequency: colMap.interaction_frequency ? (row[colMap.interaction_frequency] ?? "") : "",
-        launch_timeline: colMap.launch_timeline ? (row[colMap.launch_timeline] ?? "") : "",
-      };
-
-      features.push({ name, data, exists: existingNames.has(name.toLowerCase()) });
-    }
-
-    if (features.length === 0) {
-      return { features: [], error: `Found ${rows.length} rows but couldn't extract any feature names from column "${colMap.feature_name}". Check that the column has values in all rows.` };
-    }
-
-    return { features };
+    return {
+      features: names.map(name => ({ name, exists: existingSet.has(name.toLowerCase()) })),
+    };
   } catch (err) {
     console.error("previewSheetFeatures error:", err);
     return { features: [], error: "Failed to process sheet. Please check the file format." };
   }
 }
 
+
 // ─── Import a user-selected subset of features ───────────────────────────────
 
 export async function importSelectedFeatures(
   orgId: string,
-  features: FeatureInput[]
+  featureNames: string[]
 ): Promise<SheetImportResult> {
   try {
     const supabase = await createServerClient();
@@ -855,19 +800,20 @@ export async function importSelectedFeatures(
 
     const admin = createAdminClient();
 
-    if (!features.length) return { added: [], skipped: [] };
+    if (!featureNames.length) return { added: [], skipped: [] };
 
-    const toInsert = features.map(f => ({
+    const toInsert = featureNames.map(name => ({
       organization_id: orgId,
       created_by: user.id,
-      ...f,
+      feature_name: name,
       suggestions: [],
+      launch_status: "ideation",
     }));
 
     const { error: insertError } = await admin.from("feature_metrics").insert(toInsert);
     if (insertError) return { added: [], skipped: [], error: insertError.message };
 
-    return { added: features.map(f => f.feature_name), skipped: [] };
+    return { added: featureNames, skipped: [] };
   } catch (err) {
     console.error("importSelectedFeatures error:", err);
     return { added: [], skipped: [], error: "Import failed. Please try again." };

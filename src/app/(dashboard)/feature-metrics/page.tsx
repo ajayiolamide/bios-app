@@ -22,6 +22,7 @@ import {
   type SheetImportResult,
   type PreviewFeature,
 } from "@/app/actions/feature-metrics";
+// PreviewFeature now only has { name, exists } — no extra data fields
 import { getBusinessGoals } from "@/app/actions/business-goals";
 import { getKpisByGoal, type MetricWithData } from "@/app/actions/metrics";
 import { getDistinctEventNames } from "@/app/actions/events";
@@ -31,7 +32,7 @@ import {
   CheckCircle2, BarChart3, TrendingUp, Shield, Zap, Clock,
   ExternalLink, Sparkles, ArrowRight, Trophy, Target, Link2,
   Calendar, AlertTriangle, Rocket, XCircle, RotateCcw, ChevronDown,
-  Download, User, X, Upload, Pencil, Check,
+  Download, User, X, Upload,
 } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -430,12 +431,14 @@ function SavedPlanCard({
   onUpdated,
   goals,
   orgId,
+  onSetupWithAI,
 }: {
   plan: FeatureMetric;
   onArchive: (id: string) => void;
   onUpdated: () => void;
   goals: BusinessGoal[];
   orgId: string;
+  onSetupWithAI?: (id: string, name: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [editingDate, setEditingDate] = useState(false);
@@ -651,7 +654,28 @@ function SavedPlanCard({
         </div>
       </button>
 
-      {expanded && (
+      {/* No-metrics CTA — shown instead of expand, only for blank imported features */}
+      {(plan.suggestions as FeatureSuggestion[]).length === 0 && onSetupWithAI && (
+        <div className="border-t border-indigo-50 px-5 py-4 bg-indigo-50/40 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-indigo-100 flex items-center justify-center flex-shrink-0">
+              <Sparkles size={13} className="text-indigo-600" />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-gray-800">No metrics set up yet</p>
+              <p className="text-xs text-gray-400">Let AI analyse this feature and suggest what to track</p>
+            </div>
+          </div>
+          <button
+            onClick={() => onSetupWithAI(plan.id, plan.feature_name)}
+            className="flex items-center gap-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl transition-colors flex-shrink-0"
+          >
+            Set up with AI <ArrowRight size={13} />
+          </button>
+        </div>
+      )}
+
+      {expanded && (plan.suggestions as FeatureSuggestion[]).length > 0 && (
         <div className="border-t border-gray-100 px-5 pb-5 pt-4 space-y-4">
           {plan.goal_alignment && (
             <div className="flex items-start gap-2 bg-indigo-50 border border-indigo-100 rounded-xl p-3">
@@ -1068,11 +1092,14 @@ const EMPTY_INPUT: FeatureInput = {
 
 type WizardStage = "goal" | "kpi" | "questions" | "generating" | "results";
 
-function Wizard({ goals, kpisByGoal, onSaved, existingEventNames, footerEl }: { goals: BusinessGoal[]; kpisByGoal: Record<string, MetricWithData[]>; onSaved: () => void; existingEventNames: string[]; footerEl: HTMLElement | null }) {
+function Wizard({ goals, kpisByGoal, onSaved, existingEventNames, footerEl, initialFeatureName }: { goals: BusinessGoal[]; kpisByGoal: Record<string, MetricWithData[]>; onSaved: () => void; existingEventNames: string[]; footerEl: HTMLElement | null; initialFeatureName?: string }) {
   const { currentOrg } = useOrg();
   const [stage, setStage] = useState<WizardStage>("goal");
-  const [step, setStep] = useState(0);
-  const [input, setInput] = useState<FeatureInput>(EMPTY_INPUT);
+  // If opened from an imported feature, start at step 1 (skip name question)
+  const [step, setStep] = useState(initialFeatureName ? 1 : 0);
+  const [input, setInput] = useState<FeatureInput>(
+    initialFeatureName ? { ...EMPTY_INPUT, feature_name: initialFeatureName } : EMPTY_INPUT
+  );
   const [selectedGoal, setSelectedGoal] = useState<BusinessGoal | null>(null);
   const [selectedKpi, setSelectedKpi] = useState<MetricWithData | null>(null);
   const [suggestions, setSuggestions] = useState<FeatureSuggestion[] | null>(null);
@@ -1373,9 +1400,10 @@ export default function FeatureMetricsPage() {
   const [importSelected, setImportSelected] = useState<Set<string>>(new Set());
   const [importResult, setImportResult] = useState<SheetImportResult | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
-  const [importEditingIdx, setImportEditingIdx] = useState<number | null>(null);
-  const [importEditDraft, setImportEditDraft] = useState<{ name: string; sector: string; target_users: string }>({ name: "", sector: "", target_users: "" });
   const importFileRef = useRef<HTMLInputElement>(null);
+  // Wizard pre-fill: when opened from an imported blank feature
+  const [wizardInitialName, setWizardInitialName] = useState<string | undefined>(undefined);
+  const [wizardReplaceId, setWizardReplaceId] = useState<string | null>(null);
 
   // Smooth slide-in / slide-out for the wizard drawer
   useEffect(() => {
@@ -1387,8 +1415,27 @@ export default function FeatureMetricsPage() {
     }
   }, [showWizard]);
 
-  function openWizard() { setShowWizard(true); }
-  function closeWizard() { setWizardVisible(false); setTimeout(() => setShowWizard(false), 300); }
+  function openWizard(initialName?: string, replaceId?: string) {
+    setWizardInitialName(initialName);
+    setWizardReplaceId(replaceId ?? null);
+    setShowWizard(true);
+  }
+  function closeWizard() {
+    setWizardVisible(false);
+    setTimeout(() => {
+      setShowWizard(false);
+      setWizardInitialName(undefined);
+      setWizardReplaceId(null);
+    }, 300);
+  }
+  async function handleWizardSaved() {
+    // If opened from a blank imported feature, archive the placeholder then reload
+    if (wizardReplaceId) {
+      await archiveFeatureMetric(wizardReplaceId);
+    }
+    closeWizard();
+    await load();
+  }
 
   const load = useCallback(async () => {
     if (!currentOrg) return;
@@ -1453,10 +1500,10 @@ export default function FeatureMetricsPage() {
     if (!currentOrg || importSelected.size === 0) return;
     setImportStage("importing");
     try {
-      const toImport = importPreview
+      const selectedNames = importPreview
         .filter(f => importSelected.has(f.name))
-        .map(f => f.data);
-      const result = await importSelectedFeatures(currentOrg.id, toImport);
+        .map(f => f.name);
+      const result = await importSelectedFeatures(currentOrg.id, selectedNames);
       setImportResult(result);
       setImportStage("done");
       if (result.added.length > 0) await load();
@@ -1472,33 +1519,6 @@ export default function FeatureMetricsPage() {
     setImportSelected(new Set());
     setImportResult(null);
     setImportError(null);
-    setImportEditingIdx(null);
-  }
-
-  function openImportEdit(idx: number) {
-    const f = importPreview[idx];
-    setImportEditDraft({ name: f.name, sector: f.data.sector ?? "", target_users: f.data.target_users ?? "" });
-    setImportEditingIdx(idx);
-  }
-
-  function saveImportEdit() {
-    if (importEditingIdx === null) return;
-    const oldName = importPreview[importEditingIdx].name;
-    const newName = importEditDraft.name.trim() || oldName;
-    setImportPreview(prev => prev.map((f, i) => i === importEditingIdx ? {
-      ...f,
-      name: newName,
-      data: { ...f.data, feature_name: newName, sector: importEditDraft.sector, target_users: importEditDraft.target_users },
-    } : f));
-    // Update selection to track renamed feature
-    if (oldName !== newName) {
-      setImportSelected(prev => {
-        const next = new Set(prev);
-        if (next.has(oldName)) { next.delete(oldName); next.add(newName); }
-        return next;
-      });
-    }
-    setImportEditingIdx(null);
   }
 
   function handleCsvExport() {
@@ -1575,7 +1595,7 @@ export default function FeatureMetricsPage() {
             {importStage === "parsing" ? "Reading…" : importStage === "importing" ? "Importing…" : "Import sheet"}
           </button>
           <button
-            onClick={openWizard}
+            onClick={() => openWizard()}
             className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-colors"
           >
             <Plus size={14} /> Log a feature
@@ -1632,7 +1652,7 @@ export default function FeatureMetricsPage() {
             </div>
             {/* Scrollable body */}
             <div className="flex-1 overflow-y-auto px-7 py-6">
-              <Wizard goals={goals} kpisByGoal={kpisByGoal} existingEventNames={existingEventNames} onSaved={() => { closeWizard(); load(); }} footerEl={drawerFooterEl} />
+              <Wizard goals={goals} kpisByGoal={kpisByGoal} existingEventNames={existingEventNames} onSaved={handleWizardSaved} footerEl={drawerFooterEl} initialFeatureName={wizardInitialName} />
             </div>
             {/* Footer portal target — rendered outside scroll so it's always flush at bottom */}
             <div ref={setDrawerFooterEl} className="flex-shrink-0" />
@@ -1674,7 +1694,15 @@ export default function FeatureMetricsPage() {
             {plans.length} feature{plans.length !== 1 ? "s" : ""} logged
           </p>
           {plans.map(p => (
-            <SavedPlanCard key={p.id} plan={p} onArchive={handleArchive} onUpdated={load} goals={goals} orgId={currentOrg.id} />
+            <SavedPlanCard
+              key={p.id}
+              plan={p}
+              onArchive={handleArchive}
+              onUpdated={load}
+              goals={goals}
+              orgId={currentOrg.id}
+              onSetupWithAI={(id, name) => openWizard(name, id)}
+            />
           ))}
         </div>
       )}
@@ -1719,7 +1747,7 @@ export default function FeatureMetricsPage() {
               <div>
                 <h3 className="text-base font-bold text-gray-900">Select features to import</h3>
                 <p className="text-xs text-gray-500 mt-0.5">
-                  {importPreview.length} found · {importSelected.size} selected
+                  {importPreview.length} found · {importSelected.size} selected · click each one after import to set up metrics with AI
                 </p>
               </div>
               <button onClick={resetImport} disabled={importStage === "importing"} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-40">
@@ -1751,107 +1779,32 @@ export default function FeatureMetricsPage() {
               </button>
             </div>
 
-            {/* Feature list */}
+            {/* Feature list — just names + checkboxes */}
             <div className="flex-1 overflow-y-auto px-4 py-3 space-y-1">
-              {importPreview.map((f, idx) => {
-                const isEditing = importEditingIdx === idx;
-                const isUseful = (v?: string) => v && v.trim().length > 1 && isNaN(Number(v.trim()));
-
-                if (isEditing) {
-                  return (
-                    <div key={f.name} className="px-3 py-3 rounded-xl bg-indigo-50 border border-indigo-100 space-y-2">
-                      <div>
-                        <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Feature name</label>
-                        <input
-                          autoFocus
-                          value={importEditDraft.name}
-                          onChange={e => setImportEditDraft(d => ({ ...d, name: e.target.value }))}
-                          onKeyDown={e => { if (e.key === "Enter") saveImportEdit(); if (e.key === "Escape") setImportEditingIdx(null); }}
-                          className="w-full mt-1 text-sm font-semibold text-gray-800 border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <div className="flex-1">
-                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Sector / Product</label>
-                          <input
-                            value={importEditDraft.sector}
-                            onChange={e => setImportEditDraft(d => ({ ...d, sector: e.target.value }))}
-                            placeholder="e.g. Product, Growth, MCG…"
-                            onKeyDown={e => { if (e.key === "Enter") saveImportEdit(); if (e.key === "Escape") setImportEditingIdx(null); }}
-                            className="w-full mt-1 text-xs border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
-                          />
-                        </div>
-                        <div className="flex-1">
-                          <label className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Target users</label>
-                          <input
-                            value={importEditDraft.target_users}
-                            onChange={e => setImportEditDraft(d => ({ ...d, target_users: e.target.value }))}
-                            placeholder="e.g. All users, New users…"
-                            onKeyDown={e => { if (e.key === "Enter") saveImportEdit(); if (e.key === "Escape") setImportEditingIdx(null); }}
-                            className="w-full mt-1 text-xs border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-300 bg-white"
-                          />
-                        </div>
-                      </div>
-                      <div className="flex justify-end gap-2 pt-1">
-                        <button onClick={() => setImportEditingIdx(null)} className="text-xs text-gray-400 hover:text-gray-600 px-3 py-1 rounded-lg">Cancel</button>
-                        <button onClick={saveImportEdit} className="flex items-center gap-1.5 text-xs font-medium bg-indigo-600 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-700">
-                          <Check size={11} /> Save
-                        </button>
-                      </div>
-                    </div>
-                  );
-                }
-
-                return (
-                  <div key={f.name} className={`flex items-start gap-3 px-3 py-3 rounded-xl transition-colors group ${
-                    f.exists ? "opacity-40" : importSelected.has(f.name) ? "bg-indigo-50" : "hover:bg-gray-50"
-                  }`}>
-                    <input
-                      type="checkbox"
-                      checked={importSelected.has(f.name)}
-                      disabled={importStage === "importing" || f.exists}
-                      onChange={() => {
-                        if (f.exists) return;
-                        setImportSelected(prev => {
-                          const next = new Set(prev);
-                          next.has(f.name) ? next.delete(f.name) : next.add(f.name);
-                          return next;
-                        });
-                      }}
-                      className="accent-indigo-600 w-4 h-4 shrink-0 mt-0.5 cursor-pointer"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <span className="text-sm font-semibold text-gray-800 block leading-tight">{f.name}</span>
-                      {(() => {
-                        const badges = [
-                          f.data.sector && isUseful(f.data.sector) && { label: f.data.sector, cls: "bg-indigo-50 text-indigo-600 border border-indigo-100" },
-                          f.data.target_users && isUseful(f.data.target_users) && { label: f.data.target_users, cls: "bg-gray-100 text-gray-500" },
-                          f.data.launch_timeline && isUseful(f.data.launch_timeline) && { label: f.data.launch_timeline, cls: "bg-amber-50 text-amber-600 border border-amber-100" },
-                        ].filter(Boolean) as { label: string; cls: string }[];
-                        return badges.length > 0 ? (
-                          <div className="flex flex-wrap gap-1 mt-1.5">
-                            {badges.map(b => <span key={b.label} className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${b.cls}`}>{b.label}</span>)}
-                          </div>
-                        ) : null;
-                      })()}
-                      {f.data.feature_description && (
-                        <span className="text-xs text-gray-400 mt-1 line-clamp-1 block">{f.data.feature_description}</span>
-                      )}
-                    </div>
-                    {f.exists ? (
-                      <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full shrink-0 mt-0.5">Already exists</span>
-                    ) : (
-                      <button
-                        onClick={() => openImportEdit(idx)}
-                        className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-white transition-all shrink-0 mt-0.5"
-                        title="Edit name & category"
-                      >
-                        <Pencil size={11} />
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
+              {importPreview.map((f) => (
+                <div key={f.name} className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors ${
+                  f.exists ? "opacity-40" : importSelected.has(f.name) ? "bg-indigo-50" : "hover:bg-gray-50"
+                }`}>
+                  <input
+                    type="checkbox"
+                    checked={importSelected.has(f.name)}
+                    disabled={importStage === "importing" || f.exists}
+                    onChange={() => {
+                      if (f.exists) return;
+                      setImportSelected(prev => {
+                        const next = new Set(prev);
+                        next.has(f.name) ? next.delete(f.name) : next.add(f.name);
+                        return next;
+                      });
+                    }}
+                    className="accent-indigo-600 w-4 h-4 shrink-0 cursor-pointer"
+                  />
+                  <span className="text-sm text-gray-800 flex-1 leading-tight">{f.name}</span>
+                  {f.exists && (
+                    <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full shrink-0">Already exists</span>
+                  )}
+                </div>
+              ))}
             </div>
 
             {/* Footer */}
