@@ -138,7 +138,7 @@ Organization data (last 7 days vs previous 7 days):
       messages: [
         {
           role: "user",
-          content: `You are a business intelligence analyst. Write a 2-3 sentence plain-English summary of these analytics for a product manager. Be specific with numbers. Highlight what's notable — growth, drops, or anything worth attention.\n\n${dataBlurb}`,
+          content: `You are the Head of Growth reviewing this week's numbers. Write 2-3 sentences for the team — plain English, specific numbers, growth lens. What's the headline? What moved and why does it matter for the business? If something is down, say it plainly and what it likely means. No filler, no "it is worth noting", no "stakeholders".\n\n${dataBlurb}`,
         },
       ],
     });

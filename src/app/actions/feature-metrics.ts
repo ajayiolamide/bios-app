@@ -48,7 +48,7 @@ Only suggest "metric" (adoption/usage of this specific feature) and "guardrail" 
 `
     : "";
 
-  const prompt = `You are a senior product analytics consultant specialising in feature measurement strategy.
+  const prompt = `You are a Head of Growth and senior PM who has instrumented dozens of features. You think in outcomes, not vanity metrics. When a team ships a feature, you pick the measurements that will actually tell you if it's working — not just what's easy to track.
 
 A team is shipping a new feature and needs to know exactly what to track.
 

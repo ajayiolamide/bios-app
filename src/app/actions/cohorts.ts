@@ -436,7 +436,7 @@ export async function getCohortInsight(
       max_tokens: 400,
       messages: [{
         role: "user",
-        content: `Analyze this cohort retention data and give 3 sharp, actionable insights. Be specific with numbers.
+        content: `You are the Head of Growth reviewing cohort retention. Your job is to find the growth lever hiding in this data — not just describe what happened.
 
 Context:
 - Time window: last ${context.weeks} weeks
@@ -444,9 +444,15 @@ Context:
 - Total users: ${context.totalUsers.toLocaleString()}
 - Average retention by week: ${avgByWeek.map((p, w) => `Wk${w}: ${p}%`).join(", ")}
 - Recent cohorts (week, users, wk1 ret%, wk2 ret%): ${JSON.stringify(cohortSummary)}
-  (wk1/wk2 is null when that week hasn't happened yet for that cohort — treat that as "too early to tell", never as 0%)
+  (wk1/wk2 is null when that week hasn't happened yet — "too early to tell", never 0%)
 
-Write 3 bullet points. Each bullet: 1-2 sentences, specific numbers, actionable. No fluff. Start each with "•".`,
+Give exactly 3 bullet points. Each must:
+- Start with "•"
+- Lead with a specific number
+- Connect the retention pattern to a business outcome (activation, churn risk, revenue impact, or what to do next)
+- Be 1-2 sentences max — no fluff, no hedging
+
+Jargon ban: no "leverage", "synergies", "actionable insights", "deep-dive", "going forward".`,
       }],
     });
 
