@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
     // a "previous design" briefly on every page visit after the first.
     staleTimes: {
       dynamic: 0,
+      static: 0,
     },
     serverActions: {
       // Next.js rejects any Server Action request whose Origin header isn't
