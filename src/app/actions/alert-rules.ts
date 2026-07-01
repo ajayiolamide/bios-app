@@ -317,11 +317,13 @@ export async function getOrgKpis(): Promise<KpiOption[]> {
   try {
     const orgId = await getOrgId();
     const admin = createAdminClient();
-    // Only pull real KPI-kind metrics that have a tracked event
-    // (excludes orphaned feature guardrails, deleted-feature metrics, etc.)
+    // Only pull real KPI-kind metrics that have a tracked event.
+    // Also exclude KPIs whose parent business goal has been soft-deleted
+    // (status = 'dropped') — those goals are gone from the UI and their
+    // KPIs should not appear as options in alert rules either.
     const { data } = await admin
       .from("metrics")
-      .select("id, name, event_name, denominator_event_name, target_value, rate_as_percentage, aggregation, business_goal_id")
+      .select("id, name, event_name, denominator_event_name, target_value, rate_as_percentage, aggregation, business_goal_id, business_goals(status)")
       .eq("organization_id", orgId)
       .eq("kind", "kpi")
       .not("event_name", "is", null)
@@ -339,22 +341,27 @@ export async function getOrgKpis(): Promise<KpiOption[]> {
       if (goals) goalMap = Object.fromEntries(goals.map((g: { id: string; name: string }) => [g.id, g.name]));
     }
 
-    return data.map((m: {
-      id: string; name: string; event_name: string | null;
-      denominator_event_name: string | null; target_value: number | null;
-      rate_as_percentage: boolean | null; aggregation: string | null;
-      business_goal_id: string | null;
-    }) => ({
-      id: m.id,
-      name: m.name,
-      event_name: m.event_name,
-      denominator_event_name: m.denominator_event_name,
-      target_value: m.target_value,
-      rate_as_percentage: m.rate_as_percentage,
-      aggregation: (m.aggregation as KpiOption["aggregation"]) ?? "count",
-      goal_name: m.business_goal_id ? goalMap[m.business_goal_id] : undefined,
-      goal_id: m.business_goal_id,
-    }));
+    return data
+      // Exclude KPIs whose parent goal has been soft-deleted (status = 'dropped')
+      .filter((m: { business_goals?: { status?: string } | null }) =>
+        !m.business_goals || m.business_goals.status !== "dropped"
+      )
+      .map((m: {
+        id: string; name: string; event_name: string | null;
+        denominator_event_name: string | null; target_value: number | null;
+        rate_as_percentage: boolean | null; aggregation: string | null;
+        business_goal_id: string | null;
+      }) => ({
+        id: m.id,
+        name: m.name,
+        event_name: m.event_name,
+        denominator_event_name: m.denominator_event_name,
+        target_value: m.target_value,
+        rate_as_percentage: m.rate_as_percentage,
+        aggregation: (m.aggregation as KpiOption["aggregation"]) ?? "count",
+        goal_name: m.business_goal_id ? goalMap[m.business_goal_id] : undefined,
+        goal_id: m.business_goal_id,
+      }));
   } catch {
     return [];
   }
@@ -798,10 +805,15 @@ export async function getAlertEventNames(): Promise<string[]> {
   try {
     const orgId = await getOrgId();
     const admin = createAdminClient();
+    // Only return event names seen in the last 90 days — prevents stale/retired
+    // event names from cluttering the autocomplete on the alert rule form.
+    const since = new Date();
+    since.setDate(since.getDate() - 90);
     const { data } = await admin
       .from("events")
       .select("name")
       .eq("organization_id", orgId)
+      .gte("timestamp", since.toISOString())
       .order("name");
     if (!data) return [];
     const names = [...new Set(data.map((r: { name: string }) => r.name))];
