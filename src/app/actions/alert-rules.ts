@@ -352,6 +352,51 @@ async function countEvents(
   return count ?? 0;
 }
 
+/**
+ * Funnel-style ratio: of users who fired denominatorEvent in the window,
+ * how many also fired numeratorEvent in the same window?
+ * Numerator is always a subset of denominator — rate can never exceed 100%.
+ * Returns { numerator, denominator } counts.
+ */
+async function countFunnelRatio(
+  admin: ReturnType<typeof createAdminClient>,
+  orgId: string,
+  numeratorEvent: string,
+  denominatorEvent: string,
+  from: Date,
+  to: Date,
+): Promise<{ numerator: number; denominator: number }> {
+  // Step 1: all unique users who fired the denominator (entry step) in the window
+  const { data: denData } = await admin
+    .from("events")
+    .select("user_id")
+    .eq("organization_id", orgId)
+    .eq("name", denominatorEvent)
+    .gte("timestamp", from.toISOString())
+    .lt("timestamp", to.toISOString())
+    .not("user_id", "is", null);
+
+  const denUserIds = [...new Set((denData ?? []).map((e: { user_id: string }) => e.user_id))];
+  const denominator = denUserIds.length;
+  if (denominator === 0) return { numerator: 0, denominator: 0 };
+
+  // Step 2: of those users, how many also fired the numerator event in the window?
+  const { data: numData } = await admin
+    .from("events")
+    .select("user_id")
+    .eq("organization_id", orgId)
+    .eq("name", numeratorEvent)
+    .gte("timestamp", from.toISOString())
+    .lt("timestamp", to.toISOString())
+    .in("user_id", denUserIds);
+
+  const numUserIds = new Set((numData ?? []).map((e: { user_id: string }) => e.user_id));
+  // Intersect: only count users who appear in both sets
+  const numerator = denUserIds.filter(uid => numUserIds.has(uid)).length;
+
+  return { numerator, denominator };
+}
+
 export async function evaluateRule(ruleId: string): Promise<EvalResult> {
   const orgId = await getOrgId();
   const admin = createAdminClient();
@@ -512,20 +557,35 @@ async function _evaluateRuleData(
     const currentFrom = new Date(now.getTime() - rule.lookback_days * 86400_000);
     const priorFrom   = new Date(now.getTime() - rule.lookback_days * 2 * 86400_000);
 
-    // count_method: "unique" counts distinct user_ids; "total" counts all occurrences
-    const agg = rule.count_method === "unique" ? "unique_users" : "count";
+    // count_method: "unique" uses funnel logic for ratios (numerator must be subset of denominator users)
+    // and distinct user counts for single-event rules.
+    // "total" counts all event occurrences.
+    const isUnique = rule.count_method === "unique";
+    const agg = isUnique ? "unique_users" : "count";
 
-    const numCurrent = await countEvents(admin, orgId, rule.numerator_event, currentFrom, now, agg);
-    const numPrior   = await countEvents(admin, orgId, rule.numerator_event, priorFrom, currentFrom, agg);
+    let current: number;
+    let prior: number;
 
-    let current = numCurrent;
-    let prior   = numPrior;
-
-    if (rule.denominator_event) {
-      const denCurrent = await countEvents(admin, orgId, rule.denominator_event, currentFrom, now, agg);
-      const denPrior   = await countEvents(admin, orgId, rule.denominator_event, priorFrom, currentFrom, agg);
-      current = denCurrent > 0 ? (numCurrent / denCurrent) * 100 : 0;
-      prior   = denPrior  > 0 ? (numPrior  / denPrior)  * 100 : 0;
+    if (isUnique && rule.denominator_event) {
+      // Funnel mode: of users who fired denominator, how many also fired numerator?
+      // This mirrors Mixpanel funnel behaviour — rate is always ≤ 100%.
+      const [fCurrent, fPrior] = await Promise.all([
+        countFunnelRatio(admin, orgId, rule.numerator_event, rule.denominator_event, currentFrom, now),
+        countFunnelRatio(admin, orgId, rule.numerator_event, rule.denominator_event, priorFrom, currentFrom),
+      ]);
+      current = fCurrent.denominator > 0 ? (fCurrent.numerator / fCurrent.denominator) * 100 : 0;
+      prior   = fPrior.denominator   > 0 ? (fPrior.numerator   / fPrior.denominator)   * 100 : 0;
+    } else {
+      const numCurrent = await countEvents(admin, orgId, rule.numerator_event, currentFrom, now, agg);
+      const numPrior   = await countEvents(admin, orgId, rule.numerator_event, priorFrom, currentFrom, agg);
+      current = numCurrent;
+      prior   = numPrior;
+      if (rule.denominator_event) {
+        const denCurrent = await countEvents(admin, orgId, rule.denominator_event, currentFrom, now, agg);
+        const denPrior   = await countEvents(admin, orgId, rule.denominator_event, priorFrom, currentFrom, agg);
+        current = denCurrent > 0 ? (numCurrent / denCurrent) * 100 : 0;
+        prior   = denPrior  > 0 ? (numPrior  / denPrior)  * 100 : 0;
+      }
     }
 
     const pct_change = prior > 0 ? ((current - prior) / prior) * 100 : 0;
