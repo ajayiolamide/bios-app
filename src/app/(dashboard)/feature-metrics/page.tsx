@@ -256,8 +256,8 @@ function SuggestionCard({
 }) {
   const accent = s.type === "kpi" ? "#6366f1" : s.type === "guardrail" ? "#D97706" : "#3B82F6";
   return (
-    <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden">
-      <div className="h-1" style={{ background: accent }} />
+    <div className="bg-white border border-gray-100 rounded-2xl">
+      <div className="h-1 rounded-t-2xl" style={{ background: accent }} />
       <div className="p-5">
         <div className="flex items-start justify-between gap-3 mb-3">
           <div className="flex items-center gap-2 flex-wrap">

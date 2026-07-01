@@ -323,16 +323,23 @@ export default function AlertsPage() {
   const [rules, setRules] = useState<AlertRule[]>([]);
   const [eventNames, setEventNames] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingRule, setEditingRule] = useState<AlertRule | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ id: string; result: EvalResult } | null>(null);
 
   const load = useCallback(async () => {
-    const [r, e] = await Promise.all([getAlertRules(), getAlertEventNames()]);
-    setRules(r);
-    setEventNames(e);
-    setLoading(false);
+    setLoadErr(null);
+    try {
+      const [r, e] = await Promise.all([getAlertRules(), getAlertEventNames()]);
+      setRules(r);
+      setEventNames(e);
+    } catch (err) {
+      setLoadErr((err as Error).message ?? String(err));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
@@ -401,11 +408,15 @@ export default function AlertsPage() {
         </p>
       </div>
 
-      {/* SQL migration notice */}
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-5">
-        <p className="text-xs font-semibold text-amber-800 mb-1.5">⚠️ One-time Supabase setup required</p>
-        <p className="text-xs text-amber-700 mb-2">Run this SQL in your Supabase dashboard (SQL Editor) to create the alert_rules table:</p>
-        <pre className="text-[10px] bg-amber-100 rounded-lg p-3 overflow-x-auto text-amber-900 leading-relaxed">{`create table if not exists alert_rules (
+      {/* SQL migration notice — only shown when the table is missing */}
+      {loadErr && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-5">
+          <p className="text-xs font-semibold text-amber-800 mb-1.5">⚠️ One-time Supabase setup required</p>
+          <p className="text-xs text-amber-700 mb-2">
+            The <code className="font-mono bg-amber-100 px-1 rounded">alert_rules</code> table doesn&apos;t exist yet.
+            Run this SQL in your Supabase dashboard → SQL Editor:
+          </p>
+          <pre className="text-[10px] bg-amber-100 rounded-lg p-3 overflow-x-auto text-amber-900 leading-relaxed">{`create table if not exists alert_rules (
   id uuid default gen_random_uuid() primary key,
   organization_id uuid references organizations(id) on delete cascade not null,
   name text not null,
@@ -431,7 +442,10 @@ create policy "org members manage alert_rules" on alert_rules
   with check (organization_id in (
     select organization_id from organization_members where user_id = auth.uid()
   ));`}</pre>
-      </div>
+          <p className="text-[10px] text-amber-600 mt-2">After running it, refresh this page.</p>
+          <p className="text-[10px] text-amber-500 mt-1">Error: {loadErr}</p>
+        </div>
+      )}
 
       {/* New rule form */}
       {showForm && (
@@ -460,7 +474,7 @@ create policy "org members manage alert_rules" on alert_rules
         <div className="flex items-center justify-center h-32 text-gray-400">
           <Loader2 size={18} className="animate-spin" />
         </div>
-      ) : rules.length === 0 && !showForm ? (
+      ) : loadErr ? null : rules.length === 0 && !showForm ? (
         <div className="text-center py-16 text-gray-400">
           <BellRing size={32} className="mx-auto mb-3 opacity-30" />
           <p className="text-sm font-medium text-gray-500">No alert rules yet</p>

@@ -2,6 +2,13 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   experimental: {
+    // Disable the client-side router cache for dynamically navigated pages.
+    // Without this, Next.js stores the previous render of a page and flashes
+    // it on re-navigation before the fresh render replaces it — the user sees
+    // a "previous design" briefly on every page visit after the first.
+    staleTimes: {
+      dynamic: 0,
+    },
     serverActions: {
       // Next.js rejects any Server Action request whose Origin header isn't
       // in this list — this used to only have localhost, which means every
