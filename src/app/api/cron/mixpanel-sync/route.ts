@@ -44,6 +44,24 @@ export async function GET(request: Request) {
     })
   );
 
+  // ── Storage cleanup ────────────────────────────────────────────────────────
+  // Delete alert-rule events older than 90 days to keep storage permanently
+  // bounded. 90 days covers the worst case: a 45-day lookback rule needs
+  // 45 days current + 45 days prior = 90 days total. Only touches rows whose
+  // source is "mixpanel" AND whose name is one of the alert-rule event names
+  // — never touches CSV/SDK rows or KPI chart data.
+  const cutoff = new Date(Date.now() - 90 * 864e5).toISOString();
+  const allEventNames = [...new Set([...byOrg.values()].flatMap((s) => [...s]))];
+  if (allEventNames.length > 0) {
+    await admin
+      .from("events")
+      .delete()
+      .in("name", allEventNames)
+      .lt("timestamp", cutoff)
+      .filter("properties->>source", "eq", "mixpanel")
+      .filter("properties->>is_placeholder", "is", null); // never delete placeholder/name-only rows
+  }
+
   const summary = results.map((r) =>
     r.status === "fulfilled"
       ? { ...r.value, status: "ok" }

@@ -68,6 +68,19 @@ export type FunnelSummary = {
   steps: FunnelStepResult[];
 };
 
+export type AlertRuleSummary = {
+  name: string;
+  description: string | null;
+  rule_type: string;
+  numerator_event: string;
+  denominator_event: string | null;
+  threshold_pct: number | null;
+  threshold_abs: number | null;
+  lookback_days: number;
+  last_result: { fired: boolean; current: number; prior: number; pct_change: number } | null;
+  last_fired_at: string | null;
+};
+
 export type BiosContext = {
   // Company Objectives — the top-level Business Goal (Objective layer above Product Goals).
   // Fetched alongside goals so the AI can reference the overarching objective even when
@@ -91,6 +104,8 @@ export type BiosContext = {
   metrics?: Metric[];
   featureImpact?: FeatureImpactResult[];
   funnels?: FunnelSummary[];
+  // Active alert rules — shown in reports as "guardrails in place".
+  alertRules?: AlertRuleSummary[];
 };
 
 export async function getBiosReportData(
@@ -199,6 +214,20 @@ export async function getBiosReportData(
       }).catch(() => { result.funnels = []; })
     );
   }
+
+  // Always fetch active alert rules — they appear in every report as the
+  // "guardrails in place" section, regardless of which BIOS sections were
+  // selected. Silently skipped if none exist.
+  promises.push(
+    admin
+      .from("alert_rules")
+      .select("name, description, rule_type, numerator_event, denominator_event, threshold_pct, threshold_abs, lookback_days, last_result, last_fired_at")
+      .eq("organization_id", orgId)
+      .eq("enabled", true)
+      .order("created_at", { ascending: false })
+      .then(({ data }) => { result.alertRules = (data ?? []) as AlertRuleSummary[]; })
+      .catch(() => { result.alertRules = []; })
+  );
 
   await Promise.all(promises);
   return result;
@@ -892,6 +921,42 @@ Do NOT combine unrelated goals on a single slide. If you run out of slide budget
           f.steps.forEach(s => {
             lines.push(`    Step ${s.step} (${s.event_name}): ${s.users} users | ${s.conversion_from_prev}% vs previous step | ${s.conversion_from_first}% vs step 1`);
           });
+          return lines.join("\n");
+        }).join("\n")
+      );
+    }
+
+    if (biosContext.alertRules && biosContext.alertRules.length > 0) {
+      const ruleTypeLabel: Record<string, string> = {
+        event_count_drop:  "alert if count drops by % vs prior period",
+        event_count_rise:  "alert if count rises by % vs prior period",
+        event_ratio_drop:  "alert if ratio drops by % vs prior period",
+        event_ratio_rise:  "alert if ratio rises by % vs prior period",
+        event_count_below: "alert if count falls below absolute threshold",
+        event_count_above: "alert if count rises above absolute threshold",
+        event_ratio_below: "alert if conversion rate falls below %",
+        event_ratio_above: "alert if conversion rate rises above %",
+      };
+      parts.push(
+        `ACTIVE ALERT GUARDRAILS (${biosContext.alertRules.length} — these are the automated guardrails the team has configured to watch for problems. Include these in the deck as a "Guardrails in Place" or "Risk Monitoring" slide — this shows stakeholders the team is proactive, not reactive):\n` +
+        biosContext.alertRules.map(r => {
+          const metric = r.denominator_event
+            ? `${r.numerator_event} ÷ ${r.denominator_event}`
+            : r.numerator_event;
+          const threshold = r.threshold_abs != null
+            ? `threshold: ${r.threshold_abs}${r.denominator_event ? "%" : ""}`
+            : `threshold: ${r.threshold_pct ?? 0}% change`;
+          const lastResult = r.last_result
+            ? `last check: ${r.last_result.fired ? "🚨 FIRED" : "✅ OK"} — current ${r.last_result.current.toFixed(1)} vs prior ${r.last_result.prior.toFixed(1)}`
+            : "not yet evaluated";
+          const firedAt = r.last_fired_at
+            ? ` (last fired ${new Date(r.last_fired_at).toLocaleDateString()})`
+            : "";
+          const lines = [
+            `- "${r.name}" | Monitors: ${metric} | Rule: ${ruleTypeLabel[r.rule_type] ?? r.rule_type} | ${threshold} | Window: last ${r.lookback_days} days`,
+          ];
+          if (r.description) lines.push(`  Plain English: ${r.description}`);
+          lines.push(`  Status: ${lastResult}${firedAt}`);
           return lines.join("\n");
         }).join("\n")
       );

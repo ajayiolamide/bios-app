@@ -1,7 +1,7 @@
+// Next.js automatically uses this as the Suspense fallback for every route
+// inside the (dashboard) group — replaces the old plain spinner.
+import { PageLoader } from "@/components/ui/page-loader";
+
 export default function DashboardLoading() {
-  return (
-    <div className="flex items-center justify-center h-full">
-      <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-    </div>
-  );
+  return <PageLoader />;
 }
