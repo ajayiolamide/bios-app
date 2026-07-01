@@ -779,6 +779,7 @@ export type AlertRule = {
   threshold_abs: number | null;   // for below/above absolute rules
   lookback_days: number;          // window size, e.g. 7 = compare last 7d vs prior 7d
   kpi_id: string | null;          // set for kpi_below_target rules
+  count_method: "total" | "unique"; // event-based rules: count total events or unique users
   slack_webhook_override: string | null;
   last_fired_at: string | null;
   last_checked_at: string | null;

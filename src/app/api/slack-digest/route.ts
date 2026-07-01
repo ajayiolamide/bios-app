@@ -81,24 +81,43 @@ export async function GET(req: Request) {
       try {
         const lookbackMs = (kpi.within_hours ?? 24 * 30) * 3600_000; // default 30d
         const from = new Date(now.getTime() - lookbackMs).toISOString();
+        const agg = kpi.aggregation as "count" | "unique_users" | "unique_sessions" ?? "count";
 
-        const numRes = await supabase
-          .from("events")
-          .select("id", { count: "exact", head: true })
-          .eq("organization_id", orgId)
-          .eq("name", kpi.event_name!)
-          .gte("timestamp", from);
-        const numCount = numRes.count ?? 0;
-
-        let actual = numCount;
-        if (kpi.denominator_event_name) {
-          const denRes = await supabase
+        // Helper: count with respect to aggregation method
+        async function countKpiEvents(eventName: string): Promise<number> {
+          if (agg === "unique_users") {
+            const { data } = await supabase
+              .from("events")
+              .select("user_id")
+              .eq("organization_id", orgId)
+              .eq("name", eventName)
+              .gte("timestamp", from)
+              .not("user_id", "is", null);
+            return new Set(data?.map((e: { user_id: string }) => e.user_id)).size;
+          }
+          if (agg === "unique_sessions") {
+            const { data } = await supabase
+              .from("events")
+              .select("session_id")
+              .eq("organization_id", orgId)
+              .eq("name", eventName)
+              .gte("timestamp", from)
+              .not("session_id", "is", null);
+            return new Set(data?.map((e: { session_id: string }) => e.session_id)).size;
+          }
+          const res = await supabase
             .from("events")
             .select("id", { count: "exact", head: true })
             .eq("organization_id", orgId)
-            .eq("name", kpi.denominator_event_name)
+            .eq("name", eventName)
             .gte("timestamp", from);
-          const denCount = denRes.count ?? 0;
+          return res.count ?? 0;
+        }
+
+        const numCount = await countKpiEvents(kpi.event_name!);
+        let actual = numCount;
+        if (kpi.denominator_event_name) {
+          const denCount = await countKpiEvents(kpi.denominator_event_name);
           actual = denCount > 0 ? (numCount / denCount) * 100 : 0;
         }
 

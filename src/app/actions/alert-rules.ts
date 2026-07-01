@@ -172,6 +172,7 @@ export type AlertRulePayload = {
   threshold_abs?: number | null;
   lookback_days: number;
   kpi_id?: string | null;
+  count_method?: "total" | "unique"; // event-based rules only; KPI rules use metric.aggregation
   slack_webhook_override?: string | null;
   enabled?: boolean;
 };
@@ -193,6 +194,7 @@ export async function createAlertRule(payload: AlertRulePayload): Promise<AlertR
       threshold_abs: payload.threshold_abs ?? null,
       lookback_days: payload.lookback_days,
       kpi_id: payload.kpi_id ?? null,
+      count_method: payload.count_method ?? "total",
       slack_webhook_override: payload.slack_webhook_override?.trim() || null,
     })
     .select()
@@ -215,6 +217,7 @@ export async function updateAlertRule(id: string, patch: Partial<AlertRulePayloa
   if (patch.threshold_abs !== undefined) update.threshold_abs = patch.threshold_abs ?? null;
   if (patch.lookback_days !== undefined) update.lookback_days = patch.lookback_days;
   if (patch.kpi_id !== undefined) update.kpi_id = patch.kpi_id ?? null;
+  if (patch.count_method !== undefined) update.count_method = patch.count_method ?? "total";
   if (patch.slack_webhook_override !== undefined) update.slack_webhook_override = patch.slack_webhook_override?.trim() || null;
   const { error } = await admin
     .from("alert_rules")
@@ -244,23 +247,27 @@ export type KpiOption = {
   denominator_event_name: string | null;
   target_value: number | null;
   rate_as_percentage: boolean | null;
+  aggregation: "count" | "unique_users" | "unique_sessions" | null;
   goal_name?: string;
+  goal_id?: string | null;
 };
 
 export async function getOrgKpis(): Promise<KpiOption[]> {
   try {
     const orgId = await getOrgId();
     const admin = createAdminClient();
-    // Fetch metrics with their goal name via business_goals join
+    // Only pull real KPI-kind metrics that have a tracked event
+    // (excludes orphaned feature guardrails, deleted-feature metrics, etc.)
     const { data } = await admin
       .from("metrics")
-      .select("id, name, event_name, denominator_event_name, target_value, rate_as_percentage, business_goal_id")
+      .select("id, name, event_name, denominator_event_name, target_value, rate_as_percentage, aggregation, business_goal_id")
       .eq("organization_id", orgId)
+      .eq("kind", "kpi")
       .not("event_name", "is", null)
       .order("name");
     if (!data || data.length === 0) return [];
 
-    // Enrich with goal names
+    // Enrich with goal names from business_goals
     const goalIds = [...new Set(data.map((m: { business_goal_id: string | null }) => m.business_goal_id).filter(Boolean))] as string[];
     let goalMap: Record<string, string> = {};
     if (goalIds.length > 0) {
@@ -274,7 +281,8 @@ export async function getOrgKpis(): Promise<KpiOption[]> {
     return data.map((m: {
       id: string; name: string; event_name: string | null;
       denominator_event_name: string | null; target_value: number | null;
-      rate_as_percentage: boolean | null; business_goal_id: string | null;
+      rate_as_percentage: boolean | null; aggregation: string | null;
+      business_goal_id: string | null;
     }) => ({
       id: m.id,
       name: m.name,
@@ -282,7 +290,9 @@ export async function getOrgKpis(): Promise<KpiOption[]> {
       denominator_event_name: m.denominator_event_name,
       target_value: m.target_value,
       rate_as_percentage: m.rate_as_percentage,
+      aggregation: (m.aggregation as KpiOption["aggregation"]) ?? "count",
       goal_name: m.business_goal_id ? goalMap[m.business_goal_id] : undefined,
+      goal_id: m.business_goal_id,
     }));
   } catch {
     return [];
@@ -305,8 +315,33 @@ async function countEvents(
   orgId: string,
   eventName: string,
   from: Date,
-  to: Date
+  to: Date,
+  aggregation: "count" | "unique_users" | "unique_sessions" = "count"
 ): Promise<number> {
+  if (aggregation === "unique_users") {
+    // Count distinct user_ids
+    const { data } = await admin
+      .from("events")
+      .select("user_id")
+      .eq("organization_id", orgId)
+      .eq("name", eventName)
+      .gte("timestamp", from.toISOString())
+      .lt("timestamp", to.toISOString())
+      .not("user_id", "is", null);
+    return new Set(data?.map((e: { user_id: string }) => e.user_id)).size;
+  }
+  if (aggregation === "unique_sessions") {
+    const { data } = await admin
+      .from("events")
+      .select("session_id")
+      .eq("organization_id", orgId)
+      .eq("name", eventName)
+      .gte("timestamp", from.toISOString())
+      .lt("timestamp", to.toISOString())
+      .not("session_id", "is", null);
+    return new Set(data?.map((e: { session_id: string }) => e.session_id)).size;
+  }
+  // Default: total event count
   const { count } = await admin
     .from("events")
     .select("id", { count: "exact", head: true })
@@ -374,7 +409,7 @@ async function _evaluateKpiRule(
 
     const { data: metric } = await admin
       .from("metrics")
-      .select("id, name, event_name, denominator_event_name, target_value, rate_as_percentage, within_hours")
+      .select("id, name, event_name, denominator_event_name, target_value, rate_as_percentage, within_hours, aggregation")
       .eq("id", rule.kpi_id)
       .single();
 
@@ -385,14 +420,17 @@ async function _evaluateKpiRule(
       return { fired: false, current: 0, prior: 0, pct_change: 0, message: "KPI has no target value set", error: "No target" };
     }
 
+    const agg = (metric.aggregation as "count" | "unique_users" | "unique_sessions") ?? "count";
     const now = new Date();
     const lookbackMs = (metric.within_hours ?? rule.lookback_days * 24) * 3600_000;
     const from = new Date(now.getTime() - lookbackMs);
 
-    const numCount = await countEvents(admin, orgId, metric.event_name, from, now);
+    // Use the KPI's own aggregation setting (unique_users, count, etc.)
+    const numCount = await countEvents(admin, orgId, metric.event_name, from, now, agg);
     let actual: number;
     if (metric.denominator_event_name) {
-      const denCount = await countEvents(admin, orgId, metric.denominator_event_name, from, now);
+      // Denominator always uses same aggregation method for consistency
+      const denCount = await countEvents(admin, orgId, metric.denominator_event_name, from, now, agg);
       actual = denCount > 0 ? (numCount / denCount) * 100 : 0;
     } else {
       actual = numCount;
@@ -474,15 +512,18 @@ async function _evaluateRuleData(
     const currentFrom = new Date(now.getTime() - rule.lookback_days * 86400_000);
     const priorFrom   = new Date(now.getTime() - rule.lookback_days * 2 * 86400_000);
 
-    const numCurrent = await countEvents(admin, orgId, rule.numerator_event, currentFrom, now);
-    const numPrior   = await countEvents(admin, orgId, rule.numerator_event, priorFrom, currentFrom);
+    // count_method: "unique" counts distinct user_ids; "total" counts all occurrences
+    const agg = rule.count_method === "unique" ? "unique_users" : "count";
+
+    const numCurrent = await countEvents(admin, orgId, rule.numerator_event, currentFrom, now, agg);
+    const numPrior   = await countEvents(admin, orgId, rule.numerator_event, priorFrom, currentFrom, agg);
 
     let current = numCurrent;
     let prior   = numPrior;
 
     if (rule.denominator_event) {
-      const denCurrent = await countEvents(admin, orgId, rule.denominator_event, currentFrom, now);
-      const denPrior   = await countEvents(admin, orgId, rule.denominator_event, priorFrom, currentFrom);
+      const denCurrent = await countEvents(admin, orgId, rule.denominator_event, currentFrom, now, agg);
+      const denPrior   = await countEvents(admin, orgId, rule.denominator_event, priorFrom, currentFrom, agg);
       current = denCurrent > 0 ? (numCurrent / denCurrent) * 100 : 0;
       prior   = denPrior  > 0 ? (numPrior  / denPrior)  * 100 : 0;
     }

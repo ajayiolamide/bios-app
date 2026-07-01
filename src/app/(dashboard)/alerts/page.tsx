@@ -49,6 +49,7 @@ type FormState = {
   threshold_abs: string;
   lookback_days: string;
   kpi_id: string;
+  count_method: "total" | "unique";
   slack_webhook_override: string;
   enabled: boolean;
 };
@@ -60,6 +61,7 @@ function blankForm(): FormState {
     numerator_event: "", denominator_event: "",
     threshold_pct: "20", threshold_abs: "",
     lookback_days: "7", kpi_id: "",
+    count_method: "total",
     slack_webhook_override: "", enabled: true,
   };
 }
@@ -92,6 +94,7 @@ function formToPayload(f: FormState): AlertRulePayload {
     threshold_abs: !meta.needsPct ? (Number(f.threshold_abs) || null) : null,
     lookback_days: Number(f.lookback_days) || 7,
     kpi_id: null,
+    count_method: f.count_method,
     slack_webhook_override: f.slack_webhook_override.trim() || null,
     enabled: f.enabled,
   };
@@ -120,6 +123,7 @@ function RuleForm({
       threshold_abs: initial.threshold_abs?.toString() ?? "",
       lookback_days: initial.lookback_days.toString(),
       kpi_id: initial.kpi_id ?? "",
+      count_method: (initial.count_method as "total" | "unique") ?? "total",
       slack_webhook_override: initial.slack_webhook_override ?? "",
       enabled: initial.enabled,
     };
@@ -205,12 +209,33 @@ function RuleForm({
             <>
               <select value={form.kpi_id} onChange={e => handleKpiChange(e.target.value)} className={fieldCls}>
                 <option value="">Select a KPI…</option>
-                {kpiOptions.map(k => (
-                  <option key={k.id} value={k.id}>
-                    {k.goal_name ? `${k.goal_name} → ` : ""}{k.name}
-                    {k.target_value != null ? ` (target: ${k.target_value}${k.rate_as_percentage ? "%" : ""})` : " (no target)"}
-                  </option>
-                ))}
+                {(() => {
+                  const byGoal: Record<string, typeof kpiOptions> = {};
+                  const noGoal: typeof kpiOptions = [];
+                  for (const k of kpiOptions) {
+                    if (k.goal_name) { (byGoal[k.goal_name] ??= []).push(k); }
+                    else { noGoal.push(k); }
+                  }
+                  const aggLabel = (k: typeof kpiOptions[0]) =>
+                    k.aggregation === "unique_users" ? "unique users" : k.aggregation === "unique_sessions" ? "unique sessions" : "total events";
+                  const renderOpt = (k: typeof kpiOptions[0]) => (
+                    <option key={k.id} value={k.id}>
+                      {k.name}
+                      {k.target_value != null ? ` · target ${k.target_value}${k.rate_as_percentage ? "%" : ""}` : " · no target"}
+                      {` · ${aggLabel(k)}`}
+                    </option>
+                  );
+                  return (
+                    <>
+                      {Object.entries(byGoal).sort(([a], [b]) => a.localeCompare(b)).map(([goalName, ks]) => (
+                        <optgroup key={goalName} label={`📌 ${goalName}`}>{ks.map(renderOpt)}</optgroup>
+                      ))}
+                      {noGoal.length > 0 && (
+                        <optgroup label="── Other KPIs">{noGoal.map(renderOpt)}</optgroup>
+                      )}
+                    </>
+                  );
+                })()}
               </select>
               {selectedKpi && selectedKpi.target_value == null && (
                 <p className="text-[11px] text-amber-600 mt-1">⚠️ This KPI has no target value — set one in Goals &amp; KPIs for this alert to work.</p>
@@ -221,6 +246,7 @@ function RuleForm({
                   {selectedKpi.denominator_event_name
                     ? ` — computed as ${selectedKpi.event_name} ÷ ${selectedKpi.denominator_event_name}`
                     : selectedKpi.event_name ? ` — event: ${selectedKpi.event_name}` : ""}
+                  {` · counting ${selectedKpi.aggregation === "unique_users" ? "unique users" : selectedKpi.aggregation === "unique_sessions" ? "unique sessions" : "total events"}`}
                 </p>
               )}
             </>
@@ -305,6 +331,36 @@ function RuleForm({
           </div>
         )}
       </div>
+
+      {/* Count method (event-based rules only) */}
+      {!meta.isKpi && (
+        <div>
+          <label className={labelCls}>Count method</label>
+          <div className="flex gap-2">
+            {([
+              { value: "total" as const,  label: "Total events",  desc: "Count every event occurrence (default)" },
+              { value: "unique" as const, label: "Unique users",   desc: "Count distinct user_ids — matches Mixpanel's default" },
+            ]).map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => set("count_method", opt.value)}
+                title={opt.desc}
+                className={`flex-1 text-xs font-medium px-3 py-2 rounded-lg border transition-all ${
+                  form.count_method === opt.value
+                    ? "bg-indigo-50 border-indigo-300 text-indigo-700"
+                    : "bg-white border-gray-200 text-gray-500 hover:border-gray-300"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-gray-400 mt-1">
+            Use <strong>Unique users</strong> to match Mixpanel — counts each user once per window regardless of how many times they fired the event.
+          </p>
+        </div>
+      )}
 
       {/* Slack override */}
       <div>
