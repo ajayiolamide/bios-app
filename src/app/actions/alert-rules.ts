@@ -323,17 +323,17 @@ export async function getOrgKpis(): Promise<KpiOption[]> {
     // KPIs should not appear as options in alert rules either.
     const { data } = await admin
       .from("metrics")
-      .select("id, name, event_name, denominator_event_name, target_value, rate_as_percentage, aggregation, business_goal_id")
+      .select("id, name, event_name, denominator_event_name, target_value, rate_as_percentage, aggregation, business_goal_id, feature_metric_id")
       .eq("organization_id", orgId)
       .eq("kind", "kpi")
       .not("event_name", "is", null)
       .order("name");
     if (!data || data.length === 0) return [];
 
-    // Enrich with goal names AND status — do this via an explicit query rather
-    // than a PostgREST FK join because the join silently returns null when the
-    // FK isn't registered in PostgREST, making a join-based status filter
-    // ineffective (every row passes because `!null` is true).
+    // ── Business goal filter ──────────────────────────────────────────────────
+    // Exclude KPIs whose parent goal is dropped or no longer exists.
+    // Uses explicit query (not FK join) because PostgREST joins silently return
+    // null when the FK isn't registered, making join-based filters ineffective.
     const goalIds = [...new Set(data.map((m: { business_goal_id: string | null }) => m.business_goal_id).filter(Boolean))] as string[];
     const goalMap: Record<string, string> = {};
     if (goalIds.length > 0) {
@@ -343,29 +343,41 @@ export async function getOrgKpis(): Promise<KpiOption[]> {
         .in("id", goalIds);
       if (goals) {
         for (const g of goals as { id: string; name: string; status: string }[]) {
-          // Only add active goals to the map — dropped ones are excluded, and
-          // goals that no longer exist at all won't appear here either.
-          if (g.status !== "dropped") {
-            goalMap[g.id] = g.name;
-          }
+          if (g.status !== "dropped") goalMap[g.id] = g.name;
+        }
+      }
+    }
+
+    // ── Feature metric filter ─────────────────────────────────────────────────
+    // Exclude KPIs whose parent feature metric has been archived.
+    // When a feature is archived it should disappear from all dropdowns.
+    const fmIds = [...new Set(data.map((m: { feature_metric_id: string | null }) => m.feature_metric_id).filter(Boolean))] as string[];
+    const activeFmIds = new Set<string>();
+    if (fmIds.length > 0) {
+      const { data: fms } = await admin
+        .from("feature_metrics")
+        .select("id, status")
+        .in("id", fmIds);
+      if (fms) {
+        for (const fm of fms as { id: string; status: string }[]) {
+          if (fm.status === "active") activeFmIds.add(fm.id);
         }
       }
     }
 
     return data
-      // Keep a KPI only if:
-      //   - it has no goal link (standalone KPI) OR
-      //   - its parent goal exists in the DB AND is not dropped
-      // This catches both soft-deleted goals (status='dropped') and
-      // hard-deleted goals (row gone entirely — goalMap has no entry).
-      .filter((m: { business_goal_id: string | null }) =>
-        !m.business_goal_id || Object.prototype.hasOwnProperty.call(goalMap, m.business_goal_id)
-      )
+      .filter((m: { business_goal_id: string | null; feature_metric_id: string | null }) => {
+        // Drop if linked to a dropped/deleted business goal
+        if (m.business_goal_id && !Object.prototype.hasOwnProperty.call(goalMap, m.business_goal_id)) return false;
+        // Drop if linked to an archived/deleted feature metric
+        if (m.feature_metric_id && !activeFmIds.has(m.feature_metric_id)) return false;
+        return true;
+      })
       .map((m: {
         id: string; name: string; event_name: string | null;
         denominator_event_name: string | null; target_value: number | null;
         rate_as_percentage: boolean | null; aggregation: string | null;
-        business_goal_id: string | null;
+        business_goal_id: string | null; feature_metric_id: string | null;
       }) => ({
         id: m.id,
         name: m.name,
