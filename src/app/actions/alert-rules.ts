@@ -36,22 +36,28 @@ async function generateAlertInsight(context: {
       ? `What this alert tracks: ${context.ruleDescription}`
       : `Alert name: ${context.ruleName}`;
 
+    const changeStr = context.prior != null
+      ? context.current < context.prior
+        ? `dropped from ${context.prior.toFixed(1)}% to ${context.current.toFixed(1)}%`
+        : `changed from ${context.prior.toFixed(1)}% to ${context.current.toFixed(1)}%`
+      : `is now ${context.current.toFixed(1)}%`;
+
     const msg = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 120,
+      max_tokens: 180,
       messages: [{
         role: "user",
-        content: `You are writing a Slack alert for a non-technical audience. Write exactly TWO sentences.
+        content: `You are writing a Slack alert for a whole company — product, ops, finance, and leadership will read this. Write 2-3 sentences maximum.
 
 STRICT RULES:
-- Use ONLY the information given below — do not infer, assume, or name any process, product, or technology that isn't explicitly stated.
-- Sentence 1: state what happened using the numbers provided. Use "users" not "customers" or "people".
-- Sentence 2: one specific action to take right now.
+- Use ONLY the information given below. Do not invent, assume, or name any process or technology not explicitly stated.
+- Do NOT mention specific user counts or raw numbers — use percentages only.
+- Sentence 1: in plain English, what happened and what it means for the business (not just the number — explain the impact).
+- Sentence 2: the single most specific action someone should take right now.
+- Optional sentence 3: only if there is a meaningful consequence if no action is taken.
 
 ${humanContext}
-Current rate: ${context.current.toFixed(1)}%
-${priorLine}
-${countsLine}`,
+Rate ${changeStr}`,
       }],
     });
     return msg.content[0].type === "text" ? msg.content[0].text.trim() : "";
@@ -118,11 +124,6 @@ async function buildAlertBlocks(opts: {
   const currentStr = `${opts.current.toFixed(opts.isRatio ? 1 : 0)}${opts.unit}`;
   const priorStr = opts.prior != null ? `${opts.prior.toFixed(opts.isRatio ? 1 : 0)}${opts.unit}` : null;
 
-  // Plain-English "what this means" line for ratio rules
-  const whatItMeans = opts.isRatio && opts.numeratorCount != null && opts.denominatorCount != null
-    ? `${opts.numeratorCount} of ${opts.denominatorCount} users completed · ${opts.denominatorCount - opts.numeratorCount} dropped off`
-    : null;
-
   const blocks: object[] = [
     {
       type: "header",
@@ -147,14 +148,6 @@ async function buildAlertBlocks(opts: {
   fields.push({ type: "mrkdwn", text: `*Condition*\n${opts.reason}` });
 
   blocks.push({ type: "section", fields });
-
-  // Show raw counts below the % fields so anyone can understand what the number means
-  if (whatItMeans) {
-    blocks.push({
-      type: "context",
-      elements: [{ type: "mrkdwn", text: `👥 ${whatItMeans}` }],
-    });
-  }
 
   if (insight) {
     blocks.push({ type: "divider" });
