@@ -22,12 +22,20 @@ async function getOrgId(): Promise<string> {
 
 export async function getAlertRules(): Promise<{ rules: AlertRule[]; error: string | null }> {
   try {
-    const orgId = await getOrgId();
+    const supabase = await createServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return { rules: [], error: "Not authenticated" };
+    const { data: membership } = await supabase
+      .from("organization_members")
+      .select("organization_id")
+      .eq("user_id", user.id)
+      .single();
+    if (!membership) return { rules: [], error: null }; // no org yet — show empty state, not error
     const admin = createAdminClient();
     const { data, error } = await admin
       .from("alert_rules")
       .select("*")
-      .eq("organization_id", orgId)
+      .eq("organization_id", membership.organization_id)
       .order("created_at", { ascending: false });
     if (error) return { rules: [], error: error.message };
     return { rules: (data ?? []) as AlertRule[], error: null };
