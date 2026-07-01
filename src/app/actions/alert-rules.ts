@@ -11,6 +11,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 // ─── AI insight for fired alerts ─────────────────────────────────────────────
 async function generateAlertInsight(context: {
   ruleName: string;
+  ruleDescription?: string | null;
   ruleType: string;
   metric: string;
   current: number;
@@ -24,33 +25,61 @@ async function generateAlertInsight(context: {
     const priorLine = context.prior != null
       ? `Prior period: ${context.prior.toFixed(context.isRatio ? 1 : 0)}${context.unit}`
       : "";
-    // Give the AI the raw user counts so it can write "46 of 105 users dropped off"
     const countsLine = context.isRatio && context.numeratorCount != null && context.denominatorCount != null
-      ? `Raw counts: ${context.numeratorCount} users completed out of ${context.denominatorCount} who started (${context.denominatorCount - context.numeratorCount} users dropped off)`
+      ? `Real user counts: ${context.numeratorCount} completed out of ${context.denominatorCount} who started (${context.denominatorCount - context.numeratorCount} did not complete)`
       : "";
+    // Description is the human-readable intent — use it as the primary context.
+    // Event names (in metric) are internal technical identifiers; the AI must NOT
+    // interpret or expand them (e.g. "IDV" is NOT "identity verification" — it's
+    // an internal event naming convention). Use only the description and rule name.
+    const humanContext = context.ruleDescription
+      ? `What this alert tracks: ${context.ruleDescription}`
+      : `Alert name: ${context.ruleName}`;
+
     const msg = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 150,
+      max_tokens: 120,
       messages: [{
         role: "user",
-        content: `You are the Head of Growth writing a Slack alert for the whole team — not just engineers. Most readers don't know what event names mean.
+        content: `You are writing a Slack alert for a non-technical audience. Write exactly TWO sentences.
 
-Write TWO sentences max:
-1. First sentence: explain in plain English what happened using REAL NUMBERS if available (e.g. "48 out of 105 users who tried to pay didn't complete payment this week"). No event names or jargon.
-2. Second sentence: the single most urgent action someone should take right now.
+STRICT RULES:
+- Use ONLY the information given below — do not infer, assume, or name any process, product, or technology that isn't explicitly stated.
+- Sentence 1: state what happened using the numbers provided. Use "users" not "customers" or "people".
+- Sentence 2: one specific action to take right now.
 
-Alert: ${context.ruleName}
-Metric: ${context.metric}
-Current: ${context.current.toFixed(context.isRatio ? 1 : 0)}${context.unit}
+${humanContext}
+Current rate: ${context.current.toFixed(1)}%
 ${priorLine}
-${countsLine}
-Rule type: ${context.ruleType}`,
+${countsLine}`,
       }],
     });
     return msg.content[0].type === "text" ? msg.content[0].text.trim() : "";
   } catch {
     return "";
   }
+}
+
+// ─── Preview insight for the rule form (mock numbers, real description) ──────
+// Called client-side as the user types their description — lets them see
+// exactly what the AI will write in Slack before they save the rule.
+export async function previewAlertInsight(
+  description: string,
+  ruleName: string,
+): Promise<string> {
+  if (!description.trim()) return "";
+  return generateAlertInsight({
+    ruleName,
+    ruleDescription: description,
+    ruleType: "event_ratio_drop",
+    metric: "",
+    current: 54.8,
+    prior: 55.3,
+    unit: "%",
+    isRatio: true,
+    numeratorCount: 57,
+    denominatorCount: 105,
+  });
 }
 
 // ─── Build Block Kit payload for a fired alert ───────────────────────────────
@@ -72,6 +101,7 @@ async function buildAlertBlocks(opts: {
 }): Promise<object[]> {
   const insight = await generateAlertInsight({
     ruleName: opts.ruleName,
+    ruleDescription: opts.description,
     ruleType: opts.ruleType,
     metric: opts.metricLabel,
     current: opts.current,

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   getAlertRules, createAlertRule, updateAlertRule, deleteAlertRule,
   evaluateRule, getAlertEventNames, getOrgKpis, runAllChecksNow,
+  previewAlertInsight,
   type AlertRulePayload, type EvalResult, type KpiOption,
 } from "@/app/actions/alert-rules";
 import type { AlertRule, AlertRuleType } from "@/types/database";
@@ -130,10 +131,27 @@ function RuleForm({
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [slackPreview, setSlackPreview] = useState<string | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const meta = ruleTypeMeta(form.rule_type);
   const set = (key: keyof FormState, val: string | boolean) =>
     setForm(prev => ({ ...prev, [key]: val }));
+
+  // Debounced Slack preview — fires 800ms after the user stops typing
+  function handleDescriptionChange(val: string) {
+    set("description", val);
+    setSlackPreview(null);
+    if (previewTimer.current) clearTimeout(previewTimer.current);
+    if (!val.trim()) { setPreviewing(false); return; }
+    setPreviewing(true);
+    previewTimer.current = setTimeout(async () => {
+      const result = await previewAlertInsight(val, form.name || "Alert");
+      setSlackPreview(result || null);
+      setPreviewing(false);
+    }, 800);
+  }
 
   // Auto-fill name when a KPI is selected
   const handleKpiChange = (kpiId: string) => {
@@ -262,14 +280,37 @@ function RuleForm({
           className={fieldCls} />
       </div>
 
-      {/* Description */}
+      {/* Description + live Slack preview */}
       <div>
-        <label className={labelCls}>Description <span className="text-gray-400 normal-case font-normal">(plain English — shows in Slack)</span></label>
-        <textarea value={form.description} onChange={e => set("description", e.target.value)}
+        <label className={labelCls}>
+          Description{" "}
+          <span className="text-gray-400 normal-case font-normal">(plain English — AI uses this to write the Slack message)</span>
+        </label>
+        <textarea
+          value={form.description}
+          onChange={e => handleDescriptionChange(e.target.value)}
           placeholder={meta.isKpi
             ? "e.g. Alert when our activation rate KPI falls below 70% of the monthly target"
             : "e.g. Alert when less than 60% of users who start payment actually complete it"}
-          rows={2} className={`${fieldCls} resize-none`} />
+          rows={2}
+          className={`${fieldCls} resize-none`}
+        />
+        {/* Live Slack preview */}
+        {(previewing || slackPreview) && (
+          <div className="mt-2 rounded-lg border border-gray-200 bg-white px-3 py-2.5">
+            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
+              Slack preview (example with 54.8% / 57 of 105 users)
+            </p>
+            {previewing ? (
+              <div className="flex items-center gap-1.5 text-xs text-gray-400">
+                <Loader2 size={11} className="animate-spin" />
+                Generating preview…
+              </div>
+            ) : slackPreview ? (
+              <p className="text-xs text-gray-700 leading-relaxed">💡 {slackPreview}</p>
+            ) : null}
+          </div>
+        )}
       </div>
 
       {/* Event pickers (only for non-KPI rules) */}
