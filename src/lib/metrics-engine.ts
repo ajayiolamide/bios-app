@@ -60,11 +60,15 @@ export type TimedEvent = { timestamp: string; user_id: string | null; match_key?
 // hours or days apart are NOT touched — a policy genuinely can have more
 // than one real claim over its life, and that's a legitimate, separate
 // occurrence, not a duplicate.
-const DEDUPE_MS = 5 * 60 * 1000; // 5 minutes
+// Legacy defaults — used when the KPI has no explicit configuration.
+// `null` on a KPI row means "use these".
+const DEFAULT_DEDUPE_MS     = 5 * 60 * 1000; // 5 minutes
+const DEFAULT_MIN_ELAPSED_MS_WHEN_MATCH_KEY = 60 * 60 * 1000; // 1 hour
 
 function dedupeNearFires(
   events: TimedEvent[],
-  groupKey: (ev: TimedEvent) => string | null
+  groupKey: (ev: TimedEvent) => string | null,
+  dedupeMs: number = DEFAULT_DEDUPE_MS
 ): TimedEvent[] {
   const byGroup = new Map<string, TimedEvent[]>();
   for (const ev of events) {
@@ -80,7 +84,7 @@ function dedupeNearFires(
     let lastKeptT = -Infinity;
     for (const ev of list) {
       const t = new Date(ev.timestamp).getTime();
-      if (t - lastKeptT > DEDUPE_MS) {
+      if (t - lastKeptT > dedupeMs) {
         kept.push(ev);
         lastKeptT = t;
       }
@@ -95,28 +99,32 @@ export function matchOccurrences(
   numeratorEvents: TimedEvent[],
   denominatorEvents: TimedEvent[],
   withinHours: number,
-  requireMatchKey: boolean = false
+  requireMatchKey: boolean = false,
+  // User-configurable matching rules (migration 043). null = use legacy defaults.
+  // minElapsedHours: minimum gap between denominator → numerator to count as
+  //   a genuine match. null defaults to 1h when requireMatchKey=true (the
+  //   old claims-specific hardcoded rule), 0 otherwise.
+  // dedupeMinutes: collapse two fires of the same event within this window
+  //   into one. null defaults to 5 minutes.
+  minElapsedHours: number | null = null,
+  dedupeMinutes: number | null = null
 ): { timestamp: string; matched: boolean }[] {
   const windowMs = withinHours * 3600 * 1000;
-  // A payment landing within an hour of the claim being lodged isn't a
-  // believably fast real resolution — claims actually take real review
-  // time. Same-second/same-minute pairs are the signature of test or
-  // scripted events firing both at once, not genuine processing.
-  //
-  // This is a claims-specific business judgment, NOT a universal truth —
-  // this same function is also used by Cohort Builder's generic "did user
-  // fire A then B" check (cohorts.ts), where a FAST conversion (e.g.
-  // activating a plan minutes after purchasing) is a good, completely
-  // real outcome, not a sign of fake data. Gating this on requireMatchKey
-  // (only true for KPIs that explicitly opted into policy-style matching,
-  // i.e. only this claims use case) keeps it from leaking into every other
-  // two-event check that happens to share this engine.
-  const MIN_ELAPSED_MS = requireMatchKey ? 60 * 60 * 1000 : 0; // 1 hour, claims-matching only
+
+  // Resolve effective values — null means "use legacy default"
+  const effectiveMinElapsedMs = minElapsedHours !== null
+    ? minElapsedHours * 3600 * 1000
+    : requireMatchKey ? DEFAULT_MIN_ELAPSED_MS_WHEN_MATCH_KEY : 0;
+  const effectiveDedupeMs = dedupeMinutes !== null
+    ? dedupeMinutes * 60 * 1000
+    : DEFAULT_DEDUPE_MS;
+
+  const MIN_ELAPSED_MS = effectiveMinElapsedMs;
   const groupKey = (ev: TimedEvent): string | null =>
     requireMatchKey ? (ev.match_key || null) : (ev.match_key || ev.user_id || null);
 
-  const dedupedNumerator = dedupeNearFires(numeratorEvents, groupKey);
-  const dedupedDenominator = dedupeNearFires(denominatorEvents, groupKey);
+  const dedupedNumerator = dedupeNearFires(numeratorEvents, groupKey, effectiveDedupeMs);
+  const dedupedDenominator = dedupeNearFires(denominatorEvents, groupKey, effectiveDedupeMs);
 
   const numByGroup = new Map<string, number[]>();
   for (const ev of dedupedNumerator) {
@@ -225,9 +233,11 @@ export function computeTimeWindowedRate(
   withinHours: number,
   since: Date,
   days: number = 30,
-  requireMatchKey: boolean = false
+  requireMatchKey: boolean = false,
+  minElapsedHours: number | null = null,
+  dedupeMinutes: number | null = null
 ): { total: number; trend: MetricDataPoint[] } {
-  const matches = matchOccurrences(numeratorEvents, denominatorEvents, withinHours, requireMatchKey);
+  const matches = matchOccurrences(numeratorEvents, denominatorEvents, withinHours, requireMatchKey, minElapsedHours, dedupeMinutes);
   const { dayTotals, daySuccesses } = bucketByDay(matches, since, days);
 
   const totalClaims = matches.length;

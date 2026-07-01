@@ -586,6 +586,10 @@ export async function planReport(
 
   // Build scope restriction instruction — tells the AI exactly what sections it may use
   let scopeRestrictionBlock = "";
+  // Hoisted so the sourceConfigBlock builder below can also check it —
+  // sourceConfigs carries sheet parameter names + expected insights that
+  // bleed into the prompt the same way filteredRows does.
+  let isScopedMode = false;
   if (biosSections) {
     const included: string[] = [];
     const excluded: string[] = [];
@@ -606,7 +610,7 @@ export async function planReport(
     const featureOnly  = biosSections.features && !biosSections.goals    && !biosSections.funnelsKpis && !biosSections.funnels;
     const kpisOnly     = biosSections.funnelsKpis && !biosSections.goals && !biosSections.features    && !biosSections.funnels;
     const funnelsOnly  = biosSections.funnels  && !biosSections.goals    && !biosSections.features    && !biosSections.funnelsKpis;
-    const isScopedMode = goalsOnly || featureOnly || kpisOnly || funnelsOnly;
+    isScopedMode = goalsOnly || featureOnly || kpisOnly || funnelsOnly;
 
     if (goalsOnly) {
       scopeRestrictionBlock += `GOALS FOCUS MODE: Build EVERY slide around the Business Goals listed above — their KPIs, progress vs targets, and trends. Do NOT reference Feature Metrics, funnels, or generic sheet metrics. If a slide cannot be grounded in a specific goal or its KPIs, omit it.\n`;
@@ -644,12 +648,29 @@ export async function planReport(
     const n = biosContext.features.length;
     // Ensure there's slide budget for each feature (plus title + action_plan + closing)
     effectiveSlideHint = Math.max(template.slide_hint, n + 3);
-    perFeatureBlock = `\nFEATURE SLIDE ALLOCATION: You MUST generate at least one dedicated slide per feature (${n} feature${n === 1 ? "" : "s"} listed above = minimum ${n} feature slide${n === 1 ? "" : "s"} required). For EACH feature slide include ALL of:
-1. Feature name + launch status (e.g. "in_progress", "launched", "paused")
-2. Its primary KPI with target vs current state — if the KPI has no measured value yet, write "Not yet measured" and explain what to look for
-3. Impact verdict if available (from FEATURE IMPACT section) — cite the actual lift or trend figure
-4. One concrete insight or recommendation specific to this feature (what should the team do next?)
-Do NOT combine multiple features on a single slide unless they are direct A/B variants of each other, and label such slides explicitly as a comparison. If you run out of slide budget, exceed the suggested count rather than omit a feature.\n`;
+    perFeatureBlock = `\nFEATURE SLIDE ALLOCATION: You MUST generate at least one dedicated slide per feature (${n} feature${n === 1 ? "" : "s"} listed above = minimum ${n} feature slide${n === 1 ? "" : "s"} required).
+
+For EACH feature slide you MUST include ALL FOUR of the following — no exceptions:
+
+1. FEATURE NAME + STATUS — name exactly as it appears in the data, launch status in plain English (e.g. "In Progress", "Launched 14 Jan 2025", "Paused").
+
+2. REAL PROGRESS NUMBER — read the ★ ACTUAL KPI RATE or ★ ACTUAL POST-LAUNCH line from FEATURE TRACKING PLANS above and cite it verbatim (e.g. "87% of claims paid within 48h", "+14.6% lift vs non-adopters", "+22% vs predicted trend"). If the ★ line says "NOT YET MEASURED", write exactly that — never invent a number.
+
+3. VERDICT — exactly one of these four words, derived from the ★ VERDICT line for this feature (do NOT invent a verdict the data doesn't support):
+   • "Moved" — use when ★ VERDICT says MOVED (positive)
+   • "Didn't move" — use when ★ VERDICT says DIDN'T MOVE (negative)
+   • "Inconclusive" — use when ★ VERDICT says INCONCLUSIVE
+   • "Not yet measured" — use when ★ VERDICT says NOT YET MEASURED
+
+4. ONE SPECIFIC INSIGHT OR NEXT STEP — concrete action for the team, tied directly to the numbers on this slide (e.g. "Adoption is at 23% — run a push notification campaign targeting users who've started but not completed a claim"). Do not write generic advice; tie it to a specific number from this feature's data.
+
+SLIDE TYPE GUIDANCE per verdict:
+- "Moved": prefer stat_narrative (big number + business story) or insight slide
+- "Didn't move": prefer insight slide with negative status, or stat_narrative — explain what was expected vs what happened
+- "Inconclusive": prefer insight or bullet_list — explain what's ambiguous and what to watch next
+- "Not yet measured": prefer insight slide — state what's planned and what to track when it launches
+
+Do NOT combine multiple features on a single slide unless they are direct A/B variants of each other (label such slides explicitly as a comparison). If you run out of slide budget, exceed the suggested count rather than omit a feature.\n`;
   }
 
   if (
@@ -723,6 +744,14 @@ Do NOT combine unrelated goals on a single slide. If you run out of slide budget
         }
       });
 
+      // Build a lookup from feature name → impact result so we can inline
+      // the computed verdict + actual rate directly into each feature's entry.
+      // Matching by name (case-insensitive) because featureImpact doesn't carry
+      // the feature_metric_id — it uses the name from the feature row.
+      const impactByName = new Map(
+        (biosContext.featureImpact ?? []).map(fi => [fi.featureName.toLowerCase(), fi])
+      );
+
       const featureLines = biosContext.features.slice(0, 10).map(f => {
         const lines: string[] = [];
         const launchParts = [
@@ -779,25 +808,49 @@ Do NOT combine unrelated goals on a single slide. If you run out of slide budget
             lines.push(`  Planned guardrails: ${guards.map(g => g.name + (g.event_name ? ` (${g.event_name})` : "")).join(", ")}`);
           }
         }
+
+        // Inline the computed impact verdict + actual numbers directly under each
+        // feature so the AI gets verdict + real figure in one place, not spread
+        // across two separate prompt sections it has to mentally join.
+        const impact = impactByName.get(f.feature_name.toLowerCase());
+        if (impact?.verdict) {
+          const verdictLabel =
+            impact.verdict === "likely_positive"  ? "MOVED (positive)" :
+            impact.verdict === "likely_negative"  ? "DIDN'T MOVE (negative)" :
+            impact.verdict === "inconclusive"     ? "INCONCLUSIVE" : impact.verdict;
+          lines.push(`  ★ VERDICT: ${verdictLabel}`);
+          if (impact.cohort) {
+            lines.push(`  ★ ACTUAL KPI RATE: adopters = ${impact.cohort.adopterKpiRate}% vs non-adopters = ${impact.cohort.nonAdopterKpiRate}% → ${impact.cohort.liftPct >= 0 ? "+" : ""}${impact.cohort.liftPct}% lift`);
+            if (impact.cohort.guardrailRegressed) {
+              lines.push(`  ★ GUARDRAIL CONCERN: ${impact.cohort.guardrailEventName} fires more often among adopters — flag this.`);
+            }
+          } else if (impact.trend) {
+            lines.push(`  ★ ACTUAL POST-LAUNCH: ${impact.trend.actualPostDailyAvg}/day vs ${impact.trend.predictedPostDailyAvg}/day predicted (${impact.trend.deltaPct >= 0 ? "+" : ""}${impact.trend.deltaPct}% vs trend)`);
+          }
+        } else {
+          lines.push(`  ★ VERDICT: NOT YET MEASURED — feature may not have launched, or no KPI event is wired up yet`);
+        }
+
         return lines.join("\n");
       });
 
       parts.push(`FEATURE TRACKING PLANS (${biosContext.features.length}):\n${featureLines.join("\n\n")}`);
     }
 
+    // featureImpact is now inlined per-feature above. Keep a compact reference
+    // block here only for guardrail details and edge cases the per-feature
+    // section may not have space for — action_plan slides can still cite it.
     if (biosContext.featureImpact && biosContext.featureImpact.length > 0) {
-      parts.push(`FEATURE IMPACT — measured evidence, not nominal goal ties (use this verbatim when relevant to action_plan, it is more credible than guessing):\n` +
-        biosContext.featureImpact.slice(0, 10).map(fi => {
-          const lines: string[] = [`- ${fi.featureName}: verdict = ${fi.verdict ?? "n/a"}`];
-          if (fi.cohort) {
-            lines.push(`  Adopters of ${fi.cohort.adoptionEventName} hit ${fi.cohort.kpiEventName} at ${fi.cohort.adopterKpiRate}% vs ${fi.cohort.nonAdopterKpiRate}% for non-adopters (${fi.cohort.liftPct >= 0 ? "+" : ""}${fi.cohort.liftPct}% lift).`);
-            if (fi.cohort.guardrailRegressed) lines.push(`  Guardrail concern: ${fi.cohort.guardrailEventName} fires more often among adopters.`);
-          } else if (fi.trend) {
-            lines.push(`  ${fi.trend.kpiEventName} trend: predicted ${fi.trend.predictedPostDailyAvg}/day post-launch, actual ${fi.trend.actualPostDailyAvg}/day (${fi.trend.deltaPct >= 0 ? "+" : ""}${fi.trend.deltaPct}% vs predicted trend).`);
-          }
-          return lines.join("\n");
-        }).join("\n")
-      );
+      const computed = biosContext.featureImpact.filter(fi => fi.verdict);
+      if (computed.length > 0) {
+        parts.push(`FEATURE IMPACT REFERENCE (already inlined above — cite the ★ lines in feature slides, not this section):\n` +
+          computed.slice(0, 10).map(fi => {
+            const lines: string[] = [`- ${fi.featureName}: ${fi.verdict}`];
+            if (fi.cohort?.guardrailRegressed) lines.push(`  Guardrail: ${fi.cohort.guardrailEventName} regressed`);
+            return lines.join("\n");
+          }).join("\n")
+        );
+      }
     }
 
     if (biosContext.metrics && biosContext.metrics.length > 0) {
@@ -825,9 +878,13 @@ Do NOT combine unrelated goals on a single slide. If you run out of slide budget
     }
   }
 
-  // Build source config context block
+  // Build source config context block — omitted in scoped single-section
+  // reports for the same reason filteredRows is stripped above: the source's
+  // parameter names and expected_insights describe sheet data, and including
+  // them tells the AI those sheet metrics "must appear" even when the report
+  // is explicitly scoped to Goals / Features / KPIs / Funnels only.
   let sourceConfigBlock = "";
-  if (sourceConfigs && sourceConfigs.length > 0) {
+  if (sourceConfigs && sourceConfigs.length > 0 && !isScopedMode) {
     const configParts: string[] = [];
     for (const cfg of sourceConfigs) {
       const lines: string[] = [`SOURCE: "${cfg.sourceName}"${cfg.data_type ? ` (${cfg.data_type})` : ""}`];

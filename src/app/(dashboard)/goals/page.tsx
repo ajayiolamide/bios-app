@@ -794,6 +794,10 @@ function KpiForm({ orgId, goalId, initial, onSaved, onCancel }: { orgId: string;
     // that ties one occurrence of each together exactly. Optional: blank
     // keeps the existing same-user-in-order matching.
     matchKeyProperty: string;
+    // Migration 043 — configurable matching rules. Blank = use legacy defaults
+    // (1h min gap when match key is set, 5min dedup window).
+    minElapsedHours: string;
+    dedupeMinutes: string;
   }>(
     initial?.denominator_event_name
       ? {
@@ -802,6 +806,8 @@ function KpiForm({ orgId, goalId, initial, onSaved, onCancel }: { orgId: string;
           withinHoursEnabled: typeof initial.within_hours === "number" && initial.within_hours > 0,
           withinHours: typeof initial.within_hours === "number" ? String(initial.within_hours) : "",
           matchKeyProperty: initial.match_key_property ?? "",
+          minElapsedHours: initial.min_elapsed_hours != null ? String(initial.min_elapsed_hours) : "",
+          dedupeMinutes: initial.dedupe_minutes != null ? String(initial.dedupe_minutes) : "",
         }
       : null
   );
@@ -841,6 +847,8 @@ function KpiForm({ orgId, goalId, initial, onSaved, onCancel }: { orgId: string;
       within_hours: sourceMode === "event" && property?.withinHoursEnabled && property.withinHours.trim() ? Number(property.withinHours) : null,
       rate_as_percentage: sourceMode === "event" && property ? property.asPercentage : true,
       match_key_property: sourceMode === "event" && property?.withinHoursEnabled && property.matchKeyProperty.trim() ? property.matchKeyProperty.trim() : null,
+      min_elapsed_hours: sourceMode === "event" && property?.withinHoursEnabled && property.minElapsedHours.trim() !== "" ? Number(property.minElapsedHours) : null,
+      dedupe_minutes: sourceMode === "event" && property?.withinHoursEnabled && property.dedupeMinutes.trim() !== "" ? Number(property.dedupeMinutes) : null,
       target_value: form.target_value.trim() ? Number(form.target_value) : null,
       source_report_id: sourceMode === "manual" ? manual.reportSourceId : null,
       source_label_column: sourceMode === "manual" ? manual.labelColumn : null,
@@ -987,7 +995,7 @@ function KpiForm({ orgId, goalId, initial, onSaved, onCancel }: { orgId: string;
         property === null ? (
           <button
             type="button"
-            onClick={() => setProperty({ referenceEvent: "", asPercentage: false, withinHoursEnabled: false, withinHours: "", matchKeyProperty: "" })}
+            onClick={() => setProperty({ referenceEvent: "", asPercentage: false, withinHoursEnabled: false, withinHours: "", matchKeyProperty: "", minElapsedHours: "", dedupeMinutes: "" })}
             className="text-[11px] font-medium text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
           >
             + Add property
@@ -1053,6 +1061,35 @@ function KpiForm({ orgId, goalId, initial, onSaved, onCancel }: { orgId: string;
                   <p className="text-[10px] text-gray-400 mt-0.5">
                     If both events carry the same value for this property (e.g. both fire with the same policy_id), matching uses it directly instead of guessing by person and order. Leave blank to keep matching by same user.
                   </p>
+                </div>
+                <div className="border-t border-gray-100 pt-2 space-y-1.5">
+                  <p className="text-[10px] font-medium text-gray-500">Matching rules <span className="font-normal text-gray-400">(leave blank for defaults)</span></p>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.5}
+                        placeholder={property.matchKeyProperty.trim() ? "Min gap h (default 1)" : "Min gap h (default 0)"}
+                        value={property.minElapsedHours}
+                        onChange={(e) => setProperty({ ...property, minElapsedHours: e.target.value })}
+                        className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300"
+                      />
+                      <p className="text-[10px] text-gray-400 mt-0.5">Min gap between start and outcome (hours). Set to 0 to disable.</p>
+                    </div>
+                    <div className="flex-1">
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        placeholder="Dedup window min (default 5)"
+                        value={property.dedupeMinutes}
+                        onChange={(e) => setProperty({ ...property, dedupeMinutes: e.target.value })}
+                        className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300"
+                      />
+                      <p className="text-[10px] text-gray-400 mt-0.5">Collapse duplicate fires within this window (minutes).</p>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

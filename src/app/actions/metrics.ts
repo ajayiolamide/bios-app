@@ -150,6 +150,9 @@ export async function createGoalKpi(
     // occurrence of each together. When set, matching uses that real
     // identifier instead of guessing "same user, next one in order."
     match_key_property?: string | null;
+    // Migration 043 — user-configurable matching rules. null = use legacy defaults.
+    min_elapsed_hours?: number | null;
+    dedupe_minutes?: number | null;
     aggregation: string;
     target: string;
     target_value?: number | null;
@@ -178,6 +181,8 @@ export async function createGoalKpi(
       within_hours: payload.within_hours ?? null,
       rate_as_percentage: payload.rate_as_percentage ?? true,
       match_key_property: payload.match_key_property?.trim() || null,
+      min_elapsed_hours: payload.min_elapsed_hours ?? null,
+      dedupe_minutes: payload.dedupe_minutes ?? null,
       aggregation: payload.aggregation as Metric["aggregation"],
       business_goal_id: businessGoalId,
       target: payload.target.trim() || null,
@@ -237,6 +242,9 @@ export async function updateGoalKpi(
     within_hours?: number | null;
     rate_as_percentage?: boolean;
     match_key_property?: string | null;
+    // Migration 043 — user-configurable matching rules. null = use legacy defaults.
+    min_elapsed_hours?: number | null;
+    dedupe_minutes?: number | null;
     aggregation?: string;
     target?: string | null;
     target_value?: number | null;
@@ -254,6 +262,8 @@ export async function updateGoalKpi(
   if (payload.within_hours !== undefined) update.within_hours = payload.within_hours;
   if (payload.rate_as_percentage !== undefined) update.rate_as_percentage = payload.rate_as_percentage;
   if (payload.match_key_property !== undefined) update.match_key_property = payload.match_key_property?.trim() || null;
+  if (payload.min_elapsed_hours !== undefined) update.min_elapsed_hours = payload.min_elapsed_hours;
+  if (payload.dedupe_minutes !== undefined) update.dedupe_minutes = payload.dedupe_minutes;
   if (payload.aggregation !== undefined) update.aggregation = payload.aggregation;
   if (payload.target !== undefined) update.target = payload.target?.trim() || null;
   if (payload.target_value !== undefined) update.target_value = payload.target_value;
@@ -432,14 +442,14 @@ async function attachTrendData(
 
     if (hasWindow && asPercentage) {
       // % of reference-event occurrences whose event_name landed in time.
-      const { total, trend } = computeTimeWindowedRate(numeratorEvents, denominatorEvents, metric.within_hours as number, since, days, requireMatchKey);
+      const { total, trend } = computeTimeWindowedRate(numeratorEvents, denominatorEvents, metric.within_hours as number, since, days, requireMatchKey, metric.min_elapsed_hours ?? null, metric.dedupe_minutes ?? null);
       return { ...metric, total, trend };
     }
 
     if (hasWindow && !asPercentage) {
       // Raw count of reference-event occurrences that got a timely match —
       // e.g. "1,000 claims paid within 24h" as a volume target.
-      const { total, trend } = computeTimeWindowedCount(numeratorEvents, denominatorEvents, metric.within_hours as number, since, days, requireMatchKey);
+      const { total, trend } = computeTimeWindowedCount(numeratorEvents, denominatorEvents, metric.within_hours as number, since, days, requireMatchKey, metric.min_elapsed_hours ?? null, metric.dedupe_minutes ?? null);
       return { ...metric, total, trend };
     }
 
@@ -550,9 +560,11 @@ function computeTimeWindowedCount(
   withinHours: number,
   since: Date,
   days: number = 30,
-  requireMatchKey: boolean = false
+  requireMatchKey: boolean = false,
+  minElapsedHours: number | null = null,
+  dedupeMinutes: number | null = null
 ): { total: number; trend: MetricDataPoint[] } {
-  const matches = matchOccurrences(numeratorEvents, denominatorEvents, withinHours, requireMatchKey);
+  const matches = matchOccurrences(numeratorEvents, denominatorEvents, withinHours, requireMatchKey, minElapsedHours, dedupeMinutes);
 
   const dayCounts: Record<string, number> = {};
   for (let i = 0; i < days; i++) {

@@ -118,6 +118,11 @@ export interface Database {
           // value instead of by same-person-in-order. Null keeps the
           // existing per-user heuristic.
           match_key_property: string | null;
+          // Migration 043 — user-configurable matching rules (replaces hardcoded
+          // 1h minimum gap and 5min dedup window in metrics-engine.ts).
+          // null = use legacy defaults (1h min gap if match_key set, 5min dedup).
+          min_elapsed_hours: number | null;
+          dedupe_minutes: number | null;
           aggregation: "count" | "unique_users" | "unique_sessions";
           business_goal_id: string | null;
           feature_metric_id: string | null;
@@ -144,6 +149,8 @@ export interface Database {
           within_hours?: number | null;
           rate_as_percentage?: boolean;
           match_key_property?: string | null;
+          min_elapsed_hours?: number | null;
+          dedupe_minutes?: number | null;
           aggregation?: "count" | "unique_users" | "unique_sessions";
           business_goal_id?: string | null;
           feature_metric_id?: string | null;
@@ -165,6 +172,8 @@ export interface Database {
           within_hours?: number | null;
           rate_as_percentage?: boolean;
           match_key_property?: string | null;
+          min_elapsed_hours?: number | null;
+          dedupe_minutes?: number | null;
           aggregation?: "count" | "unique_users" | "unique_sessions";
           business_goal_id?: string | null;
           feature_metric_id?: string | null;
