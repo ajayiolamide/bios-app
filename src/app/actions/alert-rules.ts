@@ -269,14 +269,18 @@ export async function evaluateAllRules(orgId: string): Promise<{ ruleId: string;
 
 // ─── Available event names (for the rule form autocomplete) ───────────────────
 export async function getAlertEventNames(): Promise<string[]> {
-  const orgId = await getOrgId();
-  const admin = createAdminClient();
-  const { data } = await admin
-    .from("mixpanel_events")
-    .select("event_name")
-    .eq("organization_id", orgId)
-    .order("event_name");
-  if (!data) return [];
-  const names = [...new Set(data.map((r: { event_name: string }) => r.event_name))];
-  return names.sort();
+  try {
+    const orgId = await getOrgId();
+    const admin = createAdminClient();
+    const { data } = await admin
+      .from("mixpanel_events")
+      .select("event_name")
+      .eq("organization_id", orgId)
+      .order("event_name");
+    if (!data) return [];
+    const names = [...new Set(data.map((r: { event_name: string }) => r.event_name))];
+    return names.sort();
+  } catch {
+    return [];
+  }
 }
