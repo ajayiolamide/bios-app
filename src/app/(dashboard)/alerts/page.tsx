@@ -34,6 +34,7 @@ function ruleTypeMeta(t: AlertRuleType) {
 
 type FormState = {
   name: string;
+  description: string;
   rule_type: AlertRuleType;
   numerator_event: string;
   denominator_event: string;
@@ -47,6 +48,7 @@ type FormState = {
 function blankForm(): FormState {
   return {
     name: "",
+    description: "",
     rule_type: "event_ratio_drop",
     numerator_event: "",
     denominator_event: "",
@@ -62,6 +64,7 @@ function formToPayload(f: FormState): AlertRulePayload {
   const meta = ruleTypeMeta(f.rule_type);
   return {
     name: f.name.trim(),
+    description: f.description.trim() || null,
     rule_type: f.rule_type,
     numerator_event: f.numerator_event.trim(),
     denominator_event: meta.needsRatio ? (f.denominator_event.trim() || null) : null,
@@ -87,6 +90,7 @@ function RuleForm({
     if (!initial) return blankForm();
     return {
       name: initial.name,
+      description: initial.description ?? "",
       rule_type: initial.rule_type,
       numerator_event: initial.numerator_event,
       denominator_event: initial.denominator_event ?? "",
@@ -140,6 +144,15 @@ function RuleForm({
         <input value={form.name} onChange={e => set("name", e.target.value)}
           placeholder="e.g. Payment conversion drops"
           className={fieldCls} />
+      </div>
+
+      {/* Description */}
+      <div>
+        <label className={labelCls}>Description <span className="text-gray-400 normal-case font-normal">(plain English — shows in Slack)</span></label>
+        <textarea value={form.description} onChange={e => set("description", e.target.value)}
+          placeholder="e.g. Alert when less than 60% of users who start IDV payment actually complete it"
+          rows={2}
+          className={`${fieldCls} resize-none`} />
       </div>
 
       {/* Rule type */}
@@ -256,6 +269,10 @@ function RuleCard({
             <p className={`text-sm font-semibold ${rule.enabled ? "text-gray-900" : "text-gray-400"}`}>{rule.name}</p>
             {!rule.enabled && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-400 font-medium">Paused</span>}
           </div>
+
+          {rule.description && (
+            <p className="text-xs text-gray-600 mt-0.5 italic">{rule.description}</p>
+          )}
 
           {/* Rule description */}
           <p className="text-xs text-gray-500 mt-0.5">

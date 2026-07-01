@@ -766,6 +766,7 @@ export type AlertRule = {
   id: string;
   organization_id: string;
   name: string;
+  description: string | null;
   enabled: boolean;
   rule_type: AlertRuleType;
   numerator_event: string;

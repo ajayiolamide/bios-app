@@ -47,6 +47,7 @@ export async function getAlertRules(): Promise<{ rules: AlertRule[]; error: stri
 
 export type AlertRulePayload = {
   name: string;
+  description?: string | null;
   rule_type: AlertRuleType;
   numerator_event: string;
   denominator_event?: string | null;
@@ -65,6 +66,7 @@ export async function createAlertRule(payload: AlertRulePayload): Promise<AlertR
     .insert({
       organization_id: orgId,
       name: payload.name,
+      description: payload.description?.trim() || null,
       enabled: payload.enabled ?? true,
       rule_type: payload.rule_type,
       numerator_event: payload.numerator_event.trim(),
@@ -85,6 +87,7 @@ export async function updateAlertRule(id: string, patch: Partial<AlertRulePayloa
   const admin = createAdminClient();
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (patch.name !== undefined) update.name = patch.name;
+  if (patch.description !== undefined) update.description = patch.description?.trim() || null;
   if (patch.enabled !== undefined) update.enabled = patch.enabled;
   if (patch.rule_type !== undefined) update.rule_type = patch.rule_type;
   if (patch.numerator_event !== undefined) update.numerator_event = patch.numerator_event.trim();
@@ -215,9 +218,10 @@ async function _evaluateRuleData(
     const metric = isRatio
       ? `${rule.numerator_event} / ${rule.denominator_event}`
       : rule.numerator_event;
+    const descLine = rule.description ? `\n>${rule.description}` : "";
     const message = fired
-      ? `🚨 *Alert: ${rule.name}*\n>${metric}: ${current.toFixed(isRatio ? 1 : 0)}${unitLabel} now vs ${prior.toFixed(isRatio ? 1 : 0)}${unitLabel} prior period\n>${reason}`
-      : `✅ *${rule.name}* — No action needed\n>${metric}: ${current.toFixed(isRatio ? 1 : 0)}${unitLabel} now vs ${prior.toFixed(isRatio ? 1 : 0)}${unitLabel} prior — ${reason}`;
+      ? `🚨 *Alert: ${rule.name}*${descLine}\n>${metric}: ${current.toFixed(isRatio ? 1 : 0)}${unitLabel} now vs ${prior.toFixed(isRatio ? 1 : 0)}${unitLabel} prior period\n>${reason}`
+      : `✅ *${rule.name}* — No action needed${descLine}\n>${metric}: ${current.toFixed(isRatio ? 1 : 0)}${unitLabel} now vs ${prior.toFixed(isRatio ? 1 : 0)}${unitLabel} prior — ${reason}`;
 
     // Optionally fire Slack
     if (fired && fireSlack) {
@@ -280,12 +284,12 @@ export async function getAlertEventNames(): Promise<string[]> {
     const orgId = await getOrgId();
     const admin = createAdminClient();
     const { data } = await admin
-      .from("mixpanel_events")
-      .select("event_name")
+      .from("events")
+      .select("name")
       .eq("organization_id", orgId)
-      .order("event_name");
+      .order("name");
     if (!data) return [];
-    const names = [...new Set(data.map((r: { event_name: string }) => r.event_name))];
+    const names = [...new Set(data.map((r: { name: string }) => r.name))];
     return names.sort();
   } catch {
     return [];
