@@ -204,6 +204,12 @@ async function _evaluateRuleData(
     } else if (rule.rule_type === "event_count_above") {
       fired = current > thrAbs;
       reason = `${current.toFixed(isRatio ? 1 : 0)}${unitLabel} (threshold: above ${thrAbs})`;
+    } else if (rule.rule_type === "event_ratio_below") {
+      fired = current < thrAbs;
+      reason = `Conversion rate: ${current.toFixed(1)}% (threshold: below ${thrAbs}%)`;
+    } else if (rule.rule_type === "event_ratio_above") {
+      fired = current > thrAbs;
+      reason = `Conversion rate: ${current.toFixed(1)}% (threshold: above ${thrAbs}%)`;
     }
 
     const metric = isRatio

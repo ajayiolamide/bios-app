@@ -16,12 +16,14 @@ import {
 // ─── Rule type metadata ───────────────────────────────────────────────────────
 
 const RULE_TYPE_OPTIONS: { value: AlertRuleType; label: string; needsRatio: boolean; needsPct: boolean }[] = [
-  { value: "event_count_drop",  label: "Event count drops by %",    needsRatio: false, needsPct: true },
-  { value: "event_count_rise",  label: "Event count rises by %",    needsRatio: false, needsPct: true },
-  { value: "event_ratio_drop",  label: "Event ratio drops by %",    needsRatio: true,  needsPct: true },
-  { value: "event_ratio_rise",  label: "Event ratio rises by %",    needsRatio: true,  needsPct: true },
-  { value: "event_count_below", label: "Event count falls below #", needsRatio: false, needsPct: false },
-  { value: "event_count_above", label: "Event count rises above #", needsRatio: false, needsPct: false },
+  { value: "event_count_drop",  label: "Event count drops by %",         needsRatio: false, needsPct: true },
+  { value: "event_count_rise",  label: "Event count rises by %",         needsRatio: false, needsPct: true },
+  { value: "event_ratio_drop",  label: "Event ratio drops by %",         needsRatio: true,  needsPct: true },
+  { value: "event_ratio_rise",  label: "Event ratio rises by %",         needsRatio: true,  needsPct: true },
+  { value: "event_count_below", label: "Event count falls below #",      needsRatio: false, needsPct: false },
+  { value: "event_count_above", label: "Event count rises above #",      needsRatio: false, needsPct: false },
+  { value: "event_ratio_below", label: "Conversion rate falls below %",  needsRatio: true,  needsPct: false },
+  { value: "event_ratio_above", label: "Conversion rate rises above %",  needsRatio: true,  needsPct: false },
 ];
 
 function ruleTypeMeta(t: AlertRuleType) {
@@ -186,9 +188,10 @@ function RuleForm({
           </div>
         ) : (
           <div>
-            <label className={labelCls}>Threshold (count)</label>
-            <input type="number" min={0} value={form.threshold_abs} onChange={e => set("threshold_abs", e.target.value)}
-              placeholder="100" className={fieldCls} />
+            <label className={labelCls}>{meta.needsRatio ? "Threshold (%)" : "Threshold (count)"}</label>
+            <input type="number" min={0} max={meta.needsRatio ? 100 : undefined} value={form.threshold_abs} onChange={e => set("threshold_abs", e.target.value)}
+              placeholder={meta.needsRatio ? "60" : "100"} className={fieldCls} />
+            {meta.needsRatio && <p className="text-[10px] text-gray-400 mt-1">Alert fires if conversion rate crosses this %</p>}
           </div>
         )}
         <div>

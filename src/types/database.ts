@@ -758,7 +758,9 @@ export type AlertRuleType =
   | "event_ratio_drop"    // count(X)/count(Y) drops > N% vs prior period
   | "event_ratio_rise"    // count(X)/count(Y) rises > N% vs prior period
   | "event_count_below"   // abs count of event X falls below a fixed number
-  | "event_count_above";  // abs count of event X rises above a fixed number
+  | "event_count_above"   // abs count of event X rises above a fixed number
+  | "event_ratio_below"   // count(X)/count(Y) ratio falls below a fixed %
+  | "event_ratio_above";  // count(X)/count(Y) ratio rises above a fixed %
 
 export type AlertRule = {
   id: string;
