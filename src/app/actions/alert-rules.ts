@@ -129,12 +129,12 @@ export type EvalResult = {
 
 async function countEvents(admin: ReturnType<typeof createAdminClient>, orgId: string, eventName: string, from: Date, to: Date): Promise<number> {
   const { count } = await admin
-    .from("mixpanel_events")
+    .from("events")
     .select("id", { count: "exact", head: true })
     .eq("organization_id", orgId)
-    .eq("event_name", eventName)
-    .gte("event_time", from.toISOString())
-    .lt("event_time", to.toISOString());
+    .eq("name", eventName)
+    .gte("timestamp", from.toISOString())
+    .lt("timestamp", to.toISOString());
   return count ?? 0;
 }
 
