@@ -17,22 +17,33 @@ async function generateAlertInsight(context: {
   prior: number | null;
   unit: string;
   isRatio: boolean;
+  numeratorCount?: number;
+  denominatorCount?: number;
 }): Promise<string> {
   try {
     const priorLine = context.prior != null
       ? `Prior period: ${context.prior.toFixed(context.isRatio ? 1 : 0)}${context.unit}`
       : "";
+    // Give the AI the raw user counts so it can write "46 of 105 users dropped off"
+    const countsLine = context.isRatio && context.numeratorCount != null && context.denominatorCount != null
+      ? `Raw counts: ${context.numeratorCount} users completed out of ${context.denominatorCount} who started (${context.denominatorCount - context.numeratorCount} users dropped off)`
+      : "";
     const msg = await anthropic.messages.create({
       model: "claude-haiku-4-5-20251001",
-      max_tokens: 120,
+      max_tokens: 150,
       messages: [{
         role: "user",
-        content: `You are the Head of Growth. A metric just triggered an alert. Write ONE sentence (max 25 words) that tells the team what this likely means for the business and the single most important action to take. Be specific and direct — no filler.
+        content: `You are the Head of Growth writing a Slack alert for the whole team — not just engineers. Most readers don't know what event names mean.
+
+Write TWO sentences max:
+1. First sentence: explain in plain English what happened using REAL NUMBERS if available (e.g. "48 out of 105 users who tried to pay didn't complete payment this week"). No event names or jargon.
+2. Second sentence: the single most urgent action someone should take right now.
 
 Alert: ${context.ruleName}
 Metric: ${context.metric}
-Current value: ${context.current.toFixed(context.isRatio ? 1 : 0)}${context.unit}
+Current: ${context.current.toFixed(context.isRatio ? 1 : 0)}${context.unit}
 ${priorLine}
+${countsLine}
 Rule type: ${context.ruleType}`,
       }],
     });
@@ -54,6 +65,10 @@ async function buildAlertBlocks(opts: {
   isRatio: boolean;
   reason: string;
   appUrl?: string;
+  // Raw user counts for ratio rules — lets the AI and the message say
+  // "48 of 105 users dropped off" instead of just "54.8%"
+  numeratorCount?: number;
+  denominatorCount?: number;
 }): Promise<object[]> {
   const insight = await generateAlertInsight({
     ruleName: opts.ruleName,
@@ -63,10 +78,17 @@ async function buildAlertBlocks(opts: {
     prior: opts.prior,
     unit: opts.unit,
     isRatio: opts.isRatio,
+    numeratorCount: opts.numeratorCount,
+    denominatorCount: opts.denominatorCount,
   });
 
   const currentStr = `${opts.current.toFixed(opts.isRatio ? 1 : 0)}${opts.unit}`;
   const priorStr = opts.prior != null ? `${opts.prior.toFixed(opts.isRatio ? 1 : 0)}${opts.unit}` : null;
+
+  // Plain-English "what this means" line for ratio rules
+  const whatItMeans = opts.isRatio && opts.numeratorCount != null && opts.denominatorCount != null
+    ? `${opts.numeratorCount} of ${opts.denominatorCount} users completed · ${opts.denominatorCount - opts.numeratorCount} dropped off`
+    : null;
 
   const blocks: object[] = [
     {
@@ -92,6 +114,14 @@ async function buildAlertBlocks(opts: {
   fields.push({ type: "mrkdwn", text: `*Condition*\n${opts.reason}` });
 
   blocks.push({ type: "section", fields });
+
+  // Show raw counts below the % fields so anyone can understand what the number means
+  if (whatItMeans) {
+    blocks.push({
+      type: "context",
+      elements: [{ type: "mrkdwn", text: `👥 ${whatItMeans}` }],
+    });
+  }
 
   if (insight) {
     blocks.push({ type: "divider" });
@@ -600,6 +630,10 @@ async function _evaluateRuleData(
 
     let current: number;
     let prior: number;
+    // Raw counts for ratio rules — threaded into Slack so the message can say
+    // "48 of 105 users dropped off" instead of just "54.8%"
+    let rawNumerator: number | undefined;
+    let rawDenominator: number | undefined;
 
     if (isUnique && rule.denominator_event) {
       // Funnel mode: of users who fired denominator, how many also fired numerator?
@@ -610,6 +644,8 @@ async function _evaluateRuleData(
       ]);
       current = fCurrent.denominator > 0 ? (fCurrent.numerator / fCurrent.denominator) * 100 : 0;
       prior   = fPrior.denominator   > 0 ? (fPrior.numerator   / fPrior.denominator)   * 100 : 0;
+      rawNumerator   = fCurrent.numerator;
+      rawDenominator = fCurrent.denominator;
     } else {
       const numCurrent = await countEvents(admin, orgId, rule.numerator_event, currentFrom, now, agg);
       const numPrior   = await countEvents(admin, orgId, rule.numerator_event, priorFrom, currentFrom, agg);
@@ -678,6 +714,8 @@ async function _evaluateRuleData(
           isRatio,
           reason,
           appUrl: "https://metrik-tool.vercel.app/alerts",
+          numeratorCount: rawNumerator,
+          denominatorCount: rawDenominator,
         });
         await fetch(webhookUrl, {
           method: "POST",
