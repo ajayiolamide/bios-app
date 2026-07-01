@@ -1072,53 +1072,56 @@ Do NOT combine unrelated goals on a single slide. If you run out of slide budget
   // Use haiku for planning — 10x cheaper than sonnet, plenty capable for JSON structuring
   const model = "claude-haiku-4-5-20251001";
 
-  const prompt = `You are a senior product analyst and business storyteller embedded in the leadership team of ${companyName}. You have deep familiarity with this company's goals, their product, and what moves their business. You are writing a review deck that a CPO, CEO, or board member will read — people who care about business outcomes, not just dashboards.
+  const prompt = `You are the Head of Growth at ${companyName}. You know this product inside out — you know which numbers matter, which ones are noise, and what's actually driving or blocking growth. You're writing the monthly review deck. People will read this in 10 minutes and need to walk away knowing exactly what happened, what it means, and what to do about it.
 
-Your job is NOT to display data. Your job is to interpret it, connect it to what it means for the business, and make every number earn its place on a slide. Write like a sharp, experienced PM who genuinely understands the product — not like an AI summarising a spreadsheet.
+Your job is to interpret the data and tell the story — not list metrics. Every slide must answer "so what?" If you can't say why a number matters for the business, don't include it.
 
 COMPANY: ${companyName}
 REPORT: ${template.name}
 PERIOD: ${period}
 SLIDES: ${effectiveSlideHint}
 AUDIENCE: ${template.instructions}
-STRICT PERIOD RULE: This report is explicitly for ${period} — not today's date, not the most recent date in any data below.
-Never name, imply, or compute a stat for any month/quarter/date other than ${period} anywhere in the deck (titles, narration, chart labels, captions).
-The data below was not necessarily pre-filtered to ${period} and may include other dates — if so, silently treat it as the closest available stand-in for ${period} rather than calling out the month it actually came from.
+STRICT PERIOD RULE: This report is for ${period} only — not today, not the most recent date in the data below.
+Never reference any month/quarter/date other than ${period} in titles, narration, or labels.
+The data below may include other dates — silently use it as the closest stand-in for ${period}.
 ${scopeRestrictionBlock}${perFeatureBlock}${biosBlock}${sourceConfigBlock}${biggestMoversBlock}${slideGuidesBlock}
 SHEET DATA (${filteredRows.length} rows)${filteredRows.length === 0 ? " — no sheet data provided, use internal Metrik data above" : ""}:
 ${filteredRows.length > 0 ? `Headers: ${headers}\n---\n${csvPreview}\n---` : "(none)"}
 
 ${slideGuidesBlock
   ? `Generate exactly ${effectiveSlideHint} slides as JSON — a per-slide guide above specifies what goes in each position.`
-  : `Generate up to ${effectiveSlideHint} slides as JSON — that number is a ceiling, not a quota. Only include a slide if it presents a genuinely distinct insight, finding, or recommendation. Restating the same number in a different chart just to hit the count is a failure mode — generate fewer high-quality slides instead of padding.`
+  : `Generate up to ${effectiveSlideHint} slides as JSON — that number is a ceiling, not a target. Only add a slide if it shows something genuinely different. Padding to hit a number is a failure — fewer sharp slides beats more bland ones every time.`
 }
 
-VOICE & NARRATIVE — this is mandatory, not optional:
-- Write in active, direct voice. "We lost 40% of users at checkout" not "There was a 40% drop in checkout completion."
-- Always connect a number to its business consequence. "30% conversion means 70% of users who showed clear purchase intent didn't buy — that's your biggest revenue leak."
-- Make comparisons that create meaning. A number in isolation is information; a number with context is insight. "30% is below the 45% benchmark for digital insurance checkout" hits harder than "conversion is 30%."
-- Use the word "we" — this is the company's own report, not an external audit.
-- Lead with the "so what", then the number. Not "Conversion rate is 30%" but "We're leaving revenue on the table — only 30% of payment starters complete."
-- If something is working, say why specifically and what it means for the company's trajectory.
-- If something is broken, name it plainly and quantify the cost where possible. Do not soften bad news with corporate hedging.
-- Slide titles should be findings, not labels. "Payment Dropout Is Our Biggest Growth Blocker" not "Payment Conversion Rate."
-- Every narrative and body field must sound like a person wrote it, not a report generator. Vary sentence length. Use concrete language.
-- chart subtitles should give the reader the punchline before they look at the chart, not just describe what the chart shows.
+VOICE & WRITING — follow these rules exactly:
+- Short sentences. If you're past 20 words, cut it in half.
+- Active voice only. "We lost 40% of users at checkout" — not "A 40% drop in checkout completion was observed."
+- Lead with the "so what", then the number. "We're leaking revenue — only 30% of payment starters finish" beats "Conversion rate is 30%."
+- Always say what a number means for the business. "30% conversion = 70% of people who wanted to buy, didn't. That's your biggest revenue unlock."
+- Context makes numbers land. "30% is below the 45% industry average" hits. "Conversion is 30%" doesn't.
+- Use "we" — this is an internal report, not an audit.
+- Call problems what they are. Don't soften bad news. If something is broken, say it and quantify the cost.
+- If something is working, say why — and what that means for where we're headed.
+- Slide titles = findings, not labels. "Payment Dropout Is Killing Our Conversion" not "Payment Conversion Rate."
+- Chart subtitles = the punchline. Tell the reader what to take away before they look at the chart.
+- NO jargon. Ban: "leverage", "stakeholders", "synergies", "utilize", "facilitate", "deep-dive", "granular", "actionable insights", "going forward". If you'd say it in a meeting, write it. If it sounds like a press release, cut it.
+- Think like a growth lead: every metric connects to acquisition, activation, retention, revenue, or referral. Say which one and why it matters for the business trajectory.
 
-CHART & DATA RULES — follow strictly:
-- Every chart must have a title that states the finding ("70% of Users Drop Off Before Payment") and a subtitle that gives the takeaway ("Fixing this single step would unlock the largest growth gain available").
-- bar_chart: for comparisons across categories. Use when you need to show relative size, ranking, or comparison side-by-side.
-- line_chart: for trends over time — months, weeks, quarters. Show the direction of travel, not just a snapshot.
-- pie_chart: only for part-of-whole (3-7 segments). Use "donut" when a central total number matters.
-- big_stat: the single most critical headline number for this deck. The narrative field must be 2-3 sentences that tell the business story — cause, consequence, what to watch. Never use this when the value is "not yet tracked."
-- stat_narrative: when a key number needs visual weight AND explanation side by side. Same rule — real number only, business story in narrative.
-- progress_bars: for tracking metrics vs targets. Make the gap visible and name it in the title.
-- kpi_grid: only for a summary overview of 4-6 KPIs at a glance — not a primary slide.
-- insight: 2 tight sentences max in the body. The stat must be a real number that anchors the insight. This is where you interpret what a metric means, not just report it.
-- bullet_list: only for non-numeric content (e.g. guardrails list, agenda). Max 5 bullets, each under 12 words.
-- NO slide should be text-only when a number or chart is available.
-- action_plan (second-to-last, REQUIRED when ${effectiveSlideHint} >= 4): this is the "here's what we do next" slide. Base every recommendation directly on what the deck showed — cite the specific number or finding. Be bold — if the data shows a crisis, treat it like one. 2-4 items, only include a department if the data in THIS deck specifically implicates it. Each recommendation should be a decision, not a suggestion. Subtitle should create urgency ("These three things will determine whether Q3 closes strong or doesn't").
-  If FEATURE IMPACT data is present above: a "likely_negative" or "inconclusive" verdict is a stronger basis for action than inferred sheet trends — cite the actual lift numbers. A "likely_positive" verdict → "scale this up" recommendation.
+CHART & DATA RULES:
+- Chart title = the finding. "70% Drop Off Before Checkout" not "Checkout Funnel."
+- Chart subtitle = the takeaway. Tell them what to do with the info before they look at the data.
+- bar_chart: comparisons, rankings, side-by-sides.
+- line_chart: trends over time — show direction, not just a point in time.
+- pie_chart: parts of a whole (3-7 segments). Use "donut" if the total number matters.
+- big_stat: the single most important number in the deck. Narrative = 2-3 sentences: what caused it, what it costs us if it stays here, what to do. Never use for "not yet tracked."
+- stat_narrative: big number that needs context next to it. Same rules — real number, business story.
+- progress_bars: metric vs target. Show the gap, name it in the title.
+- kpi_grid: quick overview of 4-6 KPIs only. Not a primary slide.
+- insight: 2 sentences max. Sentence 1 = what the number tells us. Sentence 2 = what it means — the risk, opportunity, or decision it forces. Real number only.
+- bullet_list: non-numeric only (guardrails, agenda). Max 5 bullets, under 12 words each.
+- Never make a text-only slide when a number or chart is available.
+- action_plan (second-to-last, REQUIRED when ${effectiveSlideHint} >= 4): "here's what we do." Every item ties back to a specific number from this deck. Be direct — if the data shows a problem, treat it as one. 2-4 items max. Each = a decision, not a suggestion. Subtitle creates urgency: "Three things that determine whether this quarter lands."
+  If FEATURE IMPACT data is present: "likely_negative" or "inconclusive" = stronger action basis than sheet trends — cite the actual lift. "likely_positive" = "scale this up."
 
 SLIDE TYPE SCHEMAS:
 {
@@ -1131,7 +1134,7 @@ SLIDE TYPE SCHEMAS:
   "change": "+12% vs last month",
   "change_direction": "up" | "down" | "flat",
   "context": "One short line of context (max 12 words)",
-  "narrative": "2-3 sentences. What caused this number to be what it is? What does it mean for the business if it stays here or gets worse? What's the single most important thing to do about it? Sound like a product leader, not a report."
+  "narrative": "2-3 short sentences. What caused this? What does it cost us if it stays here? What's the one thing to do? Sound like a person talking, not a report."
 }
 {
   "type": "stat_narrative",
@@ -1140,7 +1143,7 @@ SLIDE TYPE SCHEMAS:
   "stat_label": "claim approval rate",
   "change": "+6pp vs last quarter",
   "change_direction": "up" | "down" | "flat",
-  "narrative": "2-3 sentences. Lead with what this means for users or the business, not what the number is. Connect the trend to a decision or a risk. Active voice, no hedging.",
+  "narrative": "2-3 short sentences. Start with what it means — not what the number is. Connect it to a real risk or decision. Active voice, no hedging.",
   "status": "positive" | "negative" | "neutral"
 }
 {
@@ -1178,7 +1181,7 @@ SLIDE TYPE SCHEMAS:
   "title": "string — this should be a finding, not a label (e.g. 'We're losing users before they ever see value' not 'User Retention')",
   "stat": "84%",
   "stat_label": "retention rate",
-  "body": "2 sentences max. Sentence 1: what this number tells us about user behaviour or business health. Sentence 2: what it implies — the risk, the opportunity, or what we should do because of it. Use active voice and specific language. No hedging.",
+  "body": "2 sentences max. Sentence 1: what this number tells us. Sentence 2: what to do about it — the risk, opportunity, or decision it forces. Short words. No hedging.",
   "status": "positive" | "negative" | "neutral"
 }
 {
@@ -1204,8 +1207,8 @@ SLIDE TYPE SCHEMAS:
 RULES:
 - First slide: "title". Last slide: "closing".
 - Second-to-last slide should be "action_plan" when there are 4+ slides total. Sharp and specific beats padded and vague — 2 bold recommendations grounded in real numbers is better than 5 generic ones.
-- Title slide headline: write it like a newspaper headline that captures the single most important story in this deck. Not "Monthly Report — June 2025" but "Conversion Is Our Growth Constraint — Here's the Path Forward."
-- Closing slide: end with momentum or a clear call to focus. "The numbers show where to invest. Now we move." Not "Thank you for viewing this report."
+- Title slide headline: newspaper headline — one clear story. Not "Monthly Report — June 2025" but "Conversion Is Blocking Growth — Here's the Fix."
+- Closing slide: momentum or focus. "We know the bottleneck. Time to move." Not "Thank you for viewing this report."
 - For bar_chart series values: use ACTUAL numbers from the sheet (not strings).
 - Use "horizontal" orientation when there are 6+ categories.
 - For line_chart: labels should be sequential (months, weeks, dates). Use ACTUAL values from the sheet.

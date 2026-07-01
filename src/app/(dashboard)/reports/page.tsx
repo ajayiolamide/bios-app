@@ -29,6 +29,7 @@ import {
 import { getSavedInsights, type SavedInsight } from "@/app/actions/saved-insights";
 import { getMyOrgFlags } from "@/app/actions/flags";
 import { LockedFeature } from "@/components/locked-feature";
+import { PageLoader } from "@/components/ui/page-loader";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -3499,8 +3500,8 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
           {/* "All" shortcut */}
           <button type="button"
             onClick={() => setBiosSections({ goals: !allSelected, features: !allSelected, funnelsKpis: !allSelected, funnels: !allSelected })}
-            className={`text-xs font-medium px-3 py-1 rounded-full border transition-colors ${
-              allSelected ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600"
+            className={`text-xs font-semibold px-3 py-1 rounded-full border transition-all ${
+              allSelected ? "bg-indigo-50 border-indigo-300 text-indigo-700" : "bg-white border-gray-200 text-gray-500 hover:border-indigo-200 hover:text-indigo-600"
             }`}>
             All
           </button>
@@ -3510,8 +3511,8 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
             return (
               <button key={key} type="button"
                 onClick={() => setBiosSections(prev => ({ ...prev, [key]: !prev[key] }))}
-                className={`text-xs font-medium px-3 py-1 rounded-full border transition-colors ${
-                  isActive ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white border-gray-200 text-gray-500 hover:border-indigo-300 hover:text-indigo-600"
+                className={`text-xs font-semibold px-3 py-1 rounded-full border transition-all ${
+                  isActive ? "bg-indigo-50 border-indigo-300 text-indigo-700" : "bg-white border-gray-200 text-gray-500 hover:border-indigo-200 hover:text-indigo-600"
                 }`}>
                 {label}
               </button>
@@ -3562,10 +3563,10 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
                   const isSelected = selectedTemplateId === t.id;
                   return (
                     <button key={t.id} onClick={() => setSelectedTemplateId(t.id)}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all border ${
+                      className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all border ${
                         isSelected
-                          ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
-                          : "border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-700 bg-white"
+                          ? "bg-indigo-50 text-indigo-700 border-indigo-300 shadow-sm"
+                          : "border-gray-200 text-gray-600 hover:border-indigo-200 hover:text-indigo-700 bg-white"
                       }`}>
                       {t.name}
                       {ps.status === "ready" && <span className="w-2 h-2 rounded-full bg-green-400 flex-shrink-0" />}
@@ -3890,11 +3891,27 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
             </div>
           )}
 
-          {/* Primary CTA */}
+          {/* Primary CTA — glowing AI button */}
+          <style>{`
+            .ai-plan-btn {
+              background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 55%, #6366f1 100%);
+              box-shadow: 0 0 0 1px rgba(99,102,241,0.25), 0 4px 18px rgba(99,102,241,0.35), inset 0 1px 0 rgba(255,255,255,0.12);
+              animation: ai-glow 3s ease-in-out infinite;
+            }
+            .ai-plan-btn:hover:not(:disabled) {
+              box-shadow: 0 0 0 1px rgba(139,92,246,0.35), 0 8px 28px rgba(99,102,241,0.55), inset 0 1px 0 rgba(255,255,255,0.18);
+              transform: translateY(-1px);
+            }
+            .ai-plan-btn:active:not(:disabled) { transform: translateY(0); }
+            @keyframes ai-glow {
+              0%, 100% { box-shadow: 0 0 0 1px rgba(99,102,241,0.25), 0 4px 18px rgba(99,102,241,0.35), inset 0 1px 0 rgba(255,255,255,0.12); }
+              50%       { box-shadow: 0 0 0 1px rgba(139,92,246,0.35), 0 6px 24px rgba(139,92,246,0.50), inset 0 1px 0 rgba(255,255,255,0.18); }
+            }
+          `}</style>
           <button
             onClick={() => activeTemplate && handlePlan(activeTemplate)}
             disabled={!hasAnyDataSource || activePs.status === "planning" || !activeTemplate}
-            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
+            className="ai-plan-btn w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-semibold transition-all disabled:opacity-40 text-white"
           >
             {activePs.status === "planning"
               ? <><Loader2 size={15} className="animate-spin" /> Planning deck…</>
@@ -4024,7 +4041,7 @@ function HistoryTab({ orgId, refresh }: { orgId: string; refresh: number }) {
   const totalTokens = reports.reduce((s, r) => s + (r.tokens_used ?? 0), 0);
   const estimatedCost = (totalTokens / 1_000_000) * 0.25;
 
-  if (loading) return <div className="flex items-center justify-center py-16"><Loader2 size={24} className="animate-spin text-indigo-400" /></div>;
+  if (loading) return <PageLoader />;
 
   const hasAnything = reports.length > 0 || reviews.length > 0;
   if (!hasAnything) return (
