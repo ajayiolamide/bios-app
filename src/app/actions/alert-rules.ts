@@ -13,9 +13,9 @@ async function getOrgId(): Promise<string> {
     .from("organization_members")
     .select("organization_id")
     .eq("user_id", user.id)
-    .single();
-  if (!data) throw new Error("No org found");
-  return data.organization_id;
+    .limit(1);
+  if (!data || data.length === 0) throw new Error("No org found");
+  return data[0].organization_id;
 }
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
