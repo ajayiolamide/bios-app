@@ -261,6 +261,18 @@ function ImagePositioner({
 
 function SlideEditor({ slide, onChange }: { slide: SlideContent; onChange: (s: SlideContent) => void }) {
   const [showTypePicker, setShowTypePicker] = useState(false);
+  // Cache slide content per type so switching back restores the original content
+  // instead of blanking it. Keyed by slide.type string.
+  const typeHistoryRef = useRef<Map<string, SlideContent>>(new Map());
+
+  const handleTypeChange = (newType: SlideContent["type"]) => {
+    // Save the current slide under its current type before switching away
+    typeHistoryRef.current.set(slide.type, slide);
+    // Restore from cache if we've visited this type before, otherwise convert
+    const cached = typeHistoryRef.current.get(newType);
+    onChange(cached ?? convertToType(slide, newType));
+    setShowTypePicker(false);
+  };
 
   // Full slide-type switcher — converts to any type, preserving title where possible
   const typeSwitcher = (
@@ -277,7 +289,7 @@ function SlideEditor({ slide, onChange }: { slide: SlideContent; onChange: (s: S
         <div className="mt-2.5 grid grid-cols-3 gap-1.5">
           {SLIDE_TYPE_OPTIONS.map(opt => (
             <button key={opt.type}
-              onClick={() => { onChange(convertToType(slide, opt.type)); setShowTypePicker(false); }}
+              onClick={() => handleTypeChange(opt.type)}
               className={`flex flex-col items-center gap-0.5 py-2 px-1 rounded-lg border text-xs font-medium transition-colors ${
                 slide.type === opt.type
                   ? "bg-indigo-600 text-white border-indigo-600"
@@ -1213,6 +1225,24 @@ function PreviewModal({
     updateSlide({ ...slide, image_x: 70, image_y: 6, image_w: 26, image_h: 20 } as SlideContent);
   };
 
+  const handleSlideImageLayout = (layout: "corner" | "overlay" | "right-panel" | "left-panel" | "bottom") => {
+    if (!slide) return;
+    const base = { ...slide } as Record<string, unknown>;
+    if (layout === "corner") {
+      // Thumbnail mode — remove position and layout fields
+      delete base.image_x; delete base.image_y; delete base.image_w; delete base.image_h; delete base.image_layout;
+    } else if (layout === "overlay") {
+      // Free-position overlay — ensure position defaults exist
+      base.image_layout = "overlay";
+      if (base.image_x == null) { base.image_x = 70; base.image_y = 6; base.image_w = 26; base.image_h = 20; }
+    } else {
+      // Panel layout — remove position data (not needed), set layout
+      delete base.image_x; delete base.image_y; delete base.image_w; delete base.image_h;
+      base.image_layout = layout;
+    }
+    updateSlide(base as SlideContent);
+  };
+
   if (presenting) {
     return <PresentMode slides={slides} brand={brand} deckTitle={deck.title} startIdx={idx} onExit={() => setPresenting(false)} />;
   }
@@ -1705,7 +1735,7 @@ function PreviewModal({
                       {replanningSlide ? <><Loader2 size={11} className="animate-spin" /> Applying…</> : <><RotateCcw size={11} /> Apply</>}
                     </button>
                   </div>
-                  <SlideEditor slide={slide} onChange={updateSlide} />
+                  <SlideEditor key={`slide-editor-${idx}`} slide={slide} onChange={updateSlide} />
 
                   {/* Reference image — e.g. a Mixpanel trend screenshot.
                       Purely a visual attachment embedded into the slide
@@ -1729,32 +1759,72 @@ function PreviewModal({
                             <Trash2 size={12} />
                           </button>
                         </div>
-                      ) : (
-                        <div>
-                          <ImagePositioner
-                            imageUrl={(slide as { image_url?: string }).image_url!}
-                            x={(slide as { image_x?: number }).image_x ?? 70}
-                            y={(slide as { image_y?: number }).image_y ?? 6}
-                            w={(slide as { image_w?: number }).image_w ?? 26}
-                            h={(slide as { image_h?: number }).image_h ?? 20}
-                            onChange={handleSlideImagePosition}
-                          />
-                          <div className="flex items-center justify-between mt-1.5">
-                            <p className="text-[10px] text-gray-400">Drag to move, drag the dot to resize</p>
-                            <div className="flex items-center gap-2">
-                              <button onClick={handleResetSlideImagePosition}
-                                className="text-[11px] font-medium text-gray-400 hover:text-indigo-600 transition-colors">
-                                Reset
-                              </button>
+                      ) : (() => {
+                        // Determine which layout preset is currently active
+                        const curLayout = (slide as { image_layout?: string }).image_layout as "overlay" | "right-panel" | "left-panel" | "bottom" | undefined;
+                        const hasPos = (slide as { image_x?: number }).image_x != null;
+                        const activePreset: "corner" | "overlay" | "right-panel" | "left-panel" | "bottom" =
+                          curLayout === "right-panel" ? "right-panel"
+                          : curLayout === "left-panel" ? "left-panel"
+                          : curLayout === "bottom"    ? "bottom"
+                          : (curLayout === "overlay" || hasPos) ? "overlay"
+                          : "corner";
+                        const PRESETS = [
+                          { key: "corner",      label: "Corner",  icon: "⌜", desc: "Thumbnail in header" },
+                          { key: "overlay",     label: "Overlay", icon: "⧉", desc: "Drag to position" },
+                          { key: "right-panel", label: "Right",   icon: "▐", desc: "Right 40% panel" },
+                          { key: "left-panel",  label: "Left",    icon: "▌", desc: "Left 40% panel" },
+                          { key: "bottom",      label: "Bottom",  icon: "▄", desc: "Bottom 35% strip" },
+                        ] as const;
+                        return (
+                          <div>
+                            {/* Layout preset picker */}
+                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1.5">Image layout</p>
+                            <div className="grid grid-cols-5 gap-1 mb-2.5">
+                              {PRESETS.map(preset => (
+                                <button key={preset.key}
+                                  onClick={() => handleSlideImageLayout(preset.key)}
+                                  title={preset.desc}
+                                  className={`flex flex-col items-center gap-0.5 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                                    activePreset === preset.key
+                                      ? "bg-indigo-600 text-white border-indigo-600"
+                                      : "bg-white text-gray-500 border-gray-200 hover:border-indigo-300 hover:text-indigo-600"
+                                  }`}>
+                                  <span className="text-sm leading-none">{preset.icon}</span>
+                                  <span className="text-[9px] leading-tight">{preset.label}</span>
+                                </button>
+                              ))}
+                            </div>
+                            {/* Only show fine-grained positioner for overlay mode */}
+                            {activePreset === "overlay" && (
+                              <>
+                                <ImagePositioner
+                                  imageUrl={(slide as { image_url?: string }).image_url!}
+                                  x={(slide as { image_x?: number }).image_x ?? 70}
+                                  y={(slide as { image_y?: number }).image_y ?? 6}
+                                  w={(slide as { image_w?: number }).image_w ?? 26}
+                                  h={(slide as { image_h?: number }).image_h ?? 20}
+                                  onChange={handleSlideImagePosition}
+                                />
+                                <div className="flex items-center justify-between mt-1">
+                                  <p className="text-[10px] text-gray-400">Drag to move · drag dot to resize</p>
+                                  <button onClick={handleResetSlideImagePosition}
+                                    className="text-[11px] font-medium text-gray-400 hover:text-indigo-600 transition-colors">
+                                    Reset
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                            <div className="flex justify-end mt-1.5">
                               <button onClick={handleRemoveSlideImage}
                                 title="Remove image"
-                                className="p-1 rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
-                                <Trash2 size={12} />
+                                className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-red-500 transition-colors">
+                                <Trash2 size={11} /> Remove image
                               </button>
                             </div>
                           </div>
-                        </div>
-                      )
+                        );
+                      })()
                     ) : (
                       <label className="flex items-center justify-center gap-1.5 text-xs font-medium text-gray-500 border border-dashed border-gray-300 rounded-lg py-3 cursor-pointer hover:border-indigo-300 hover:text-indigo-600 transition-colors">
                         {slideImageUploading ? <><Loader2 size={12} className="animate-spin" /> Uploading…</> : <><ImagePlus size={12} /> Upload image</>}

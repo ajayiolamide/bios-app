@@ -2,7 +2,7 @@
 
 import Anthropic from "@anthropic-ai/sdk";
 import { createAdminClient, createServerClient } from "@/lib/supabase/server";
-import type { ReportSource, Report, BusinessGoal, FeatureMetric, Metric } from "@/types/database";
+import type { ReportSource, Report, BusinessGoal, CompanyObjective, FeatureMetric, Metric } from "@/types/database";
 import { getFeatureImpactSummaries, type FeatureImpactResult } from "./feature-impact";
 import { getFunnels, computeFunnel, type FunnelStepResult } from "./funnels";
 import { getGoalProgress, type GoalProgress } from "./metrics";
@@ -69,6 +69,10 @@ export type FunnelSummary = {
 };
 
 export type BiosContext = {
+  // Company Objectives — the top-level Business Goal (Objective layer above Product Goals).
+  // Fetched alongside goals so the AI can reference the overarching objective even when
+  // there are no Product Goals (business_goals rows) yet.
+  objectives?: CompanyObjective[];
   goals?: BusinessGoal[];
   // Keyed by business_goals.id — same computation the Goals page and
   // Dashboard already use (getGoalProgress) to show each goal's real
@@ -99,6 +103,17 @@ export async function getBiosReportData(
   const promises: Promise<void>[] = [];
 
   if (sections.goals) {
+    // Fetch Company Objectives (top-level Business Goal tier) — report is valid
+    // even when there are no Product Goals yet, as long as an Objective exists.
+    promises.push(
+      admin
+        .from("company_objectives")
+        .select("*")
+        .eq("organization_id", orgId)
+        .neq("status", "dropped")
+        .order("created_at", { ascending: false })
+        .then(({ data }) => { result.objectives = (data ?? []) as CompanyObjective[]; })
+    );
     promises.push(
       admin
         .from("business_goals")
@@ -467,7 +482,7 @@ export async function deleteReport(reportId: string): Promise<{ error: string | 
 // renderer and buildPptx both fall back to their original fixed-position
 // behavior, so any image attached before this feature existed still renders
 // exactly as before.
-type ImagePosition = { image_x?: number; image_y?: number; image_w?: number; image_h?: number };
+type ImagePosition = { image_x?: number; image_y?: number; image_w?: number; image_h?: number; image_layout?: "overlay" | "right-panel" | "left-panel" | "bottom" };
 
 export type SlideContent =
   | { type: "title"; headline: string; subtitle: string; image_url?: string }
@@ -569,6 +584,7 @@ export async function planReport(
   // place that can catch it.
   const hasSheetData = filteredRows.length > 0;
   const hasBiosData = !!biosContext && (
+    (biosContext.objectives?.length ?? 0) > 0 ||  // Company Objectives count as real data
     (biosContext.goals?.length ?? 0) > 0 ||
     (biosContext.features?.length ?? 0) > 0 ||
     (biosContext.metrics?.length ?? 0) > 0 ||
@@ -719,8 +735,16 @@ Do NOT combine unrelated goals on a single slide. If you run out of slide budget
   if (biosContext) {
     const parts: string[] = [];
 
+    if (biosContext.objectives && biosContext.objectives.length > 0) {
+      parts.push(`COMPANY OBJECTIVES (top-level Business Goal${biosContext.objectives.length === 1 ? "" : "s"} — the big strategic bets this organisation is making. Every deck slide should ladder up to one of these):\n` +
+        biosContext.objectives.map(o =>
+          `- [OBJECTIVE] ${o.title}${o.description ? ` — ${o.description}` : ""}${o.target ? ` | Target: ${o.target}` : ""}${o.timeframe ? ` | Timeframe: ${o.timeframe}` : ""} | Status: ${o.status}`
+        ).join("\n")
+      );
+    }
+
     if (biosContext.goals && biosContext.goals.length > 0) {
-      parts.push(`BUSINESS GOALS (${biosContext.goals.length} — EVERY one of these MUST be mentioned somewhere in the deck, even briefly. A goal with no measurable KPI yet is still real content — say so plainly (e.g. group it with others into one kpi_grid/bullet_list slide titled something like "Goal tracking status") instead of silently leaving it out just because it has no chart-able number of its own):\n` +
+      parts.push(`PRODUCT GOALS (${biosContext.goals.length} — EVERY one of these MUST be mentioned somewhere in the deck, even briefly. A goal with no measurable KPI yet is still real content — say so plainly (e.g. group it with others into one kpi_grid/bullet_list slide titled something like "Goal tracking status") instead of silently leaving it out just because it has no chart-able number of its own):\n` +
         biosContext.goals.slice(0, 20).map(g => {
           const gp = biosContext.goalProgress?.[g.id];
           const progressStr = gp && gp.progressRatio != null
@@ -1231,22 +1255,33 @@ ${extraNotes}` : ""}`;
     // stakeholder-facing report, "is my goal actually in there" can't depend
     // on model compliance, so this builds the goal-tracking slide directly
     // from real data and inserts it — no AI involved, can't be skipped.
-    if (biosContext?.goals && biosContext.goals.length > 0) {
-      const goalKpis = biosContext.goals.slice(0, 12).map((g) => {
-        const gp = biosContext.goalProgress?.[g.id];
-        const pct = gp?.progressRatio != null ? Math.round(gp.progressRatio * 100) : null;
-        const status: "on_track" | "off_track" | "neutral" =
-          pct == null ? "neutral" : pct >= 100 ? "on_track" : pct >= 60 ? "neutral" : "off_track";
-        return {
-          label: g.title,
-          value: pct != null ? `${pct}%` : "Not yet measurable",
-          // kpi_grid's renderer hides the "Target: ..." line entirely when
-          // target is exactly "-" — used here so a goal with no measurable
-          // KPI doesn't show a meaningless "Target: -" row.
-          target: pct != null ? "100%" : "-",
-          status,
-        };
-      });
+    const hasGoals = (biosContext?.goals?.length ?? 0) > 0;
+    const hasObjectives = (biosContext?.objectives?.length ?? 0) > 0;
+    if (biosContext && (hasGoals || hasObjectives)) {
+      // Build kpi_grid rows from product goals (with progress), or fall back
+      // to objectives if no product goals exist yet.
+      const goalKpis = hasGoals
+        ? biosContext.goals!.slice(0, 12).map((g) => {
+            const gp = biosContext.goalProgress?.[g.id];
+            const pct = gp?.progressRatio != null ? Math.round(gp.progressRatio * 100) : null;
+            const status: "on_track" | "off_track" | "neutral" =
+              pct == null ? "neutral" : pct >= 100 ? "on_track" : pct >= 60 ? "neutral" : "off_track";
+            return {
+              label: g.title,
+              value: pct != null ? `${pct}%` : "Not yet measurable",
+              // kpi_grid's renderer hides the "Target: ..." line entirely when
+              // target is exactly "-" — used here so a goal with no measurable
+              // KPI doesn't show a meaningless "Target: -" row.
+              target: pct != null ? "100%" : "-",
+              status,
+            };
+          })
+        : biosContext.objectives!.slice(0, 6).map((o) => ({
+            label: o.title,
+            value: o.status === "achieved" ? "Achieved ✓" : o.status === "missed" ? "Missed ✗" : "In progress",
+            target: o.target ?? "-",
+            status: (o.status === "achieved" ? "on_track" : o.status === "missed" ? "off_track" : "neutral") as "on_track" | "off_track" | "neutral",
+          }));
       const goalSlide: SlideContent = { type: "kpi_grid", title: "Business Goals — Tracking Status", kpis: goalKpis };
       // Right after the title slide when there is one (always slide 1 per
       // the prompt's own rule), otherwise lead with it.

@@ -748,3 +748,33 @@ export type BusinessGoal = Database["public"]["Tables"]["business_goals"]["Row"]
 // The real, company-wide objective — see company_objectives migration notes.
 export type CompanyObjective = Database["public"]["Tables"]["company_objectives"]["Row"];
 export type BusinessGoalType = BusinessGoal["type"];
+
+// ─── Alert rules ──────────────────────────────────────────────────────────────
+// Configurable Slack alert conditions — evaluated on a schedule and fire only
+// when a user-defined threshold is breached (e.g. payment conversion drops >20%).
+export type AlertRuleType =
+  | "event_count_drop"    // abs count of event X drops > N% vs prior period
+  | "event_count_rise"    // abs count of event X rises > N% vs prior period
+  | "event_ratio_drop"    // count(X)/count(Y) drops > N% vs prior period
+  | "event_ratio_rise"    // count(X)/count(Y) rises > N% vs prior period
+  | "event_count_below"   // abs count of event X falls below a fixed number
+  | "event_count_above";  // abs count of event X rises above a fixed number
+
+export type AlertRule = {
+  id: string;
+  organization_id: string;
+  name: string;
+  enabled: boolean;
+  rule_type: AlertRuleType;
+  numerator_event: string;
+  denominator_event: string | null;
+  threshold_pct: number | null;   // for drop/rise percentage rules
+  threshold_abs: number | null;   // for below/above absolute rules
+  lookback_days: number;          // window size, e.g. 7 = compare last 7d vs prior 7d
+  slack_webhook_override: string | null;
+  last_fired_at: string | null;
+  last_checked_at: string | null;
+  last_result: { current: number; prior: number; pct_change: number; fired: boolean } | null;
+  created_at: string;
+  updated_at: string;
+};

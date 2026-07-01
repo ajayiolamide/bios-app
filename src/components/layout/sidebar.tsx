@@ -15,6 +15,7 @@ import {
   Lightbulb,
   Trophy,
   Figma,
+  BellRing,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { OrgSwitcher } from "./org-switcher";
@@ -49,6 +50,7 @@ const nav = [
     items: [
       { label: "AI Analyst",    href: "/ai-analyst",  icon: BrainCircuit,    badge: null },
       { label: "Reports",       href: "/reports",     icon: LayoutTemplate,  badge: null },
+      { label: "Alerts",        href: "/alerts",      icon: BellRing,        badge: null },
       { label: "Figma Tracking",href: "/figma",       icon: Figma,           badge: "Soon" },
     ],
   },
