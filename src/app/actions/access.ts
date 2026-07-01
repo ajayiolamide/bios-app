@@ -36,11 +36,18 @@ export async function checkEmailAllowed(
 
 /**
  * Marks an email as used once they've successfully signed up.
+ * Only runs the update if the email string is a plausible email format —
+ * not gated by session (sign-up flow hasn't confirmed the session yet),
+ * but the admin client's write is scoped to an exact email match so
+ * a caller can only affect a row that already exists in allowed_emails.
  */
 export async function markEmailUsed(email: string) {
+  const clean = email.toLowerCase().trim();
+  // Basic sanity check — must look like an email
+  if (!clean || !clean.includes("@") || !clean.includes(".")) return;
   const admin = createAdminClient();
   await admin
     .from("allowed_emails")
     .update({ used: true })
-    .eq("email", email.toLowerCase().trim());
+    .eq("email", clean);
 }

@@ -45,7 +45,7 @@ const uid = () => Math.random().toString(36).slice(2);
 function WaitlistChat() {
   const [phase, setPhase] = useState<Phase>("describe");
   const [msgs, setMsgs] = useState<Msg[]>([
-    { id: "welcome", role: "ai", text: "What is your team working toward this quarter? Describe your goal in plain English — the outcome you want, the problem you're solving." },
+    { id: "welcome", role: "ai", text: "Tell me what your team is working on — a goal, a problem you're trying to solve, or a metric you care about. I'll show you how Metrik would track it." },
   ]);
   const [input, setInput] = useState("");
   const [description, setDescription] = useState("");
@@ -276,8 +276,8 @@ function WaitlistChat() {
       </div>
 
       <p className="text-[12px] text-gray-400 mt-3 text-center">
-        Already have an account?{" "}
-        <Link href="/login" className="text-indigo-500 hover:text-indigo-600 transition-colors">Sign in →</Link>
+        Beta testers get full access — all features, real data, no credit card.{" "}
+        <Link href="/login" className="text-indigo-500 hover:text-indigo-600 transition-colors">Already have access? Sign in →</Link>
       </p>
 
       {/* Toast */}
@@ -311,7 +311,7 @@ export default function HomePage() {
             onClick={() => document.getElementById("waitlist-chat")?.scrollIntoView({ behavior: "smooth" })}
             className="flex items-center gap-1.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg transition-colors"
           >
-            Join waitlist <ArrowRight size={13} />
+            Request access <ArrowRight size={13} />
           </button>
         </div>
       </nav>
@@ -319,8 +319,11 @@ export default function HomePage() {
       {/* Hero */}
       <section className="relative z-10 max-w-4xl mx-auto px-8 pt-14 pb-24 text-center">
         <div className="inline-flex items-center gap-2 bg-indigo-50 border border-indigo-100 text-indigo-600 text-xs font-medium px-3.5 py-1.5 rounded-full mb-8">
-          <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 shrink-0" />
-          Early access · Limited spots available
+          <span className="relative flex h-1.5 w-1.5 shrink-0">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-60" />
+            <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-indigo-500" />
+          </span>
+          Beta · Reviewed access — limited spots
         </div>
         <h1 className="text-[44px] sm:text-5xl font-bold text-gray-900 leading-[1.1] tracking-tight mb-5">
           Turn feature releases into<br />business outcomes, with AI.
@@ -378,14 +381,14 @@ export default function HomePage() {
       {/* CTA */}
       <section className="relative z-10 max-w-5xl mx-auto px-8 pb-24">
         <div className="border border-gray-100 rounded-2xl px-8 py-14 text-center bg-gray-50/50">
-          <h2 className="text-[28px] font-bold text-gray-900 mb-3 tracking-tight">Built for teams that care about outcomes.</h2>
-          <p className="text-gray-400 text-[14px] mb-8 max-w-sm mx-auto leading-relaxed">Early access is limited. Takes 2 minutes to set up. No credit card required.</p>
+          <h2 className="text-[28px] font-bold text-gray-900 mb-3 tracking-tight">Built for product teams that care about real outcomes.</h2>
+          <p className="text-gray-400 text-[14px] mb-8 max-w-sm mx-auto leading-relaxed">Request beta access above — I review every request personally. Takes 2 minutes. No credit card.</p>
           <Link
             href="#"
             onClick={(e) => { e.preventDefault(); window.scrollTo({ top: 0, behavior: "smooth" }); }}
             className="inline-flex items-center gap-2 bg-gray-900 text-white font-medium px-6 py-3 rounded-xl hover:bg-gray-700 transition-colors text-[14px]"
           >
-            Join the waitlist <ArrowRight size={14} />
+            Request beta access <ArrowRight size={14} />
           </Link>
         </div>
       </section>
