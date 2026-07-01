@@ -104,6 +104,24 @@ const SLIDE_TYPE_OPTIONS: { type: SlideContent["type"]; label: string; icon: str
   { type: "closing",        label: "Closing",       icon: "✓" },
 ];
 
+// Converts a slide to a new type, preserving the title/headline where possible
+function convertToType(slide: SlideContent, newType: SlideContent["type"]): SlideContent {
+  const blank = blankSlide(newType);
+  // Try to extract a title from the current slide to carry over
+  const oldTitle =
+    ("headline" in slide ? (slide as { headline?: string }).headline : undefined) ??
+    ("title"    in slide ? (slide as { title?:    string }).title    : undefined) ??
+    "";
+  if (!oldTitle) return blank;
+  if (newType === "title" || newType === "closing") {
+    return { ...(blank as { type: typeof newType; headline: string; subtitle: string }), headline: oldTitle };
+  }
+  if ("title" in blank) {
+    return { ...blank, title: oldTitle } as SlideContent;
+  }
+  return blank;
+}
+
 function blankSlide(type: SlideContent["type"]): SlideContent {
   if (type === "title")          return { type, headline: "New Slide", subtitle: "Add your subtitle here" };
   if (type === "closing")        return { type, headline: "Thank You", subtitle: "Questions & Discussion" };
@@ -242,6 +260,37 @@ function ImagePositioner({
 // ─── Slide field editor ───────────────────────────────────────────────────────
 
 function SlideEditor({ slide, onChange }: { slide: SlideContent; onChange: (s: SlideContent) => void }) {
+  const [showTypePicker, setShowTypePicker] = useState(false);
+
+  // Full slide-type switcher — converts to any type, preserving title where possible
+  const typeSwitcher = (
+    <div className="border border-gray-200 rounded-xl p-3">
+      <div className="flex items-center justify-between mb-1.5">
+        <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Slide type</label>
+        <button onClick={() => setShowTypePicker(v => !v)}
+          className="text-[11px] font-medium text-indigo-600 hover:text-indigo-700 transition-colors">
+          {showTypePicker ? "Done" : "Change type"}
+        </button>
+      </div>
+      <p className="text-sm font-medium text-gray-700 capitalize">{slide.type.replace(/_/g, " ")}</p>
+      {showTypePicker && (
+        <div className="mt-2.5 grid grid-cols-3 gap-1.5">
+          {SLIDE_TYPE_OPTIONS.map(opt => (
+            <button key={opt.type}
+              onClick={() => { onChange(convertToType(slide, opt.type)); setShowTypePicker(false); }}
+              className={`flex flex-col items-center gap-0.5 py-2 px-1 rounded-lg border text-xs font-medium transition-colors ${
+                slide.type === opt.type
+                  ? "bg-indigo-600 text-white border-indigo-600"
+                  : "bg-white text-gray-500 border-gray-200 hover:border-indigo-300 hover:text-indigo-600"
+              }`}>
+              <span className="text-sm leading-none">{opt.icon}</span>
+              <span className="text-[10px] leading-tight text-center">{opt.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   const field = (label: string, value: string, key: string, multiline = false) => (
     <div key={key}>
@@ -301,6 +350,7 @@ function SlideEditor({ slide, onChange }: { slide: SlideContent; onChange: (s: S
 
   if (slide.type === "title" || slide.type === "closing") return (
     <div className="space-y-3">
+      {typeSwitcher}
       {field("Headline", slide.headline, "headline")}
       {field("Subtitle", slide.subtitle, "subtitle", true)}
     </div>
@@ -308,16 +358,19 @@ function SlideEditor({ slide, onChange }: { slide: SlideContent; onChange: (s: S
 
   if (slide.type === "big_stat") return (
     <div className="space-y-3">
+      {typeSwitcher}
       {field("Label", slide.label, "label")}
       {field("Value", slide.value, "value")}
       {field("Change", slide.change, "change")}
       {sel("Direction", slide.change_direction, "change_direction", ["up", "down", "flat"])}
       {field("Context", slide.context, "context", true)}
+      {field("Narrative (optional — adds a story column beside the number)", slide.narrative ?? "", "narrative", true)}
     </div>
   );
 
   if (slide.type === "insight") return (
     <div className="space-y-3">
+      {typeSwitcher}
       {field("Title", slide.title, "title")}
       {field("Stat", slide.stat, "stat")}
       {field("Stat label", slide.stat_label, "stat_label")}
@@ -329,6 +382,7 @@ function SlideEditor({ slide, onChange }: { slide: SlideContent; onChange: (s: S
 
   if (slide.type === "bullet_list") return (
     <div className="space-y-3">
+      {typeSwitcher}
       {field("Title", slide.title, "title")}
       <div>
         <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Bullet points (one per line)</label>
@@ -341,6 +395,7 @@ function SlideEditor({ slide, onChange }: { slide: SlideContent; onChange: (s: S
 
   if (slide.type === "action_plan") return (
     <div className="space-y-3">
+      {typeSwitcher}
       {field("Title", slide.title, "title")}
       {field("Subtitle", slide.subtitle ?? "", "subtitle")}
       <div>
@@ -386,6 +441,7 @@ function SlideEditor({ slide, onChange }: { slide: SlideContent; onChange: (s: S
 
   if (slide.type === "bar_chart") return (
     <div className="space-y-3">
+      {typeSwitcher}
       {chartSwitcher}
       {field("Title", slide.title, "title")}
       {field("Subtitle", slide.subtitle ?? "", "subtitle")}
@@ -410,6 +466,7 @@ function SlideEditor({ slide, onChange }: { slide: SlideContent; onChange: (s: S
 
   if (slide.type === "line_chart") return (
     <div className="space-y-3">
+      {typeSwitcher}
       {chartSwitcher}
       {field("Title", slide.title, "title")}
       {field("Subtitle", slide.subtitle ?? "", "subtitle")}
@@ -432,6 +489,7 @@ function SlideEditor({ slide, onChange }: { slide: SlideContent; onChange: (s: S
 
   if (slide.type === "pie_chart") return (
     <div className="space-y-3">
+      {typeSwitcher}
       {chartSwitcher}
       {field("Title", slide.title, "title")}
       {field("Subtitle", slide.subtitle ?? "", "subtitle")}
@@ -455,6 +513,7 @@ function SlideEditor({ slide, onChange }: { slide: SlideContent; onChange: (s: S
 
   if (slide.type === "progress_bars") return (
     <div className="space-y-3">
+      {typeSwitcher}
       {field("Title", slide.title, "title")}
       <div>
         <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">Items (label: value / target unit)</label>
@@ -476,6 +535,7 @@ function SlideEditor({ slide, onChange }: { slide: SlideContent; onChange: (s: S
 
   if (slide.type === "kpi_grid") return (
     <div className="space-y-3">
+      {typeSwitcher}
       {field("Title", slide.title, "title")}
       <div>
         <label className="block text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-1">KPIs (label: value / target)</label>
@@ -496,6 +556,7 @@ function SlideEditor({ slide, onChange }: { slide: SlideContent; onChange: (s: S
 
   if (slide.type === "stat_narrative") return (
     <div className="space-y-3">
+      {typeSwitcher}
       {field("Title", slide.title, "title")}
       {field("Stat (big number)", slide.stat, "stat")}
       {field("Stat label", slide.stat_label, "stat_label")}
@@ -506,7 +567,7 @@ function SlideEditor({ slide, onChange }: { slide: SlideContent; onChange: (s: S
     </div>
   );
 
-  return <p className="text-xs text-gray-400">No editable fields for this slide type.</p>;
+  return <div className="space-y-3">{typeSwitcher}<p className="text-xs text-gray-400">No additional fields for this slide type.</p></div>;
 }
 
 // ─── Present mode ─────────────────────────────────────────────────────────────
@@ -1618,7 +1679,9 @@ function PreviewModal({
               <>
                 <div className="px-4 pt-4 pb-3 border-b border-gray-100 flex-shrink-0">
                   <p className="text-xs font-semibold text-gray-800">Edit Slide {idx + 1}</p>
-                  <p className="text-xs text-gray-400 mt-0.5 capitalize">{slide.type.replace("_", " ")} slide</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    Click <span className="font-medium text-indigo-500">Change type</span> in the editor below to switch layouts.
+                  </p>
                 </div>
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
                   <div className="border border-indigo-100 bg-indigo-50/60 rounded-xl p-3">
