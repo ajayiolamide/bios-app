@@ -323,28 +323,40 @@ export async function getOrgKpis(): Promise<KpiOption[]> {
     // KPIs should not appear as options in alert rules either.
     const { data } = await admin
       .from("metrics")
-      .select("id, name, event_name, denominator_event_name, target_value, rate_as_percentage, aggregation, business_goal_id, business_goals(status)")
+      .select("id, name, event_name, denominator_event_name, target_value, rate_as_percentage, aggregation, business_goal_id")
       .eq("organization_id", orgId)
       .eq("kind", "kpi")
       .not("event_name", "is", null)
       .order("name");
     if (!data || data.length === 0) return [];
 
-    // Enrich with goal names from business_goals
+    // Enrich with goal names AND status — do this via an explicit query rather
+    // than a PostgREST FK join because the join silently returns null when the
+    // FK isn't registered in PostgREST, making a join-based status filter
+    // ineffective (every row passes because `!null` is true).
     const goalIds = [...new Set(data.map((m: { business_goal_id: string | null }) => m.business_goal_id).filter(Boolean))] as string[];
-    let goalMap: Record<string, string> = {};
+    const goalMap: Record<string, string> = {};
+    const droppedGoalIds = new Set<string>();
     if (goalIds.length > 0) {
       const { data: goals } = await admin
         .from("business_goals")
-        .select("id, name")
+        .select("id, name, status")
         .in("id", goalIds);
-      if (goals) goalMap = Object.fromEntries(goals.map((g: { id: string; name: string }) => [g.id, g.name]));
+      if (goals) {
+        for (const g of goals as { id: string; name: string; status: string }[]) {
+          if (g.status === "dropped") {
+            droppedGoalIds.add(g.id);
+          } else {
+            goalMap[g.id] = g.name;
+          }
+        }
+      }
     }
 
     return data
       // Exclude KPIs whose parent goal has been soft-deleted (status = 'dropped')
-      .filter((m: { business_goals?: { status?: string } | null }) =>
-        !m.business_goals || m.business_goals.status !== "dropped"
+      .filter((m: { business_goal_id: string | null }) =>
+        !m.business_goal_id || !droppedGoalIds.has(m.business_goal_id)
       )
       .map((m: {
         id: string; name: string; event_name: string | null;
