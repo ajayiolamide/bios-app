@@ -396,7 +396,7 @@ export default function AlertsPage() {
         </div>
         {!showForm && !editingRule && (
           <button onClick={() => setShowForm(true)}
-            className="flex items-center gap-1.5 text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 px-3.5 py-2 rounded-lg transition-colors">
+            className="flex items-center gap-1.5 text-sm font-medium bg-indigo-600 text-white hover:bg-indigo-700 px-3.5 py-2 rounded-lg transition-colors whitespace-nowrap shrink-0">
             <Plus size={14} /> New rule
           </button>
         )}

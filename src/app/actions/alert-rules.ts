@@ -25,11 +25,12 @@ export async function getAlertRules(): Promise<{ rules: AlertRule[]; error: stri
     const supabase = await createServerClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { rules: [], error: "Not authenticated" };
-    const { data: membership } = await supabase
+    const { data: memberships } = await supabase
       .from("organization_members")
       .select("organization_id")
       .eq("user_id", user.id)
-      .single();
+      .limit(1);
+    const membership = memberships?.[0] ?? null;
     if (!membership) return { rules: [], error: null }; // no org yet — show empty state, not error
     const admin = createAdminClient();
     const { data, error } = await admin
