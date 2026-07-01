@@ -24,6 +24,13 @@ import {
 function fmtWeek(iso: string) {
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
+function fmtWeekRange(iso: string) {
+  const start = new Date(iso);
+  const end = new Date(start.getTime() + 6 * 86400000);
+  const startStr = start.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  const endStr = end.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  return `${startStr} – ${endStr}`;
+}
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
@@ -707,17 +714,26 @@ function RetentionGrid({ data, qualifyingEvent }: { data: CohortData; qualifying
           <tr>
             <th className="text-left text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-2 py-1 w-24" title="Users grouped by the week they first fired the qualifying event">Cohort</th>
             <th className="text-right text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-2 py-1 w-16" title="Total unique users in that cohort">Users</th>
-            {Array.from({ length: cols }, (_, w) => (
-              <th
-                key={w}
-                className="text-center text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-1 py-1 min-w-[52px]"
-                title={w === 0
-                  ? "The week each cohort's users first fired the qualifying event — always 100%, by definition"
-                  : `% of each cohort who fired ${qualifyingEvent} again, ${w} week${w > 1 ? "s" : ""} after their first time`}
-              >
-                {w === 0 ? "Wk 0" : `Wk ${w}`}
-              </th>
-            ))}
+            {Array.from({ length: cols }, (_, w) => {
+              // Compute the actual calendar date this column corresponds to
+              // for the most recent cohort row (gives users a real date anchor).
+              const newestCohort = data.rows[data.rows.length - 1]?.cohortWeek;
+              const colDate = newestCohort
+                ? new Date(new Date(newestCohort).getTime() + w * 7 * 86400000)
+                : null;
+              const colLabel = colDate ? fmtWeek(colDate.toISOString()) : "";
+              return (
+                <th
+                  key={w}
+                  className="text-center text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-1 py-1 min-w-[52px]"
+                  title={w === 0
+                    ? "The week each cohort's users first fired the qualifying event — always 100%, by definition"
+                    : `Week ${w} after first event${colLabel ? ` (around ${colLabel} for the latest cohort)` : ""} — % who fired ${qualifyingEvent} again`}
+                >
+                  {w === 0 ? "Wk 0" : `+${w}w`}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
@@ -744,9 +760,9 @@ function RetentionGrid({ data, qualifyingEvent }: { data: CohortData; qualifying
             <tr key={row.cohortWeek}>
               <td
                 className="px-2 py-1 font-medium text-gray-700 whitespace-nowrap"
-                title={`${row.totalUsers.toLocaleString()} users whose first ${qualifyingEvent} happened during the week of ${fmtWeek(row.cohortWeek)}`}
+                title={`${row.totalUsers.toLocaleString()} users whose first ${qualifyingEvent} happened during ${fmtWeekRange(row.cohortWeek)}`}
               >
-                {fmtWeek(row.cohortWeek)}
+                {fmtWeekRange(row.cohortWeek)}
               </td>
               <td className="px-2 py-1 text-right font-mono text-gray-500">{row.totalUsers.toLocaleString()}</td>
               {Array.from({ length: cols }, (_, w) => {
@@ -889,15 +905,16 @@ function InsightPanel({ data, weeks, eventName, totalUsers, orgId }: { data: Coh
 function ConversionCard({ orgId, filter }: { orgId: string; filter: CohortFilter }) {
   const [result, setResult] = useState<CohortConversionResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lookback, setLookback] = useState(90);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    getCohortConversion(orgId, filter).then(r => {
+    getCohortConversion(orgId, filter, lookback).then(r => {
       if (!cancelled) { setResult(r); setLoading(false); }
     });
     return () => { cancelled = true; };
-  }, [orgId, filter]);
+  }, [orgId, filter, lookback]);
 
   if (loading) {
     return (
@@ -919,15 +936,28 @@ function ConversionCard({ orgId, filter }: { orgId: string; filter: CohortFilter
 
   return (
     <div className="bg-white border border-gray-100 rounded-2xl p-6">
-      <div className="flex items-center gap-2 mb-1">
-        <div className="w-6 h-6 rounded-md bg-indigo-100 flex items-center justify-center flex-shrink-0">
-          <Zap size={12} className="text-indigo-600" />
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-md bg-indigo-100 flex items-center justify-center flex-shrink-0">
+            <Zap size={12} className="text-indigo-600" />
+          </div>
+          <p className="text-sm font-semibold text-gray-800">Conversion</p>
         </div>
-        <p className="text-sm font-semibold text-gray-800">Conversion</p>
+        <div className="flex items-center gap-1">
+          {[30, 60, 90].map(d => (
+            <button
+              key={d}
+              onClick={() => setLookback(d)}
+              className={`text-[11px] px-2 py-0.5 rounded-full transition-colors ${lookback === d ? "bg-indigo-600 text-white" : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"}`}
+            >
+              {d}d
+            </button>
+          ))}
+        </div>
       </div>
       <p className="text-xs text-gray-400 mb-4 ml-8">
         Of users who fired <code className="font-mono bg-gray-100 px-1 rounded">{result.eventName}</code>, % who also fired{" "}
-        <code className="font-mono bg-gray-100 px-1 rounded">{result.secondEventName}</code> within {result.withinDays} day{result.withinDays > 1 ? "s" : ""} (same user, last 90 days).
+        <code className="font-mono bg-gray-100 px-1 rounded">{result.secondEventName}</code> within {result.withinDays} day{result.withinDays > 1 ? "s" : ""} (same user, last {lookback} days).
       </p>
       <div className="flex items-end gap-6 ml-8">
         <div>

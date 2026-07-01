@@ -341,11 +341,21 @@ export async function getCohortConversion(
     return { ...empty, error: "This cohort isn't a two-step condition — pick a first and second event to measure conversion." };
   }
 
-  // Sync the two events from Mixpanel before computing so the data is fresh.
-  // Fire both syncs in parallel and don't fail if Mixpanel isn't connected.
-  await Promise.allSettled([
-    syncMixpanelRawEvents(orgId, [filter.eventName, filter.secondEventName], lookbackDays),
-  ]);
+  // Only sync from Mixpanel if there's genuinely no data yet for these events
+  // (first-time use). Subsequent loads skip this to avoid timeout on busy orgs.
+  const admin0 = createAdminClient();
+  const since0 = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
+  const { count: existingCount } = await admin0
+    .from("mixpanel_raw_events")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", orgId)
+    .in("name", [filter.eventName, filter.secondEventName])
+    .gte("timestamp", since0.toISOString());
+  if ((existingCount ?? 0) < 10) {
+    // No data yet — pull from Mixpanel once. Don't fail if not connected.
+    await syncMixpanelRawEvents(orgId, [filter.eventName, filter.secondEventName], lookbackDays)
+      .catch(() => {});
+  }
 
   const admin = createAdminClient();
   const since = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
