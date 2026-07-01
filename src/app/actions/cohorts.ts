@@ -5,6 +5,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { fetchEventRows } from "./metrics";
 import { computeTimeWindowedRate } from "@/lib/metrics-engine";
 import { isRealEventName } from "@/lib/event-name-filter";
+import { syncMixpanelRawEvents } from "./mixpanel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -339,6 +340,12 @@ export async function getCohortConversion(
   if (!filter.eventName || !filter.secondEventName) {
     return { ...empty, error: "This cohort isn't a two-step condition — pick a first and second event to measure conversion." };
   }
+
+  // Sync the two events from Mixpanel before computing so the data is fresh.
+  // Fire both syncs in parallel and don't fail if Mixpanel isn't connected.
+  await Promise.allSettled([
+    syncMixpanelRawEvents(orgId, [filter.eventName, filter.secondEventName], lookbackDays),
+  ]);
 
   const admin = createAdminClient();
   const since = new Date(Date.now() - lookbackDays * 24 * 60 * 60 * 1000);
