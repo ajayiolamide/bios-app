@@ -94,23 +94,26 @@ async function buildAlertBlocks(opts: {
   isRatio: boolean;
   reason: string;
   appUrl?: string;
-  // Raw user counts for ratio rules — lets the AI and the message say
-  // "48 of 105 users dropped off" instead of just "54.8%"
   numeratorCount?: number;
   denominatorCount?: number;
+  // If the user saved an edited insight on the rule, use that — no AI call needed.
+  insightOverride?: string | null;
 }): Promise<object[]> {
-  const insight = await generateAlertInsight({
-    ruleName: opts.ruleName,
-    ruleDescription: opts.description,
-    ruleType: opts.ruleType,
-    metric: opts.metricLabel,
-    current: opts.current,
-    prior: opts.prior,
-    unit: opts.unit,
-    isRatio: opts.isRatio,
-    numeratorCount: opts.numeratorCount,
-    denominatorCount: opts.denominatorCount,
-  });
+  // Use the saved insight if set; only call AI as a fallback.
+  const insight = opts.insightOverride?.trim()
+    ? opts.insightOverride.trim()
+    : await generateAlertInsight({
+        ruleName: opts.ruleName,
+        ruleDescription: opts.description,
+        ruleType: opts.ruleType,
+        metric: opts.metricLabel,
+        current: opts.current,
+        prior: opts.prior,
+        unit: opts.unit,
+        isRatio: opts.isRatio,
+        numeratorCount: opts.numeratorCount,
+        denominatorCount: opts.denominatorCount,
+      });
 
   const currentStr = `${opts.current.toFixed(opts.isRatio ? 1 : 0)}${opts.unit}`;
   const priorStr = opts.prior != null ? `${opts.prior.toFixed(opts.isRatio ? 1 : 0)}${opts.unit}` : null;
@@ -236,6 +239,7 @@ export type AlertRulePayload = {
   kpi_id?: string | null;
   count_method?: "total" | "unique"; // event-based rules only; KPI rules use metric.aggregation
   slack_webhook_override?: string | null;
+  slack_insight_override?: string | null; // user-edited insight text saved on the rule
   enabled?: boolean;
 };
 
@@ -258,6 +262,7 @@ export async function createAlertRule(payload: AlertRulePayload): Promise<AlertR
       kpi_id: payload.kpi_id ?? null,
       count_method: payload.count_method ?? "total",
       slack_webhook_override: payload.slack_webhook_override?.trim() || null,
+      slack_insight_override: payload.slack_insight_override?.trim() || null,
     })
     .select()
     .single();
@@ -281,6 +286,7 @@ export async function updateAlertRule(id: string, patch: Partial<AlertRulePayloa
   if (patch.kpi_id !== undefined) update.kpi_id = patch.kpi_id ?? null;
   if (patch.count_method !== undefined) update.count_method = patch.count_method ?? "total";
   if (patch.slack_webhook_override !== undefined) update.slack_webhook_override = patch.slack_webhook_override?.trim() || null;
+  if (patch.slack_insight_override !== undefined) update.slack_insight_override = patch.slack_insight_override?.trim() || null;
   const { error } = await admin
     .from("alert_rules")
     .update(update)
@@ -608,6 +614,7 @@ async function _evaluateKpiRule(
           isRatio: isRate,
           reason: `${actual.toFixed(1)}${unit} vs ${target}${unit} target — ${pctOfTarget.toFixed(0)}% of target (threshold: ${thresholdPct}%)`,
           appUrl: "https://metrik-tool.vercel.app/alerts",
+          insightOverride: rule.slack_insight_override,
         });
         await fetch(webhookUrl, {
           method: "POST",
@@ -746,6 +753,7 @@ async function _evaluateRuleData(
           appUrl: "https://metrik-tool.vercel.app/alerts",
           numeratorCount: rawNumerator,
           denominatorCount: rawDenominator,
+          insightOverride: rule.slack_insight_override,
         });
         await fetch(webhookUrl, {
           method: "POST",

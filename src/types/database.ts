@@ -781,6 +781,7 @@ export type AlertRule = {
   kpi_id: string | null;          // set for kpi_below_target rules
   count_method: "total" | "unique"; // event-based rules: count total events or unique users
   slack_webhook_override: string | null;
+  slack_insight_override: string | null;
   last_fired_at: string | null;
   last_checked_at: string | null;
   last_result: { current: number; prior: number; pct_change: number; fired: boolean } | null;

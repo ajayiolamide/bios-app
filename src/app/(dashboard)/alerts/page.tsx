@@ -52,6 +52,7 @@ type FormState = {
   kpi_id: string;
   count_method: "total" | "unique";
   slack_webhook_override: string;
+  slack_insight_override: string; // user-edited Slack insight — used instead of AI at fire time
   enabled: boolean;
 };
 
@@ -63,7 +64,7 @@ function blankForm(): FormState {
     threshold_pct: "20", threshold_abs: "",
     lookback_days: "7", kpi_id: "",
     count_method: "total",
-    slack_webhook_override: "", enabled: true,
+    slack_webhook_override: "", slack_insight_override: "", enabled: true,
   };
 }
 
@@ -82,6 +83,7 @@ function formToPayload(f: FormState): AlertRulePayload {
       lookback_days: Number(f.lookback_days) || 7,
       kpi_id: kpi || null,
       slack_webhook_override: f.slack_webhook_override.trim() || null,
+      slack_insight_override: f.slack_insight_override.trim() || null,
       enabled: f.enabled,
     };
   }
@@ -97,6 +99,7 @@ function formToPayload(f: FormState): AlertRulePayload {
     kpi_id: null,
     count_method: f.count_method,
     slack_webhook_override: f.slack_webhook_override.trim() || null,
+    slack_insight_override: f.slack_insight_override.trim() || null,
     enabled: f.enabled,
   };
 }
@@ -126,6 +129,7 @@ function RuleForm({
       kpi_id: initial.kpi_id ?? "",
       count_method: (initial.count_method as "total" | "unique") ?? "total",
       slack_webhook_override: initial.slack_webhook_override ?? "",
+      slack_insight_override: initial.slack_insight_override ?? "",
       enabled: initial.enabled,
     };
   });
@@ -139,7 +143,8 @@ function RuleForm({
   const set = (key: keyof FormState, val: string | boolean) =>
     setForm(prev => ({ ...prev, [key]: val }));
 
-  // Debounced Slack preview — fires 800ms after the user stops typing
+  // Debounced AI preview — fires 800ms after description changes.
+  // Auto-fills the editable Slack insight field if the user hasn't written their own.
   function handleDescriptionChange(val: string) {
     set("description", val);
     setSlackPreview(null);
@@ -149,6 +154,10 @@ function RuleForm({
     previewTimer.current = setTimeout(async () => {
       const result = await previewAlertInsight(val, form.name || "Alert");
       setSlackPreview(result || null);
+      // Auto-fill the editable insight field only if the user hasn't typed their own text yet
+      if (result && !form.slack_insight_override.trim()) {
+        set("slack_insight_override", result);
+      }
       setPreviewing(false);
     }, 800);
   }
@@ -295,21 +304,37 @@ function RuleForm({
           rows={2}
           className={`${fieldCls} resize-none`}
         />
-        {/* Live Slack preview */}
-        {(previewing || slackPreview) && (
-          <div className="mt-2 rounded-lg border border-gray-200 bg-white px-3 py-2.5">
-            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">
-              Slack preview (example with 54.8% / 57 of 105 users)
-            </p>
-            {previewing ? (
-              <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                <Loader2 size={11} className="animate-spin" />
-                Generating preview…
-              </div>
-            ) : slackPreview ? (
-              <p className="text-xs text-gray-700 leading-relaxed">💡 {slackPreview}</p>
-            ) : null}
-          </div>
+      </div>
+
+      {/* Editable Slack insight — auto-filled by AI, user can edit before saving */}
+      <div>
+        <label className={labelCls}>
+          Slack insight message{" "}
+          <span className="text-gray-400 normal-case font-normal">(edit this — saved as-is, sent every time the alert fires)</span>
+        </label>
+        <div className="relative">
+          <textarea
+            value={form.slack_insight_override}
+            onChange={e => set("slack_insight_override", e.target.value)}
+            placeholder={previewing ? "Generating AI suggestion…" : "Type the description above to generate an AI suggestion, then edit it here"}
+            rows={3}
+            className={`${fieldCls} resize-none ${previewing ? "opacity-50" : ""}`}
+          />
+          {previewing && (
+            <div className="absolute inset-0 flex items-center justify-center gap-1.5 text-xs text-gray-400 pointer-events-none">
+              <Loader2 size={12} className="animate-spin" /> Generating…
+            </div>
+          )}
+        </div>
+        {form.slack_insight_override && (
+          <p className="text-[10px] text-indigo-600 mt-1">
+            💡 This is what will appear in Slack — the numbers (rate, counts) are always live, only this text is fixed.
+          </p>
+        )}
+        {!form.slack_insight_override && !previewing && (
+          <p className="text-[10px] text-gray-400 mt-1">
+            Leave blank to let AI generate a message at fire time (less predictable).
+          </p>
         )}
       </div>
 
