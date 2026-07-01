@@ -24,6 +24,7 @@ export async function saveBrandSettings(
     slack_webhook: string;
     slack_digest_enabled?: boolean;
     slack_digest_cadence?: string;
+    digest_sections?: { goals?: boolean; features?: boolean; attention?: boolean };
     pm_status_alerts_enabled?: boolean;
     pm_weekly_digest_enabled?: boolean;
     logo_url?: string;
@@ -41,6 +42,7 @@ export async function saveBrandSettings(
     slack_webhook: payload.slack_webhook.trim() || null,
     ...(payload.slack_digest_enabled !== undefined ? { slack_digest_enabled: payload.slack_digest_enabled } : {}),
     ...(payload.slack_digest_cadence !== undefined ? { slack_digest_cadence: payload.slack_digest_cadence } : {}),
+    ...(payload.digest_sections !== undefined ? { digest_sections: payload.digest_sections } : {}),
     ...(payload.pm_status_alerts_enabled !== undefined ? { pm_status_alerts_enabled: payload.pm_status_alerts_enabled } : {}),
     ...(payload.pm_weekly_digest_enabled !== undefined ? { pm_weekly_digest_enabled: payload.pm_weekly_digest_enabled } : {}),
     ...(payload.logo_url !== undefined ? { logo_url: payload.logo_url } : {}),

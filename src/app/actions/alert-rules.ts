@@ -1,7 +1,124 @@
 "use server";
 
+import Anthropic from "@anthropic-ai/sdk";
 import { createAdminClient, createServerClient } from "@/lib/supabase/server";
 import type { AlertRule, AlertRuleType } from "@/types/database";
+
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+// ─── AI insight for fired alerts ─────────────────────────────────────────────
+async function generateAlertInsight(context: {
+  ruleName: string;
+  ruleType: string;
+  metric: string;
+  current: number;
+  prior: number | null;
+  unit: string;
+  isRatio: boolean;
+}): Promise<string> {
+  try {
+    const priorLine = context.prior != null
+      ? `Prior period: ${context.prior.toFixed(context.isRatio ? 1 : 0)}${context.unit}`
+      : "";
+    const msg = await anthropic.messages.create({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 120,
+      messages: [{
+        role: "user",
+        content: `You are the Head of Growth. A metric just triggered an alert. Write ONE sentence (max 25 words) that tells the team what this likely means for the business and the single most important action to take. Be specific and direct — no filler.
+
+Alert: ${context.ruleName}
+Metric: ${context.metric}
+Current value: ${context.current.toFixed(context.isRatio ? 1 : 0)}${context.unit}
+${priorLine}
+Rule type: ${context.ruleType}`,
+      }],
+    });
+    return msg.content[0].type === "text" ? msg.content[0].text.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
+// ─── Build Block Kit payload for a fired alert ───────────────────────────────
+async function buildAlertBlocks(opts: {
+  ruleName: string;
+  ruleType: string;
+  description?: string | null;
+  metricLabel: string;
+  current: number;
+  prior: number | null;
+  unit: string;
+  isRatio: boolean;
+  reason: string;
+  appUrl?: string;
+}): Promise<object[]> {
+  const insight = await generateAlertInsight({
+    ruleName: opts.ruleName,
+    ruleType: opts.ruleType,
+    metric: opts.metricLabel,
+    current: opts.current,
+    prior: opts.prior,
+    unit: opts.unit,
+    isRatio: opts.isRatio,
+  });
+
+  const currentStr = `${opts.current.toFixed(opts.isRatio ? 1 : 0)}${opts.unit}`;
+  const priorStr = opts.prior != null ? `${opts.prior.toFixed(opts.isRatio ? 1 : 0)}${opts.unit}` : null;
+
+  const blocks: object[] = [
+    {
+      type: "header",
+      text: { type: "plain_text", text: `🚨 ${opts.ruleName}`, emoji: true },
+    },
+  ];
+
+  if (opts.description) {
+    blocks.push({
+      type: "context",
+      elements: [{ type: "mrkdwn", text: opts.description }],
+    });
+  }
+
+  // Metric values row
+  const fields: object[] = [
+    { type: "mrkdwn", text: `*Now*\n${currentStr}` },
+  ];
+  if (priorStr) {
+    fields.push({ type: "mrkdwn", text: `*Prior period*\n${priorStr}` });
+  }
+  fields.push({ type: "mrkdwn", text: `*Condition*\n${opts.reason}` });
+
+  blocks.push({ type: "section", fields });
+
+  if (insight) {
+    blocks.push({ type: "divider" });
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: `💡 ${insight}` },
+    });
+  }
+
+  const actions: object[] = [];
+  if (opts.appUrl) {
+    actions.push({
+      type: "button",
+      text: { type: "plain_text", text: "View in Metrik", emoji: true },
+      url: opts.appUrl,
+      style: "primary",
+    });
+  }
+  if (actions.length) {
+    blocks.push({ type: "actions", elements: actions });
+  }
+
+  blocks.push({
+    type: "context",
+    elements: [{ type: "mrkdwn", text: `_Metrik alert · ${new Date().toUTCString()}_` }],
+  });
+
+  return blocks;
+}
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -291,8 +408,8 @@ async function _evaluateKpiRule(
     const unit = isRate ? "%" : "";
 
     const message = fired
-      ? `🚨 *KPI Alert: ${rule.name}*\n>${metric.name}: ${actual.toFixed(1)}${unit} actual vs ${target}${unit} target (${pctOfTarget.toFixed(0)}% of target — threshold is ${thresholdPct}%)`
-      : `✅ *${rule.name}* — On track\n>${metric.name}: ${actual.toFixed(1)}${unit} actual vs ${target}${unit} target (${pctOfTarget.toFixed(0)}% of target)`;
+      ? `🚨 KPI Alert: ${rule.name} — ${metric.name}: ${actual.toFixed(1)}${unit} actual vs ${target}${unit} target (${pctOfTarget.toFixed(0)}% of target)`
+      : `✅ ${rule.name} — On track: ${metric.name}: ${actual.toFixed(1)}${unit} actual vs ${target}${unit} target`;
 
     if (fired && fireSlack) {
       const { data: settings } = await admin
@@ -302,10 +419,22 @@ async function _evaluateKpiRule(
         .single();
       const webhookUrl = rule.slack_webhook_override || settings?.slack_webhook;
       if (webhookUrl) {
+        const blocks = await buildAlertBlocks({
+          ruleName: rule.name,
+          ruleType: rule.rule_type,
+          description: rule.description,
+          metricLabel: metric.name,
+          current: actual,
+          prior: target,
+          unit,
+          isRatio: isRate,
+          reason: `${actual.toFixed(1)}${unit} vs ${target}${unit} target — ${pctOfTarget.toFixed(0)}% of target (threshold: ${thresholdPct}%)`,
+          appUrl: "https://metrik-tool.vercel.app/alerts",
+        });
         await fetch(webhookUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: message }),
+          body: JSON.stringify({ blocks, text: message }),
         });
       }
     }
@@ -387,13 +516,12 @@ async function _evaluateRuleData(
       reason = `Conversion rate: ${current.toFixed(1)}% (threshold: above ${thrAbs}%)`;
     }
 
-    const metric = isRatio
-      ? `${rule.numerator_event} / ${rule.denominator_event}`
+    const metricLabel = isRatio
+      ? `${rule.numerator_event} ÷ ${rule.denominator_event}`
       : rule.numerator_event;
-    const descLine = rule.description ? `\n>${rule.description}` : "";
     const message = fired
-      ? `🚨 *Alert: ${rule.name}*${descLine}\n>${metric}: ${current.toFixed(isRatio ? 1 : 0)}${unitLabel} now vs ${prior.toFixed(isRatio ? 1 : 0)}${unitLabel} prior period\n>${reason}`
-      : `✅ *${rule.name}* — No action needed${descLine}\n>${metric}: ${current.toFixed(isRatio ? 1 : 0)}${unitLabel} now vs ${prior.toFixed(isRatio ? 1 : 0)}${unitLabel} prior — ${reason}`;
+      ? `🚨 Alert: ${rule.name} — ${metricLabel}: ${current.toFixed(isRatio ? 1 : 0)}${unitLabel} now vs ${prior.toFixed(isRatio ? 1 : 0)}${unitLabel} prior`
+      : `✅ ${rule.name} — OK: ${metricLabel}: ${current.toFixed(isRatio ? 1 : 0)}${unitLabel} now`;
 
     if (fired && fireSlack) {
       const { data: settings } = await admin
@@ -403,10 +531,22 @@ async function _evaluateRuleData(
         .single();
       const webhookUrl = rule.slack_webhook_override || settings?.slack_webhook;
       if (webhookUrl) {
+        const blocks = await buildAlertBlocks({
+          ruleName: rule.name,
+          ruleType: rule.rule_type,
+          description: rule.description,
+          metricLabel,
+          current,
+          prior,
+          unit: unitLabel,
+          isRatio,
+          reason,
+          appUrl: "https://metrik-tool.vercel.app/alerts",
+        });
         await fetch(webhookUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: message }),
+          body: JSON.stringify({ blocks, text: message }),
         });
       }
     }

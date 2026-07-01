@@ -325,6 +325,7 @@ export interface Database {
           slack_webhook: string | null;
           slack_digest_enabled: boolean;
           slack_digest_cadence: string;
+          digest_sections: { goals: boolean; features: boolean; attention: boolean };
           pm_status_alerts_enabled: boolean;
           pm_weekly_digest_enabled: boolean;
           mixpanel_username: string | null;
@@ -350,6 +351,7 @@ export interface Database {
           slack_webhook?: string | null;
           slack_digest_enabled?: boolean;
           slack_digest_cadence?: string;
+          digest_sections?: { goals?: boolean; features?: boolean; attention?: boolean };
           pm_status_alerts_enabled?: boolean;
           pm_weekly_digest_enabled?: boolean;
           mixpanel_username?: string | null;
@@ -371,6 +373,7 @@ export interface Database {
           slack_webhook?: string | null;
           slack_digest_enabled?: boolean;
           slack_digest_cadence?: string;
+          digest_sections?: { goals?: boolean; features?: boolean; attention?: boolean };
           pm_status_alerts_enabled?: boolean;
           pm_weekly_digest_enabled?: boolean;
           mixpanel_username?: string | null;

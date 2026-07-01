@@ -210,6 +210,7 @@ export default function SettingsPage() {
   const [slackWebhook, setSlackWebhook] = useState("");
   const [slackDigestEnabled, setSlackDigestEnabled] = useState(false);
   const [slackDigestCadence, setSlackDigestCadence] = useState<"daily" | "weekly" | "monthly">("weekly");
+  const [digestSections, setDigestSections] = useState({ goals: true, features: true, attention: true });
   const [pmStatusAlertsEnabled, setPmStatusAlertsEnabled] = useState(true);
   const [pmWeeklyDigestEnabled, setPmWeeklyDigestEnabled] = useState(true);
   const [notifSaving, setNotifSaving] = useState(false);
@@ -279,6 +280,8 @@ export default function SettingsPage() {
       setSlackWebhook(b.slack_webhook ?? "");
       setSlackDigestEnabled((b as BrandSettings & { slack_digest_enabled?: boolean }).slack_digest_enabled ?? false);
       setSlackDigestCadence(((b as BrandSettings & { slack_digest_cadence?: string }).slack_digest_cadence ?? "weekly") as "daily" | "weekly" | "monthly");
+      const ds = (b as BrandSettings & { digest_sections?: { goals?: boolean; features?: boolean; attention?: boolean } }).digest_sections ?? {};
+      setDigestSections({ goals: ds.goals !== false, features: ds.features !== false, attention: ds.attention !== false });
       setPmStatusAlertsEnabled((b as BrandSettings & { pm_status_alerts_enabled?: boolean }).pm_status_alerts_enabled ?? true);
       setPmWeeklyDigestEnabled((b as BrandSettings & { pm_weekly_digest_enabled?: boolean }).pm_weekly_digest_enabled ?? true);
       setLogoUrl(b.logo_url ?? "");
@@ -487,6 +490,7 @@ export default function SettingsPage() {
       slack_webhook: slackWebhook,
       slack_digest_enabled: slackDigestEnabled,
       slack_digest_cadence: slackDigestCadence,
+      digest_sections: digestSections,
       pm_status_alerts_enabled: pmStatusAlertsEnabled,
       pm_weekly_digest_enabled: pmWeeklyDigestEnabled,
     });
@@ -865,23 +869,51 @@ export default function SettingsPage() {
             </div>
 
             {slackDigestEnabled && (
-              <div className="space-y-1.5">
-                <p className="text-xs font-medium text-muted-foreground">Frequency</p>
-                <div className="flex gap-2 flex-wrap">
-                  {([
-                    { value: "daily",   label: "Every morning" },
-                    { value: "weekly",  label: "Every Monday"  },
-                    { value: "monthly", label: "1st of month"  },
-                  ] as const).map(({ value, label }) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setSlackDigestCadence(value)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${slackDigestCadence === value ? "bg-indigo-600 text-white" : "bg-white border border-gray-200 text-gray-500 hover:text-gray-800"}`}
-                    >
-                      {label}
-                    </button>
-                  ))}
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium text-muted-foreground">Frequency</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {([
+                      { value: "daily",   label: "Every morning" },
+                      { value: "weekly",  label: "Every Monday"  },
+                      { value: "monthly", label: "1st of month"  },
+                    ] as const).map(({ value, label }) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setSlackDigestCadence(value)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${slackDigestCadence === value ? "bg-indigo-600 text-white" : "bg-white border border-gray-200 text-gray-500 hover:text-gray-800"}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <p className="text-xs font-medium text-muted-foreground">What to include in the digest</p>
+                  <div className="space-y-2.5 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2.5">
+                    {([
+                      { key: "goals" as const,     label: "Business Goals & KPI actuals",  desc: "Goal progress, KPI vs target with real values" },
+                      { key: "features" as const,  label: "Features in flight",             desc: "Status of active features (deployed, in dev, etc.)" },
+                      { key: "attention" as const, label: "Needs attention",                desc: "Unwired KPIs, goals missing products goals, etc." },
+                    ]).map(({ key, label, desc }) => (
+                      <div key={key} className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-medium text-gray-700">{label}</p>
+                          <p className="text-[11px] text-muted-foreground">{desc}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setDigestSections(prev => ({ ...prev, [key]: !prev[key] }))}
+                          className={`mt-0.5 relative inline-flex h-4 w-8 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${digestSections[key] ? "bg-indigo-600" : "bg-gray-200"}`}
+                        >
+                          <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition duration-200 ${digestSections[key] ? "translate-x-4" : "translate-x-0"}`} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">Alerts that fired in the last 24h are always included when present.</p>
                 </div>
               </div>
             )}
