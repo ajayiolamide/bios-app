@@ -567,7 +567,8 @@ export async function planReport(
   extraNotes?: string,
   biosSections?: BiosSections,
   sourceConfigs?: SourceConfig[],
-  slideGuides?: SlideGuide[]
+  slideGuides?: SlideGuide[],
+  includeAlerts?: boolean
 ): Promise<{ deck: SlidesDeck | null; tokensUsed: number; model: string; error: string | null }> {
   try {
   const admin = createAdminClient();
@@ -596,6 +597,8 @@ export async function planReport(
   let biosContext: BiosContext | undefined;
   try {
     if (biosSections) biosContext = await getBiosReportData(orgId, biosSections);
+    // Strip alert rules when user has opted out
+    if (biosContext && includeAlerts === false) biosContext.alertRules = [];
   } catch (e) {
     console.error("[planReport] getBiosReportData failed:", e);
     // Non-fatal — continue without BIOS context

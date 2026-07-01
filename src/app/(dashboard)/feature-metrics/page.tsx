@@ -33,6 +33,7 @@ import { getBusinessGoals } from "@/app/actions/business-goals";
 import { getKpisByGoal, type MetricWithData } from "@/app/actions/metrics";
 import { getDistinctEventNames } from "@/app/actions/events";
 import type { FeatureInput, FeatureSuggestion, FeatureMetric, BusinessGoal } from "@/types/database";
+import { PageLoader } from "@/components/ui/page-loader";
 import {
   Lightbulb, Loader2, Plus, Trash2, ChevronRight, ChevronLeft,
   CheckCircle2, BarChart3, TrendingUp, Shield, Zap, Clock,
@@ -1662,9 +1663,7 @@ export default function FeatureMetricsPage() {
     URL.revokeObjectURL(url);
   }
 
-  if (!currentOrg) return (
-    <div className="flex items-center justify-center h-64 text-gray-400 text-sm">Select an organisation first.</div>
-  );
+  if (!currentOrg || loading) return <PageLoader />;
 
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-8">

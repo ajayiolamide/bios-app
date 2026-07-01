@@ -3150,6 +3150,7 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
 
   // BIOS data sections
   const [biosSections, setBiosSections] = useState<BiosSections>({ goals: true, features: true, funnelsKpis: true });
+  const [includeAlerts, setIncludeAlerts] = useState(true);
   const anyBiosSection = biosSections.goals || biosSections.features || biosSections.funnelsKpis || biosSections.funnels;
 
   // Explicit sheet include toggle — user controls it, but we auto-default:
@@ -3345,7 +3346,8 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
         combinedNotes || undefined,
         anyBiosSection ? biosSections : undefined,
         configs.length > 0 ? configs : undefined,
-        templateGuides.length > 0 ? templateGuides : undefined
+        templateGuides.length > 0 ? templateGuides : undefined,
+        includeAlerts
       );
       if (!res || res.error || !res.deck) {
         setPlanStates(prev => ({ ...prev, [template.id]: { status: "error", error: res?.error ?? "Planning failed — check console for details" } }));
@@ -3542,6 +3544,19 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
             })}
           </div>
         )}
+
+        {/* Alert Rules toggle */}
+        <div className="flex items-center gap-2 px-4 py-2.5 border-t border-gray-100">
+          <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap mr-1">Alerts</span>
+          <button type="button"
+            onClick={() => setIncludeAlerts(prev => !prev)}
+            className={`text-xs font-semibold px-3 py-1 rounded-full border transition-all ${
+              includeAlerts ? "bg-indigo-50 border-indigo-300 text-indigo-700" : "bg-white border-gray-200 text-gray-500 hover:border-indigo-200 hover:text-indigo-600"
+            }`}>
+            {includeAlerts ? "✓ Alert rules" : "Alert rules"}
+          </button>
+          <span className="text-[11px] text-gray-400">Include guardrail monitoring in deck</span>
+        </div>
         </div>{/* end Setup card */}
       </div>{/* end Step 1 */}
 

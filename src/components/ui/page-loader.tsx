@@ -6,14 +6,12 @@ export function PageLoader() {
   const [progress, setProgress] = useState(0);
 
   useEffect(() => {
-    // Eased progress: fast start → slow finish (never actually reaches 100 — page takes over)
     const startTime = performance.now();
-    const duration = 2800; // ms to reach ~95%
+    const duration = 3200; // ease to ~95% over ~3s
 
     let frame: number;
     const tick = (now: number) => {
       const elapsed = Math.min(now - startTime, duration);
-      // Ease-out curve: starts fast, decelerates toward 95%
       const t = elapsed / duration;
       const eased = 1 - Math.pow(1 - t, 2.2);
       setProgress(Math.round(eased * 95));
@@ -27,33 +25,59 @@ export function PageLoader() {
     <div className="flex items-center justify-center h-full min-h-[70vh]">
       <div className="flex flex-col items-center gap-6 select-none">
 
-        {/* Logo mark — pulsing ring + M */}
+        {/* Logo mark — animated glyph with pulsing ring */}
         <div className="relative flex items-center justify-center">
-          {/* Outer pulse ring */}
+          {/* Outer pulse rings */}
           <span
-            className="absolute rounded-full bg-indigo-100"
+            className="absolute rounded-full"
             style={{
-              width: 72,
-              height: 72,
-              animation: "metrik-pulse 2s ease-in-out infinite",
+              width: 88,
+              height: 88,
+              background: "radial-gradient(circle, rgba(87,106,231,0.15) 0%, transparent 70%)",
+              animation: "glyph-ring-outer 2.4s ease-in-out infinite",
             }}
           />
-          {/* Icon container */}
+          <span
+            className="absolute rounded-full"
+            style={{
+              width: 68,
+              height: 68,
+              background: "radial-gradient(circle, rgba(87,106,231,0.2) 0%, transparent 70%)",
+              animation: "glyph-ring-inner 2.4s ease-in-out infinite 0.3s",
+            }}
+          />
+          {/* The actual logo glyph — breathes */}
           <div
-            className="relative z-10 flex items-center justify-center rounded-2xl bg-indigo-600"
-            style={{ width: 52, height: 52 }}
+            style={{
+              width: 48,
+              height: 48,
+              animation: "glyph-breathe 2.4s ease-in-out infinite",
+              position: "relative",
+              zIndex: 10,
+            }}
           >
-            {/* Simple bar-chart icon — Metrik's visual metaphor */}
             <svg
-              width="26"
-              height="26"
-              viewBox="0 0 26 26"
+              width="48"
+              height="48"
+              viewBox="0 0 62 62"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
             >
-              <rect x="3"  y="14" width="5" height="9" rx="1.5" fill="white" fillOpacity="0.6" />
-              <rect x="10" y="8"  width="5" height="15" rx="1.5" fill="white" />
-              <rect x="17" y="3"  width="5" height="20" rx="1.5" fill="white" fillOpacity="0.6" />
+              <path
+                d="M11 17.9091L35.5455 49L40.4545 42.4545L16.7273 13L11 17.9091Z"
+                fill="#576AE7"
+                style={{ animation: "glyph-path 2.4s ease-in-out infinite" }}
+              />
+              <path
+                d="M24.9102 20.3636L41.2738 40.8182L46.1829 34.2727L29.8192 14.6364L24.9102 20.3636Z"
+                fill="#576AE7"
+                style={{ animation: "glyph-path 2.4s ease-in-out infinite 0.15s" }}
+              />
+              <path
+                d="M35.5464 18.7272L47.0009 33.4545C48.9181 31.2178 49.9929 29.1457 51.91 26.909L40.4555 13.8181L35.5464 18.7272Z"
+                fill="#576AE7"
+                style={{ animation: "glyph-path 2.4s ease-in-out infinite 0.3s" }}
+              />
             </svg>
           </div>
         </div>
@@ -75,10 +99,11 @@ export function PageLoader() {
             style={{ height: 3 }}
           >
             <div
-              className="h-full rounded-full bg-indigo-500"
+              className="h-full rounded-full"
               style={{
                 width: `${progress}%`,
                 transition: "width 80ms linear",
+                background: "linear-gradient(90deg, #576AE7, #8b5cf6)",
               }}
             />
           </div>
@@ -90,11 +115,22 @@ export function PageLoader() {
         </div>
       </div>
 
-      {/* Pulse keyframe — injected once */}
       <style>{`
-        @keyframes metrik-pulse {
-          0%, 100% { transform: scale(1);   opacity: 0.5; }
-          50%       { transform: scale(1.18); opacity: 0;   }
+        @keyframes glyph-breathe {
+          0%, 100% { transform: scale(1);    filter: drop-shadow(0 2px 8px rgba(87,106,231,0.3)); }
+          50%       { transform: scale(1.1); filter: drop-shadow(0 4px 16px rgba(87,106,231,0.55)); }
+        }
+        @keyframes glyph-ring-outer {
+          0%, 100% { transform: scale(1);    opacity: 0.6; }
+          50%       { transform: scale(1.25); opacity: 0; }
+        }
+        @keyframes glyph-ring-inner {
+          0%, 100% { transform: scale(1);    opacity: 0.7; }
+          50%       { transform: scale(1.2);  opacity: 0; }
+        }
+        @keyframes glyph-path {
+          0%, 100% { opacity: 1; }
+          50%       { opacity: 0.75; }
         }
       `}</style>
     </div>
