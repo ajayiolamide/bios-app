@@ -28,7 +28,7 @@ export async function getAlertRules(): Promise<AlertRule[]> {
     .select("*")
     .eq("organization_id", orgId)
     .order("created_at", { ascending: false });
-  if (error) throw error;
+  if (error) throw new Error(error.message ?? String(error));
   return (data ?? []) as AlertRule[];
 }
 
@@ -63,7 +63,7 @@ export async function createAlertRule(payload: AlertRulePayload): Promise<AlertR
     })
     .select()
     .single();
-  if (error) throw error;
+  if (error) throw new Error(error.message ?? String(error));
   return data as AlertRule;
 }
 
@@ -85,7 +85,7 @@ export async function updateAlertRule(id: string, patch: Partial<AlertRulePayloa
     .update(update)
     .eq("id", id)
     .eq("organization_id", orgId);
-  if (error) throw error;
+  if (error) throw new Error(error.message ?? String(error));
 }
 
 export async function deleteAlertRule(id: string): Promise<void> {
@@ -96,7 +96,7 @@ export async function deleteAlertRule(id: string): Promise<void> {
     .delete()
     .eq("id", id)
     .eq("organization_id", orgId);
-  if (error) throw error;
+  if (error) throw new Error(error.message ?? String(error));
 }
 
 // ─── Evaluation engine ────────────────────────────────────────────────────────
