@@ -57,7 +57,7 @@ export async function GET(req: Request) {
       { data: alertRules },
     ] = await Promise.all([
       supabase.from("company_objectives").select("id, title, target, timeframe").eq("organization_id", orgId),
-      supabase.from("business_goals").select("id, title, status, objective_id").eq("organization_id", orgId),
+      supabase.from("business_goals").select("id, title, status, objective_id").eq("organization_id", orgId).neq("status", "dropped"),
       supabase.from("metrics")
         .select("id, name, kind, target_value, goal_id, rate_as_percentage, event_name, denominator_event_name, within_hours")
         .eq("organization_id", orgId)

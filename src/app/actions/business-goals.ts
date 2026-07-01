@@ -124,7 +124,7 @@ Return ONLY this JSON, no markdown fences, no commentary:
   }
 }
 
-// ─── Get all goals for an org (including dropped) ─────────────────────────────
+// ─── Get active goals for an org (excludes dropped/deleted) ──────────────────
 
 export async function getBusinessGoals(orgId: string): Promise<BusinessGoal[]> {
   const admin = createAdminClient();
@@ -132,6 +132,7 @@ export async function getBusinessGoals(orgId: string): Promise<BusinessGoal[]> {
     .from("business_goals")
     .select("*")
     .eq("organization_id", orgId)
+    .neq("status", "dropped")
     .order("created_at", { ascending: false });
   return (data ?? []) as BusinessGoal[];
 }

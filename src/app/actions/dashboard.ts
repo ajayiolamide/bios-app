@@ -73,6 +73,7 @@ export async function getDashboardData(orgId: string): Promise<DashboardData> {
     admin.from("business_goals")
       .select("*")
       .eq("organization_id", orgId)
+      .neq("status", "dropped")
       .order("created_at", { ascending: false }),
     getCompanyObjectives(orgId),
     admin.from("feature_metrics")
