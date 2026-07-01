@@ -3,6 +3,7 @@ import { createServerClient, createAdminClient } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { OrgProvider } from "@/contexts/org-context";
+import { NavigationLoader } from "@/components/ui/navigation-loader";
 import type { Organization } from "@/types/database";
 
 export default async function DashboardLayout({
@@ -76,7 +77,7 @@ export default async function DashboardLayout({
         <Sidebar />
         <div className="flex flex-1 flex-col overflow-hidden">
           <Header user={user} />
-          <main className="flex-1 overflow-y-auto p-6">{children}</main>
+          <NavigationLoader>{children}</NavigationLoader>
         </div>
       </div>
     </OrgProvider>

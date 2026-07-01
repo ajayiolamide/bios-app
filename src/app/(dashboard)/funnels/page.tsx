@@ -7,6 +7,7 @@ import { getFunnels } from "@/app/actions/funnels";
 import type { Funnel } from "@/types/database";
 import { FunnelCard } from "@/components/funnels/funnel-card";
 import { CreateFunnelDialog } from "@/components/funnels/create-funnel-dialog";
+import { PageLoader } from "@/components/ui/page-loader";
 
 export default function FunnelsPage() {
   const { currentOrg } = useOrg();
@@ -24,13 +25,7 @@ export default function FunnelsPage() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  if (!currentOrg) {
-    return (
-      <div className="flex items-center justify-center h-64 text-muted-foreground">
-        No organization selected.
-      </div>
-    );
-  }
+  if (!currentOrg || loading) return <PageLoader />;
 
   return (
     <div className="space-y-6">
@@ -52,13 +47,7 @@ export default function FunnelsPage() {
       </div>
 
       {/* List */}
-      {loading ? (
-        <div className="space-y-3">
-          {[...Array(2)].map((_, i) => (
-            <div key={i} className="rounded-xl border bg-card p-5 h-20 animate-pulse" />
-          ))}
-        </div>
-      ) : funnels.length === 0 ? (
+      {funnels.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed bg-muted/20 py-20 text-center">
           <Filter className="h-10 w-10 text-muted-foreground" />
           <div>

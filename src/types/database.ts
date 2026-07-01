@@ -760,7 +760,8 @@ export type AlertRuleType =
   | "event_count_below"   // abs count of event X falls below a fixed number
   | "event_count_above"   // abs count of event X rises above a fixed number
   | "event_ratio_below"   // count(X)/count(Y) ratio falls below a fixed %
-  | "event_ratio_above";  // count(X)/count(Y) ratio rises above a fixed %
+  | "event_ratio_above"   // count(X)/count(Y) ratio rises above a fixed %
+  | "kpi_below_target";   // KPI actual < threshold_pct% of its target_value
 
 export type AlertRule = {
   id: string;
@@ -769,11 +770,12 @@ export type AlertRule = {
   description: string | null;
   enabled: boolean;
   rule_type: AlertRuleType;
-  numerator_event: string;
+  numerator_event: string;        // event name, or KPI display name for kpi_below_target
   denominator_event: string | null;
-  threshold_pct: number | null;   // for drop/rise percentage rules
+  threshold_pct: number | null;   // for drop/rise % rules, or % of target for kpi_below_target
   threshold_abs: number | null;   // for below/above absolute rules
   lookback_days: number;          // window size, e.g. 7 = compare last 7d vs prior 7d
+  kpi_id: string | null;          // set for kpi_below_target rules
   slack_webhook_override: string | null;
   last_fired_at: string | null;
   last_checked_at: string | null;
