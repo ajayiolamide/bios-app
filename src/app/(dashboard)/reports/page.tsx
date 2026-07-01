@@ -3401,14 +3401,23 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
   ];
   const allSelected = SCOPE_PILLS.every(p => biosSections[p.key]);
 
+  // Derived from selectedTemplateId — used by the Step 3 CTA so the Plan button
+  // doesn't have to live buried inside the template panel.
+  const activeTemplate = selectedTemplateId ? (templates.find(t => t.id === selectedTemplateId) ?? null) : null;
+  const activePs: PlanState = selectedTemplateId ? (planStates[selectedTemplateId] ?? { status: "idle" }) : { status: "idle" };
+
   return (
-    <div className="space-y-4 max-w-2xl">
+    <div className="space-y-6 max-w-2xl">
 
-      {/* ── Card 1: Config strip ─────────────────────────────────────────────────
-          Period, sheet, scope and cohorts — all in one compact card. */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      {/* ── Step 1: Setup ──────────────────────────────────────────────────────── */}
+      <div>
+        <div className="flex items-center gap-2.5 mb-2.5">
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-bold text-white">1</span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Setup</span>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
 
-        {/* Row 1: Period */}
+        {/* Period */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-100">
           <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap w-14 flex-shrink-0">Period</span>
           {customPeriod ? (
@@ -3431,7 +3440,6 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
               {periodOptions.map((o, i) => <option key={i} value={o.value} disabled={!o.value}>{o.label}</option>)}
             </select>
           )}
-          <span className="text-[10px] text-gray-300 whitespace-nowrap flex-shrink-0">Calendar-based — not from sheet</span>
           {totalTokens > 0 && (
             <span className="flex items-center gap-1 text-[10px] text-amber-600 bg-amber-50 px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0">
               <Coins size={10} />{totalTokens.toLocaleString()} tokens
@@ -3439,7 +3447,7 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
           )}
         </div>
 
-        {/* Row 2: Sheet data — toggle + source picker + month filter */}
+        {/* Sheet data — toggle + source picker + month filter */}
         {sourcesWithData.length > 0 && (
           <div className="px-4 py-3 border-b border-gray-100">
             <div className="flex items-center gap-3">
@@ -3485,7 +3493,7 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
           </div>
         )}
 
-        {/* Row 2: Scope pills — multi-select, each toggles its own section */}
+        {/* Scope pills — multi-select, each toggles its own section */}
         <div className="flex items-center gap-2 px-4 py-2.5 flex-wrap">
           <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap mr-1">Scope</span>
           {/* "All" shortcut */}
@@ -3514,10 +3522,10 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
           )}
         </div>
 
-        {/* Row 3: Cohorts — only shown when any are saved */}
+        {/* Cohorts — only shown when any are saved */}
         {savedCohorts.length > 0 && (
           <div className="flex items-center gap-2 px-4 py-2.5 border-t border-gray-100 flex-wrap">
-            <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap mr-1">Cohorts</span>
+            <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap w-14 flex-shrink-0">Cohorts</span>
             {savedCohorts.map(c => {
               const checked = selectedCohortIds.includes(c.id);
               return (
@@ -3533,19 +3541,22 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
             })}
           </div>
         )}
-      </div>
+        </div>{/* end Setup card */}
+      </div>{/* end Step 1 */}
 
-      {/* ── Card 2: Templates ─────────────────────────────────────────────────────
-          Template pill tabs + selected template panel (description, actions,
-          expandable sections). No period/scope/cohort controls here. */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <div className="p-4">
+      {/* ── Step 2: Template ───────────────────────────────────────────────────── */}
+      <div>
+        <div className="flex items-center gap-2.5 mb-2.5">
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-bold text-white">2</span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Template</span>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
           {templates.length === 0 ? (
-            <p className="text-sm text-gray-400">No templates. Add some in Settings.</p>
+            <p className="text-sm text-gray-400 p-4">No templates. Add some in Settings.</p>
           ) : (
             <>
               {/* Template pill tabs */}
-              <div className="flex flex-wrap gap-2 mb-4">
+              <div className="flex flex-wrap gap-2 p-4 border-b border-gray-100">
                 {templates.map(t => {
                   const ps = planStates[t.id] ?? { status: "idle" };
                   const isSelected = selectedTemplateId === t.id;
@@ -3565,45 +3576,19 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
                 })}
               </div>
 
-              {/* Selected template panel */}
-              {selectedTemplateId && (() => {
-                const t = templates.find(tmpl => tmpl.id === selectedTemplateId);
-                if (!t) return null;
-                const ps = planStates[t.id] ?? { status: "idle" };
+              {/* Selected template panel — description + optional extras. CTA moved to Step 3. */}
+              {activeTemplate && (() => {
+                const t = activeTemplate;
                 return (
-                  <div className="border border-gray-100 rounded-xl overflow-hidden">
+                  <div>
                     {/* Description strip */}
-                    <div className="px-4 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between gap-3">
+                    <div className="px-4 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between gap-3">
                       <p className="text-xs text-gray-500 leading-relaxed flex-1">{t.instructions.slice(0, 130)}…</p>
                       <span className="text-[11px] text-gray-400 flex-shrink-0">{t.slide_hint} slides</span>
                     </div>
-                    <div className="p-4 space-y-3">
-                      {/* Actions row */}
-                      <div className="flex items-center gap-2">
-                        {ps.status === "ready" && (
-                          <button onClick={() => setActivePreview({ templateId: t.id, templateName: t.name })}
-                            className="flex items-center gap-1.5 text-xs font-medium text-indigo-600 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition-colors">
-                            <Eye size={12} /> Preview slides
-                          </button>
-                        )}
-                        <button onClick={() => handlePlan(t)} disabled={ps.status === "planning" || !hasAnyDataSource}
-                          className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50 ${
-                            ps.status === "ready" ? "text-gray-500 bg-gray-50 hover:bg-gray-100" : "text-white bg-indigo-600 hover:bg-indigo-700"
-                          }`}>
-                          {ps.status === "planning" ? <><Loader2 size={12} className="animate-spin" /> Planning…</> :
-                           ps.status === "ready" ? <><RefreshCw size={12} /> Re-plan</> :
-                           <><Sparkles size={12} /> Plan Deck</>}
-                        </button>
-                        {ps.status === "ready" && ps.tokensUsed && (
-                          <span className="ml-auto text-xs text-green-600 flex items-center gap-1">
-                            <CheckCircle2 size={11} /> {ps.deck?.slides?.length ?? 0} slides · {ps.tokensUsed.toLocaleString()} tokens
-                          </span>
-                        )}
-                        {ps.status === "error" && <p className="ml-auto text-xs text-red-500 truncate max-w-xs">❌ {ps.error}</p>}
-                      </div>
 
-                  {/* Pre-plan notes — always-visible section */}
-                  <div className="-mx-4 border-t border-gray-100">
+                  {/* AI Briefing Notes */}
+                  <div className="border-t border-gray-100">
                     <button
                       onClick={() => setExpandedNotes(prev => ({ ...prev, [t.id]: !prev[t.id] }))}
                       className="w-full flex items-center justify-between px-4 py-3 hover:bg-indigo-50/60 transition-colors group">
@@ -3637,15 +3622,8 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
                     )}
                   </div>
 
-                  {/* Saved insights picker — pin an insight anywhere in the app
-                      (Cohorts, AI Analyst, Business Brief), then pick it here
-                      to fold it into this report. Always rendered, even with
-                      zero saved insights yet — otherwise the feature is
-                      undiscoverable: there's nothing pointing someone here
-                      from the pages where "Save for report" buttons live, so
-                      hiding this section until the library isn't empty just
-                      means most people never find out it exists. */}
-                  <div className="-mx-4 border-t border-gray-100">
+                  {/* Saved insights picker */}
+                  <div className="border-t border-gray-100">
                     <button
                       onClick={() => setExpandedInsights(prev => ({ ...prev, [t.id]: !prev[t.id] }))}
                       className="w-full flex items-center justify-between px-4 py-3 hover:bg-amber-50/60 transition-colors group">
@@ -3706,7 +3684,7 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
                     )}
                   </div>
 
-                  {/* Guided slide planner */}
+                  {/* Slide Guide */}
                   {(() => {
                     const guides = slideGuides[t.id] ?? [];
                     const hasGuides = guides.some(g => g.focus || (g.mustInclude && g.mustInclude.length > 0) || (g.chartType && g.chartType !== "auto"));
@@ -3761,7 +3739,7 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
                     };
 
                     return (
-                      <div className="-mx-4 border-t border-gray-100">
+                      <div className="border-t border-gray-100">
                         <button
                           onClick={handleToggleGuide}
                           className="w-full flex items-center justify-between px-4 py-3 hover:bg-violet-50/60 transition-colors group">
@@ -3874,14 +3852,58 @@ function GenerateTab({ orgId, sourcesWithData, onGenerated }: { orgId: string; s
                     );
                   })()}
 
-                  </div>
                 </div>
               );
             })()}
           </>
         )}
         </div>
-      </div>
+      </div>{/* end Step 2 */}
+
+      {/* ── Step 3: Generate ───────────────────────────────────────────────────── */}
+      <div>
+        <div className="flex items-center gap-2.5 mb-2.5">
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-indigo-600 text-[10px] font-bold text-white">3</span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Generate</span>
+        </div>
+
+        <div className="space-y-2.5">
+          {/* Result banner — shown when planning has completed */}
+          {activePs.status === "ready" && activePs.deck && (
+            <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+              <CheckCircle2 size={14} className="text-green-500 flex-shrink-0" />
+              <span className="text-sm text-green-700 flex-1">
+                {activePs.deck.slides.length} slides ready · {activePs.tokensUsed?.toLocaleString()} tokens used
+              </span>
+              <button
+                onClick={() => activeTemplate && setActivePreview({ templateId: activeTemplate.id, templateName: activeTemplate.name })}
+                className="flex items-center gap-1.5 text-sm font-semibold text-white bg-green-600 hover:bg-green-700 px-4 py-1.5 rounded-lg transition-colors flex-shrink-0"
+              >
+                <Eye size={13} /> Preview &amp; Share
+              </button>
+            </div>
+          )}
+          {activePs.status === "error" && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+              <XCircle size={14} className="text-red-500 flex-shrink-0" />
+              <p className="text-sm text-red-600 truncate">{activePs.error}</p>
+            </div>
+          )}
+
+          {/* Primary CTA */}
+          <button
+            onClick={() => activeTemplate && handlePlan(activeTemplate)}
+            disabled={!hasAnyDataSource || activePs.status === "planning" || !activeTemplate}
+            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-50 bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm"
+          >
+            {activePs.status === "planning"
+              ? <><Loader2 size={15} className="animate-spin" /> Planning deck…</>
+              : activePs.status === "ready"
+              ? <><RefreshCw size={15} /> Re-plan with AI</>
+              : <><Sparkles size={15} /> Plan Deck with AI</>}
+          </button>
+        </div>
+      </div>{/* end Step 3 */}
 
       {/* Preview modal */}
       {activePreview && previewState?.status === "ready" && previewState.deck && (
