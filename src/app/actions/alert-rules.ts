@@ -336,7 +336,6 @@ export async function getOrgKpis(): Promise<KpiOption[]> {
     // ineffective (every row passes because `!null` is true).
     const goalIds = [...new Set(data.map((m: { business_goal_id: string | null }) => m.business_goal_id).filter(Boolean))] as string[];
     const goalMap: Record<string, string> = {};
-    const droppedGoalIds = new Set<string>();
     if (goalIds.length > 0) {
       const { data: goals } = await admin
         .from("business_goals")
@@ -344,9 +343,9 @@ export async function getOrgKpis(): Promise<KpiOption[]> {
         .in("id", goalIds);
       if (goals) {
         for (const g of goals as { id: string; name: string; status: string }[]) {
-          if (g.status === "dropped") {
-            droppedGoalIds.add(g.id);
-          } else {
+          // Only add active goals to the map — dropped ones are excluded, and
+          // goals that no longer exist at all won't appear here either.
+          if (g.status !== "dropped") {
             goalMap[g.id] = g.name;
           }
         }
@@ -354,9 +353,13 @@ export async function getOrgKpis(): Promise<KpiOption[]> {
     }
 
     return data
-      // Exclude KPIs whose parent goal has been soft-deleted (status = 'dropped')
+      // Keep a KPI only if:
+      //   - it has no goal link (standalone KPI) OR
+      //   - its parent goal exists in the DB AND is not dropped
+      // This catches both soft-deleted goals (status='dropped') and
+      // hard-deleted goals (row gone entirely — goalMap has no entry).
       .filter((m: { business_goal_id: string | null }) =>
-        !m.business_goal_id || !droppedGoalIds.has(m.business_goal_id)
+        !m.business_goal_id || Object.prototype.hasOwnProperty.call(goalMap, m.business_goal_id)
       )
       .map((m: {
         id: string; name: string; event_name: string | null;
