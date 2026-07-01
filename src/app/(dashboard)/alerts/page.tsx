@@ -332,8 +332,12 @@ export default function AlertsPage() {
   const load = useCallback(async () => {
     setLoadErr(null);
     try {
-      const [r, e] = await Promise.all([getAlertRules(), getAlertEventNames()]);
-      setRules(r);
+      const [{ rules: r, error: rulesErr }, e] = await Promise.all([getAlertRules(), getAlertEventNames()]);
+      if (rulesErr) {
+        setLoadErr(rulesErr);
+      } else {
+        setRules(r);
+      }
       setEventNames(e);
     } catch (err) {
       setLoadErr((err as Error).message ?? String(err));

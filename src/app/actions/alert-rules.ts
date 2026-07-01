@@ -20,16 +20,20 @@ async function getOrgId(): Promise<string> {
 
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
-export async function getAlertRules(): Promise<AlertRule[]> {
-  const orgId = await getOrgId();
-  const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("alert_rules")
-    .select("*")
-    .eq("organization_id", orgId)
-    .order("created_at", { ascending: false });
-  if (error) throw new Error(error.message ?? String(error));
-  return (data ?? []) as AlertRule[];
+export async function getAlertRules(): Promise<{ rules: AlertRule[]; error: string | null }> {
+  try {
+    const orgId = await getOrgId();
+    const admin = createAdminClient();
+    const { data, error } = await admin
+      .from("alert_rules")
+      .select("*")
+      .eq("organization_id", orgId)
+      .order("created_at", { ascending: false });
+    if (error) return { rules: [], error: error.message };
+    return { rules: (data ?? []) as AlertRule[], error: null };
+  } catch (err) {
+    return { rules: [], error: (err as Error).message ?? String(err) };
+  }
 }
 
 export type AlertRulePayload = {
