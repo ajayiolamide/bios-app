@@ -3,6 +3,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { createAdminClient, createServerClient } from "@/lib/supabase/server";
 import type { AlertRule, AlertRuleType } from "@/types/database";
+import { fetchEventRows } from "@/app/actions/metrics";
+import { computeTimeWindowedRate } from "@/lib/metrics-engine";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -454,7 +456,7 @@ async function _evaluateKpiRule(
 
     const { data: metric } = await admin
       .from("metrics")
-      .select("id, name, event_name, denominator_event_name, target_value, rate_as_percentage, within_hours, aggregation")
+      .select("id, name, event_name, denominator_event_name, target_value, rate_as_percentage, within_hours, aggregation, match_key_property, min_elapsed_hours, dedupe_minutes")
       .eq("id", rule.kpi_id)
       .single();
 
@@ -470,15 +472,48 @@ async function _evaluateKpiRule(
     const lookbackMs = (metric.within_hours ?? rule.lookback_days * 24) * 3600_000;
     const from = new Date(now.getTime() - lookbackMs);
 
-    // Use the KPI's own aggregation setting (unique_users, count, etc.)
-    const numCount = await countEvents(admin, orgId, metric.event_name, from, now, agg);
     let actual: number;
-    if (metric.denominator_event_name) {
-      // Denominator always uses same aggregation method for consistency
+
+    if (metric.denominator_event_name && metric.within_hours) {
+      // Time-windowed KPI (e.g. "% of claims paid within 1200h of being lodged").
+      // Must use per-occurrence matching (computeTimeWindowedRate), NOT independent
+      // headcounts — independent counting would give >100% whenever successes from
+      // earlier batches land inside the window while their triggers are outside it.
+      const requireMatchKey = !!metric.match_key_property;
+      // Extend the numerator window by within_hours so late-but-in-window matches
+      // aren't clipped by the calendar boundary (same logic as attachTrendData).
+      const numeratorUntil = new Date(now.getTime() + metric.within_hours * 3600_000);
+      const [numeratorEvents, denominatorEvents] = await Promise.all([
+        fetchEventRows(admin, orgId, metric.event_name, from, numeratorUntil),
+        fetchEventRows(admin, orgId, metric.denominator_event_name, from, now),
+      ]);
+      const { total } = computeTimeWindowedRate(
+        numeratorEvents,
+        denominatorEvents,
+        metric.within_hours,
+        from,
+        Math.ceil(lookbackMs / 86400_000),
+        requireMatchKey,
+        metric.min_elapsed_hours ?? null,
+        metric.dedupe_minutes ?? null,
+      );
+      actual = total;
+    } else if (metric.denominator_event_name && agg === "unique_users") {
+      // Plain ratio KPI with unique-user aggregation: use funnel-style intersection
+      // so the numerator is always a subset of the denominator and rate ≤ 100%.
+      const { numerator, denominator } = await countFunnelRatio(
+        admin, orgId, metric.event_name, metric.denominator_event_name, from, now
+      );
+      actual = denominator > 0 ? Math.round((numerator / denominator) * 1000) / 10 : 0;
+    } else if (metric.denominator_event_name) {
+      // Plain ratio with raw event counts — independent headcounts are the right
+      // method here (total successes ÷ total attempts, not per-user).
+      const numCount = await countEvents(admin, orgId, metric.event_name, from, now, agg);
       const denCount = await countEvents(admin, orgId, metric.denominator_event_name, from, now, agg);
-      actual = denCount > 0 ? (numCount / denCount) * 100 : 0;
+      actual = denCount > 0 ? Math.round((numCount / denCount) * 1000) / 10 : 0;
     } else {
-      actual = numCount;
+      // Single-event KPI — just count/unique-count.
+      actual = await countEvents(admin, orgId, metric.event_name, from, now, agg);
     }
 
     const target = metric.target_value as number;

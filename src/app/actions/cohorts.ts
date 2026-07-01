@@ -53,7 +53,7 @@ export async function getCohortRetention(
     .not("user_id", "eq", "")
     .gte("timestamp", since)
     .order("timestamp", { ascending: true })
-    .limit(50000); // safety cap
+    .limit(200000); // raised from 50k — silent truncation gave wrong retention numbers on high-volume orgs
 
   if (eventName) query = query.eq("name", eventName);
 

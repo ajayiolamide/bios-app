@@ -212,6 +212,14 @@ export function FunnelCard({ funnel, orgId, onDeleted }: Props) {
             </div>
           ) : results ? (
             <>
+              {results.some(s => s.data_source === "mixpanel") && results.some(s => s.data_source === "events") && (
+                <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 mb-3">
+                  <AlertCircle size={13} className="mt-0.5 shrink-0 text-amber-500" />
+                  <span>
+                    Some steps use Mixpanel aggregate counts (not per-user sequential data). Conversion % across mixed steps is approximate — sync Mixpanel data for more accurate results.
+                  </span>
+                </div>
+              )}
               <FunnelConversionChart results={results} />
               {results.some(s => s.users > 0) && (
                 <div className="rounded-xl border border-gray-100 bg-gray-50/60 p-4">

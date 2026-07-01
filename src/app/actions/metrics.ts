@@ -454,9 +454,22 @@ async function attachTrendData(
     }
 
     if (asPercentage) {
-      // Plain ratio — two independent headcounts in the same window. Does
-      // NOT check that any individual record in the numerator corresponds
-      // to one in the denominator.
+      // For unique-user aggregation use funnel-style intersection: of users who
+      // fired the denominator event, how many also fired the numerator? This
+      // guarantees rate ≤ 100% regardless of timing offsets between the two
+      // event streams. Raw-count aggregation keeps the original independent-
+      // headcount ratio (total successes ÷ total attempts), which is the right
+      // interpretation for volume-based ratios.
+      if (metric.aggregation === "unique_users") {
+        const denUserIds = new Set(denominatorEvents.map(e => e.user_id).filter((id): id is string => !!id));
+        const numUserIds = new Set(numeratorEvents.map(e => e.user_id).filter((id): id is string => !!id));
+        const intersection = [...denUserIds].filter(id => numUserIds.has(id)).length;
+        const total = denUserIds.size > 0 ? Math.round((intersection / denUserIds.size) * 1000) / 10 : 0;
+        // Trend: per-day funnel intersection so the chart also stays ≤ 100%.
+        const trend = buildFunnelRateTrend(numeratorEvents, denominatorEvents, since, days);
+        return { ...metric, total, trend };
+      }
+      // count / unique_sessions — plain independent ratio.
       const trend = buildRateTrend(numeratorEvents, denominatorEvents, metric.aggregation, since, days);
       const numTotal = computeTotal(numeratorEvents, metric.aggregation);
       const denTotal = computeTotal(denominatorEvents, metric.aggregation);
@@ -624,6 +637,42 @@ function buildTrend(
       date,
       value: typeof val === "number" ? val : (val as Set<string>).size,
     }));
+}
+
+// Per-day funnel-style ratio trend: for each day, count unique users in the
+// denominator set, then count the intersection with the numerator set.
+// Rate stays ≤ 100% — the numerator is always a subset of that day's denominator.
+function buildFunnelRateTrend(
+  numeratorEvents: { timestamp: string; user_id: string | null }[],
+  denominatorEvents: { timestamp: string; user_id: string | null }[],
+  since: Date,
+  days: number = 30
+): MetricDataPoint[] {
+  // Build per-day user sets for each side
+  const numByDay: Record<string, Set<string>> = {};
+  const denByDay: Record<string, Set<string>> = {};
+  for (let i = 0; i < days; i++) {
+    const d = new Date(since);
+    d.setDate(d.getDate() + i);
+    const key = d.toISOString().slice(0, 10);
+    numByDay[key] = new Set();
+    denByDay[key] = new Set();
+  }
+  for (const ev of numeratorEvents) {
+    const key = ev.timestamp.slice(0, 10);
+    if (key in numByDay && ev.user_id) numByDay[key].add(ev.user_id);
+  }
+  for (const ev of denominatorEvents) {
+    const key = ev.timestamp.slice(0, 10);
+    if (key in denByDay && ev.user_id) denByDay[key].add(ev.user_id);
+  }
+  return Object.keys(denByDay).sort().map(date => {
+    const den = denByDay[date];
+    const num = numByDay[date];
+    const intersection = [...den].filter(id => num.has(id)).length;
+    const value = den.size > 0 ? Math.round((intersection / den.size) * 1000) / 10 : 0;
+    return { date, value };
+  });
 }
 
 // Per-day version of the same ratio used for the KPI's overall total — reuses

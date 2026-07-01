@@ -139,6 +139,8 @@ export async function computeFunnel(
   // simple per-day count, not a raw export, so it stays fast even though
   // it's a live call.
 
+  const ROW_CAP = 200_000; // raised from 50k — silent truncation gave wrong funnel numbers on high-volume orgs
+
   // Fetch real user-level events (excludes Mixpanel stubs which have null user_id)
   const { data: userEvents } = await admin
     .from("events")
@@ -147,7 +149,8 @@ export async function computeFunnel(
     .in("name", eventNames)
     .gte("timestamp", since.toISOString())
     .not("user_id", "is", null)
-    .order("timestamp", { ascending: true });
+    .order("timestamp", { ascending: true })
+    .limit(ROW_CAP);
 
   // Check which event names have Mixpanel stub rows (source=mixpanel, user_id=null)
   const { data: mixpanelStubs } = await admin
