@@ -178,6 +178,27 @@ export async function createBusinessGoal(
   return { id: data.id };
 }
 
+// ─── Update goal fields (title, description, type, target, timeframe) ────────
+
+export async function updateBusinessGoal(
+  id: string,
+  payload: {
+    title?: string;
+    description?: string | null;
+    type?: string;
+    target?: string | null;
+    timeframe?: string | null;
+  }
+): Promise<{ error?: string }> {
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("business_goals")
+    .update({ ...payload, updated_at: new Date().toISOString() })
+    .eq("id", id);
+  if (error) return { error: error.message };
+  return {};
+}
+
 // ─── Update goal status ────────────────────────────────────────────────────────
 
 export async function updateGoalStatus(

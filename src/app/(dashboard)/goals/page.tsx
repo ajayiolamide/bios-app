@@ -15,6 +15,7 @@ import {
   getBusinessGoals,
   createBusinessGoal,
   updateGoalStatus,
+  updateBusinessGoal,
   deleteBusinessGoal,
   permanentlyDeleteBusinessGoal,
   getGoalHealthData,
@@ -1218,10 +1219,32 @@ function GoalCard({
   onDatesUpdated?: () => void;
   onKpiAdded?: () => void;
   onObjectiveChanged?: () => void;
+  onGoalUpdated?: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [objMenuOpen, setObjMenuOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({ title: goal.title, description: goal.description ?? "", type: goal.type ?? "growth", target: goal.target ?? "", timeframe: goal.timeframe ?? "" });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState("");
+
+  async function handleSaveEdit() {
+    if (!editForm.title.trim()) { setEditError("Title is required."); return; }
+    setSavingEdit(true);
+    setEditError("");
+    const { error } = await updateBusinessGoal(goal.id, {
+      title: editForm.title.trim(),
+      description: editForm.description.trim() || null,
+      type: editForm.type,
+      target: editForm.target.trim() || null,
+      timeframe: editForm.timeframe || null,
+    });
+    setSavingEdit(false);
+    if (error) { setEditError(error); return; }
+    setEditing(false);
+    onGoalUpdated?.();
+  }
   const objectiveTitle = objectives?.find((o) => o.id === goal.company_objective_id)?.title ?? null;
   const [editingDates, setEditingDates] = useState(false);
   const [startDate, setStartDate] = useState(goal.start_date ?? "");
@@ -1319,20 +1342,70 @@ function GoalCard({
           </div>
         </div>
 
-        {/* Title */}
-        <p className={`text-[15px] font-semibold leading-snug tracking-tight mb-1 ${isMissed ? "line-through text-gray-300" : "text-gray-900"}`}>
-          {goal.title}
-          {goal.status === "achieved" && <Trophy size={12} className="inline ml-1.5 text-yellow-500" />}
-        </p>
-
-        {goal.description && (
-          <p className="text-xs text-gray-400 leading-relaxed mb-2">{goal.description}</p>
+        {/* Title + edit toggle */}
+        {editing ? (
+          <div className="mb-2 space-y-2">
+            <input
+              value={editForm.title}
+              onChange={e => setEditForm({ ...editForm, title: e.target.value })}
+              className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-300"
+              placeholder="Goal title"
+            />
+            <textarea
+              value={editForm.description}
+              onChange={e => setEditForm({ ...editForm, description: e.target.value })}
+              rows={2}
+              className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-xs text-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-300 resize-none"
+              placeholder="Description (optional)"
+            />
+            <div className="flex gap-2">
+              <select value={editForm.type} onChange={e => setEditForm({ ...editForm, type: e.target.value })}
+                className="flex-1 border border-gray-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300">
+                {GOAL_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+              </select>
+              <select value={editForm.timeframe} onChange={e => setEditForm({ ...editForm, timeframe: e.target.value })}
+                className="flex-1 border border-gray-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300">
+                <option value="">No timeframe</option>
+                {TIMEFRAMES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <input
+              value={editForm.target}
+              onChange={e => setEditForm({ ...editForm, target: e.target.value })}
+              className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300"
+              placeholder="Target (e.g. 90% within 48h)"
+            />
+            {editError && <p className="text-[11px] text-red-500">{editError}</p>}
+            <div className="flex items-center gap-2">
+              <button onClick={handleSaveEdit} disabled={savingEdit}
+                className="text-[11px] bg-indigo-600 text-white px-3 py-1.5 rounded hover:bg-indigo-700 disabled:opacity-50 font-medium transition-colors">
+                {savingEdit ? "Saving…" : "Save"}
+              </button>
+              <button onClick={() => { setEditing(false); setEditError(""); setEditForm({ title: goal.title, description: goal.description ?? "", type: goal.type ?? "growth", target: goal.target ?? "", timeframe: goal.timeframe ?? "" }); }}
+                className="text-[11px] text-gray-400 hover:text-gray-600 px-2 py-1.5">Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <div className="group/title relative">
+            <p className={`text-[15px] font-semibold leading-snug tracking-tight mb-1 pr-6 ${isMissed ? "line-through text-gray-300" : "text-gray-900"}`}>
+              {goal.title}
+              {goal.status === "achieved" && <Trophy size={12} className="inline ml-1.5 text-yellow-500" />}
+            </p>
+            <button
+              onClick={() => { setEditing(true); setEditForm({ title: goal.title, description: goal.description ?? "", type: goal.type ?? "growth", target: goal.target ?? "", timeframe: goal.timeframe ?? "" }); }}
+              className="absolute right-0 top-0 opacity-0 group-hover/title:opacity-100 transition-opacity text-gray-400 hover:text-indigo-500"
+              title="Edit goal"
+            >
+              <Pencil size={12} />
+            </button>
+            {goal.description && (
+              <p className="text-xs text-gray-400 leading-relaxed mb-2">{goal.description}</p>
+            )}
+            <p className="text-xs text-gray-400 mt-1">
+              {[goal.target, goal.timeframe].filter(Boolean).join(" · ")}
+            </p>
+          </div>
         )}
-
-        {/* Meta — plain text */}
-        <p className="text-xs text-gray-400 mt-1">
-          {[goal.target, goal.timeframe].filter(Boolean).join(" · ")}
-        </p>
 
         {/* Which business goal this Product Goal ladders up to — separate
             from the goal's own type tag above, which just categorizes it. */}
@@ -3448,6 +3521,7 @@ export default function BusinessGoalsPage() {
                 onDatesUpdated={load}
                 onKpiAdded={load}
                 onObjectiveChanged={load}
+                onGoalUpdated={load}
               />
             ))}
           </div>
@@ -3478,6 +3552,7 @@ export default function BusinessGoalsPage() {
                 onDatesUpdated={load}
                 onKpiAdded={load}
                 onObjectiveChanged={load}
+                onGoalUpdated={load}
               />
             ))}
           </div>
@@ -3508,6 +3583,7 @@ export default function BusinessGoalsPage() {
                 onDatesUpdated={load}
                 onKpiAdded={load}
                 onObjectiveChanged={load}
+                onGoalUpdated={load}
               />
             ))}
           </div>
@@ -3538,6 +3614,7 @@ export default function BusinessGoalsPage() {
                   onDelete={handleDelete}
                   onKpiAdded={load}
                   onObjectiveChanged={load}
+                  onGoalUpdated={load}
                 />
                 <button
                   onClick={() => handlePermanentDelete(g.id)}
