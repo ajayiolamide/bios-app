@@ -37,6 +37,7 @@ import type { MetricDataPoint } from "@/lib/metrics-engine";
 import {
   getCompanyObjectives, createCompanyObjective, setGoalObjective,
   updateCompanyObjectiveStatus, deleteCompanyObjective,
+  updateCompanyObjective,
   proposeObjectiveFromDescription,
 } from "@/app/actions/company-objectives";
 import { getReportSources, fetchSheetData } from "@/app/actions/reports";
@@ -1865,7 +1866,7 @@ function objectiveProgress(objectiveId: string, goals: BusinessGoal[], goalProgr
 }
 
 function ObjectiveCard({
-  objective, goals, goalProgress, selected, onSelect, onStatusChange, onDelete, label, labelPlural,
+  objective, goals, goalProgress, selected, onSelect, onStatusChange, onDelete, onSaved, label, labelPlural,
 }: {
   objective: CompanyObjective;
   goals: BusinessGoal[];
@@ -1874,10 +1875,15 @@ function ObjectiveCard({
   onSelect: () => void;
   onStatusChange: (status: CompanyObjective["status"]) => void;
   onDelete: () => void;
+  onSaved: () => void;
   label: string;
   labelPlural: string;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({ title: objective.title, description: objective.description ?? "", target: objective.target ?? "", timeframe: objective.timeframe ?? "" });
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState("");
   const { goalCount, measurableGoalCount, progressRatio } = objectiveProgress(objective.id, goals, goalProgress);
   const pct = progressRatio !== null ? Math.round(progressRatio * 100) : null;
   const overshot = pct !== null && pct > 100;
@@ -1891,6 +1897,22 @@ function ObjectiveCard({
     bad:     { bg: "#fff5f5", border: "rgba(225,29,72,0.25)",   glow: "rgba(225,29,72,0.12)",  accent: "#e11d48", gradFrom: "#fb7185", gradTo: "#f87171" },
     neutral: { bg: "#f5f7ff", border: "rgba(99,102,241,0.18)",  glow: "rgba(99,102,241,0.08)", accent: "#818cf8", gradFrom: "#a5b4fc", gradTo: "#93c5fd" },
   }[signal.tone];
+
+  async function handleSaveEdit() {
+    if (!editForm.title.trim()) { setEditError("Title is required."); return; }
+    setSavingEdit(true);
+    setEditError("");
+    const { error } = await updateCompanyObjective(objective.id, {
+      title: editForm.title.trim(),
+      description: editForm.description.trim() || null,
+      target: editForm.target.trim() || null,
+      timeframe: editForm.timeframe || null,
+    });
+    setSavingEdit(false);
+    if (error) { setEditError(error); return; }
+    setEditing(false);
+    onSaved();
+  }
 
   return (
     <div
@@ -1939,33 +1961,83 @@ function ObjectiveCard({
         <p className="text-xs text-gray-400 mb-3">
           {[objective.target, objective.timeframe].filter(Boolean).join(" · ") || "No target set"}
         </p>
-
-        {pct === null ? (
-          <p className="text-[11px] text-gray-400">
-            {goalCount === 0
-              ? `No ${labelPlural} linked yet.`
-              : `${goalCount} ${goalCount !== 1 ? labelPlural : label} linked — none measurable yet.`}
-          </p>
-        ) : (
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[11px] text-gray-500">Rolled up from {labelPlural}</span>
-              <span className={`text-[11px] font-semibold ${overshot ? "text-emerald-600" : "text-gray-700"}`}>
-                {pct.toLocaleString()}%{overshot ? " — exceeded" : ""}
-              </span>
-            </div>
-            <div className="h-1 rounded-full overflow-hidden" style={{ background: "rgba(0,0,0,0.06)" }}>
-              <div
-                className={`h-full rounded-full ${overshot ? "bg-emerald-500" : ""}`}
-                style={{
-                  width: `${Math.min(pct, 100)}%`,
-                  background: overshot ? undefined : `linear-gradient(90deg, ${palette.gradFrom}, ${palette.gradTo})`,
-                }}
-              />
-            </div>
-          </div>
-        )}
       </button>
+
+      {/* Inline edit form — shown instead of the click-through button area */}
+      {editing && (
+        <div className="px-4 pb-3 space-y-2" onClick={e => e.stopPropagation()}>
+          <input
+            value={editForm.title}
+            onChange={e => setEditForm({ ...editForm, title: e.target.value })}
+            className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-indigo-300 bg-white"
+            placeholder="Business goal title"
+            autoFocus
+          />
+          <textarea
+            value={editForm.description}
+            onChange={e => setEditForm({ ...editForm, description: e.target.value })}
+            rows={2}
+            className="w-full border border-gray-200 rounded px-2.5 py-1.5 text-xs text-gray-600 focus:outline-none focus:ring-1 focus:ring-indigo-300 bg-white resize-none"
+            placeholder="Description (optional)"
+          />
+          <div className="flex gap-2">
+            <input
+              value={editForm.target}
+              onChange={e => setEditForm({ ...editForm, target: e.target.value })}
+              className="flex-1 border border-gray-200 rounded px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300 bg-white"
+              placeholder="Target (e.g. ₦4B GWP)"
+            />
+            <select
+              value={editForm.timeframe}
+              onChange={e => setEditForm({ ...editForm, timeframe: e.target.value })}
+              className="flex-1 border border-gray-200 rounded px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-indigo-300 bg-white"
+            >
+              <option value="">No timeframe</option>
+              {TIMEFRAMES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          {editError && <p className="text-[11px] text-red-500">{editError}</p>}
+          <div className="flex items-center gap-2">
+            <button onClick={handleSaveEdit} disabled={savingEdit}
+              className="text-[11px] bg-indigo-600 text-white px-3 py-1.5 rounded hover:bg-indigo-700 disabled:opacity-50 font-medium transition-colors">
+              {savingEdit ? "Saving…" : "Save"}
+            </button>
+            <button onClick={() => { setEditing(false); setEditError(""); setEditForm({ title: objective.title, description: objective.description ?? "", target: objective.target ?? "", timeframe: objective.timeframe ?? "" }); }}
+              className="text-[11px] text-gray-400 hover:text-gray-600 px-2 py-1.5">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* Progress / goal count — shown when not editing */}
+      {!editing && (
+        <div className="px-4 pb-4">
+          {pct === null ? (
+            <p className="text-[11px] text-gray-400">
+              {goalCount === 0
+                ? `No ${labelPlural} linked yet.`
+                : `${goalCount} ${goalCount !== 1 ? labelPlural : label} linked — none measurable yet.`}
+            </p>
+          ) : (
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="text-[11px] text-gray-500">Rolled up from {labelPlural}</span>
+                <span className={`text-[11px] font-semibold ${overshot ? "text-emerald-600" : "text-gray-700"}`}>
+                  {pct.toLocaleString()}%{overshot ? " — exceeded" : ""}
+                </span>
+              </div>
+              <div className="h-1 rounded-full overflow-hidden" style={{ background: "rgba(0,0,0,0.06)" }}>
+                <div
+                  className={`h-full rounded-full ${overshot ? "bg-emerald-500" : ""}`}
+                  style={{
+                    width: `${Math.min(pct, 100)}%`,
+                    background: overshot ? undefined : `linear-gradient(90deg, ${palette.gradFrom}, ${palette.gradTo})`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div
         className="relative flex items-center justify-between px-4 py-2"
@@ -1974,13 +2046,22 @@ function ObjectiveCard({
         <span className="text-[11px] text-gray-400">
           {goalCount} {goalCount !== 1 ? labelPlural : label}
         </span>
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all"
-          title="Delete business goal"
-        >
-          <Trash2 size={12} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={(e) => { e.stopPropagation(); setEditing(true); setEditForm({ title: objective.title, description: objective.description ?? "", target: objective.target ?? "", timeframe: objective.timeframe ?? "" }); }}
+            className="text-gray-300 hover:text-indigo-500 transition-colors"
+            title="Edit business goal"
+          >
+            <Pencil size={12} />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-500 transition-all"
+            title="Delete business goal"
+          >
+            <Trash2 size={12} />
+          </button>
+        </div>
       </div>
 
       {menuOpen && (
@@ -2366,6 +2447,7 @@ function ObjectivesPanel({
                 await deleteCompanyObjective(o.id);
                 onSaved();
               }}
+              onSaved={onSaved}
               label={label}
               labelPlural={labelPlural}
             />
