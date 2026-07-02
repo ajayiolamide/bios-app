@@ -279,13 +279,19 @@ export async function updateAlertRule(id: string, patch: Partial<AlertRulePayloa
   if (patch.kpi_id !== undefined) update.kpi_id = patch.kpi_id ?? null;
   if (patch.count_method !== undefined) update.count_method = patch.count_method ?? "total";
   if (patch.slack_webhook_override !== undefined) update.slack_webhook_override = patch.slack_webhook_override?.trim() || null;
-  if (patch.slack_insight_override !== undefined) update.slack_insight_override = patch.slack_insight_override?.trim() || null;
-  const { error } = await admin
+  if (patch.slack_insight_override !== undefined) {
+    // Explicit null check — avoids optional-chaining ambiguity when value is null
+    const raw = patch.slack_insight_override;
+    update.slack_insight_override = (raw == null || !raw.trim()) ? null : raw.trim();
+  }
+  const { data: updated, error } = await admin
     .from("alert_rules")
     .update(update)
     .eq("id", id)
-    .eq("organization_id", orgId);
+    .eq("organization_id", orgId)
+    .select("id");
   if (error) throw new Error(error.message ?? String(error));
+  if (!updated?.length) throw new Error("Alert rule not found — try refreshing the page.");
 }
 
 export async function deleteAlertRule(id: string): Promise<void> {
