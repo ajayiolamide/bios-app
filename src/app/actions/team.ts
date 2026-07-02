@@ -226,9 +226,11 @@ export async function inviteMember(
   const apiKey = process.env.RESEND_API_KEY;
   const fromEmail = process.env.RESEND_FROM_EMAIL ?? "noreply@metrik.app";
 
-  if (apiKey) {
+  if (!apiKey) {
+    console.warn("[inviteMember] RESEND_API_KEY is not set — skipping invite email. Invite URL:", inviteUrl);
+  } else {
     try {
-      await fetch("https://api.resend.com/emails", {
+      const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -260,8 +262,14 @@ export async function inviteMember(
           `.trim(),
         }),
       });
+      if (!res.ok) {
+        const body = await res.text();
+        console.error(`[inviteMember] Resend returned ${res.status}: ${body}`);
+      } else {
+        console.log(`[inviteMember] Invite email sent to ${cleanEmail} via ${fromEmail}`);
+      }
     } catch (e) {
-      console.error("Failed to send invite email:", e);
+      console.error("[inviteMember] Failed to send invite email:", e);
       // Don't fail the whole invite if email fails — return the URL so they can copy it
     }
   }
