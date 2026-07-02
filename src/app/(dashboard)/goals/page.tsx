@@ -1386,14 +1386,14 @@ function GoalCard({
             </div>
           </div>
         ) : (
-          <div className="group/title relative">
+          <div className="relative">
             <p className={`text-[15px] font-semibold leading-snug tracking-tight mb-1 pr-6 ${isMissed ? "line-through text-gray-300" : "text-gray-900"}`}>
               {goal.title}
               {goal.status === "achieved" && <Trophy size={12} className="inline ml-1.5 text-yellow-500" />}
             </p>
             <button
               onClick={() => { setEditing(true); setEditForm({ title: goal.title, description: goal.description ?? "", type: goal.type ?? "growth", target: goal.target ?? "", timeframe: goal.timeframe ?? "" }); }}
-              className="absolute right-0 top-0 opacity-0 group-hover/title:opacity-100 transition-opacity text-gray-400 hover:text-indigo-500"
+              className="absolute right-0 top-0 text-gray-300 hover:text-indigo-500 transition-colors"
               title="Edit goal"
             >
               <Pencil size={12} />
